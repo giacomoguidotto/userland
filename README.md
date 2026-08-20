@@ -1,8 +1,29 @@
-# userland
+<h1 align="center">userland</h1>
 
-`userland` keeps Giacomo's personal macOS environment consistent across machines. It installs developer tools and personal applications, links declarative configuration, applies selected user preferences, and reports drift. Corporate software, credentials, browser profiles, histories, caches, and application databases stay outside the repository.
+<p align="center">
+  <strong>A new Mac. My machine, one command later.</strong><br>
+  <sub>macOS setup &middot; mise &middot; Homebrew &middot; immutable releases</sub>
+</p>
 
-## Install
+<p align="center">
+  <a href="https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml"><img src="https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml/badge.svg" alt="Checks"></a>
+  <a href="https://github.com/giacomoguidotto/userland/releases/latest"><img src="https://img.shields.io/github/v/release/giacomoguidotto/userland" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/giacomoguidotto/userland" alt="MIT license"></a>
+</p>
+
+<br>
+
+A new Mac should feel new, not unfamiliar.
+
+I built `userland` to turn the blank-machine ritual into one command, then three quiet verbs: plan, sync, doctor. It brings back the tools, applications, preferences, and small decisions that make macOS feel like mine. It also knows what not to touch.
+
+> The machine changes. The way it feels does not.
+
+<p align="center">
+  <a href="https://github.com/giacomoguidotto/userland/releases/latest"><strong>See the latest release &rarr;</strong></a>
+</p>
+
+## Make it mine
 
 Install the latest stable release:
 
@@ -10,44 +31,62 @@ Install the latest stable release:
 curl -fsSL https://userland.guidotto.dev | sh
 ```
 
-Install an exact release:
+Or pin the first public release:
 
 ```sh
-curl -fsSL https://userland.guidotto.dev/v1.2.3 | sh
+curl -fsSL https://userland.guidotto.dev/v0.1.0 | sh
 ```
 
-The first command installs a checksum-verified release, runs it, then creates a managed Git checkout at `~/.local/share/userland/repo`. Later runs use that checkout and update `main` only by fast-forward when it has no local changes.
+The installer downloads a checksum-verified release, runs it, then creates a managed checkout at `~/.local/share/userland/repo`. Later runs use that checkout. They move `main` forward only when the repository is clean and the update is a fast-forward.
 
-## Commands
+## What comes home
 
-```text
-userland plan
-userland sync
-userland doctor
-userland doctor --json
-```
+- Developer tools and personal applications
+- Shell, terminal, editor, Git, SSH, and agent configuration
+- Selected macOS defaults, file handlers, Dock items, and login items
+- A declared set of Chrome extensions, installed with human approval
+- An encrypted Raycast export, imported in Raycast with human approval
+- Personal repositories, cloned only when they are missing
 
-`plan` is read-only. It refreshes repository discovery when its 24-hour snapshot has expired, then combines missing packages, rolling upgrades, mise-managed state, and app-specific checks. It also states the source, expected duration, restart implications, and rollback boundary.
+Corporate software stays out. So do credentials, browser profiles, histories, caches, application databases, and machine-local authentication.
 
-`sync` always shows that combined plan and asks once before changing the machine. It then refreshes a clean userland checkout, updates rolling packages and applications, applies declared state, handles attended imports, and finishes with `doctor`. Re-run it after an interruption. There is no separate resume command.
+## Three verbs
 
-`doctor` is read-only. It checks mise, declared state, app-specific receipts, file handlers, security posture, free disk space, and repository discovery.
+| Command | What it does |
+| --- | --- |
+| `userland plan` | Shows one read-only plan with sources, expected duration, restart implications, and rollback boundaries. Repository discovery is cached for 24 hours. |
+| `userland sync` | Shows the same plan, asks once, updates rolling tools and applications, applies declared state, handles attended steps, then runs the doctor. Re-run it after an interruption. |
+| `userland doctor` | Checks declared state, attended imports, file handlers, security posture, free disk space, and repository discovery without changing the machine. |
 
-## Safety
+`userland doctor --json` returns the same health report for other tools. There is no separate resume command because `sync` is safe to run again.
+
+## What stays yours
 
 - `sync` never stashes, resets, cleans, or edits another repository.
-- Dotfile conflicts stop the run. Only symlinks created by the old repository or a verified userland release qualify for automatic migration.
-- Directory migrations preserve children that are not declared in the new source. This keeps authentication and history local.
-- Userland does not prune unmanaged packages, applications, files, Dock items, caches, or login items.
-- Personal repositories declared in `state/repositories.tsv` clone only when missing. Existing and dirty checkouts are never refreshed or rewritten.
-- Browser extension inventory is declarative, but installation stays attended through the Chrome Web Store. Userland never copies a browser profile.
-- App Store authentication, macOS privacy approvals, licenses, DaVinci Resolve, OpenScreen, Raycast Beta, and Raycast's encrypted import may require attention.
-- Xcode is declared through the App Store. Android uses command-line tools and emulators without Android Studio.
+- Dotfile conflicts stop the run. Automatic migration is limited to links created by the old repository or a verified userland release.
+- Directory migrations preserve undeclared children, including local authentication and history.
+- Unmanaged packages, applications, files, Dock items, caches, and login items are never pruned.
+- Personal repositories listed in `state/repositories.tsv` clone only when missing. Existing checkouts, including dirty ones, are never refreshed or rewritten.
+- Browser extensions remain an attended Chrome Web Store step. Userland never copies a browser profile.
+- App Store authentication, macOS privacy approvals, licenses, DaVinci Resolve, OpenScreen, Raycast Beta, and Raycast's encrypted import may still need attention.
+- Xcode comes from the App Store. Android development uses command-line tools and emulators without Android Studio.
 
-## Implementation
+## Under the hood
 
-mise 2026.8.9 owns CLI packages, dotfiles, macOS defaults, locked developer tools, and status. A narrow Homebrew Bundle adapter owns native applications and Xcode because mise 2026.8.9 cannot parse several current cask records. The small POSIX shell modules under `libexec/userland/` also add safe checkout refresh, repository caching, migration, combined health reporting, file handlers, static shell initialization, and attended application state.
+| Layer | Responsibility |
+| --- | --- |
+| mise 2026.8.9 | CLI packages, dotfiles, macOS defaults, locked developer tools, and status |
+| Homebrew Bundle | Native applications and Xcode records that mise 2026.8.9 cannot currently parse |
+| POSIX shell modules | Safe checkout refresh, migration, repository caching, health checks, file handlers, and attended application state |
+| GitHub Releases | Immutable, SemVer-tagged release assets |
+| Cloudflare Workers Static Assets | The root and exact-version bootstrap endpoints, served without redirects or paid storage |
 
-GitHub Releases hold immutable SemVer assets. Cloudflare Workers Static Assets serves the same bootstrap bytes at the root and exact-version paths without a redirect or paid storage service. See [delivery/README.md](delivery/README.md) and [docs/architecture.md](docs/architecture.md).
+The design lives in [docs/architecture.md](docs/architecture.md). Release and endpoint details live in [delivery/README.md](delivery/README.md).
 
-Nix and Dotbot remain temporarily as migration references. Do not run the legacy manifests. Remove them only after a real fresh-Mac parity check.
+## Still becoming
+
+`v0.1.0` is live. A real fresh-Mac parity run is still the final proof. Nix and Dotbot remain in the repository only as migration references until that check passes; their legacy manifests should not be run.
+
+This is personal configuration in public, not a universal dotfiles framework. Fork what helps. Expect the defaults to be opinionated.
+
+MIT licensed.

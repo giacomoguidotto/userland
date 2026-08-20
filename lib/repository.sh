@@ -66,22 +66,6 @@ userland_refresh_repository_snapshot() {
   userland_log changed "refreshed the 24-hour repository snapshot ($userland_repo_count repositories)"
 }
 
-userland_prepare_submodule_layout_upgrade() {
-  userland_legacy_submodule=cfg/xdg/nvim
-  userland_current_submodule=config/xdg/nvim
-
-  [ "$(git -C "$USERLAND_ROOT" ls-files -s -- "$userland_legacy_submodule" | awk 'NR == 1 { print $1 }')" = 160000 ] || return 0
-  git -C "$USERLAND_ROOT" cat-file -e "origin/main:$userland_current_submodule" 2>/dev/null || return 0
-  [ -d "$USERLAND_ROOT/$userland_legacy_submodule" ] || return 0
-
-  if [ -n "$(git -C "$USERLAND_ROOT/$userland_legacy_submodule" status --porcelain --untracked-files=all)" ]; then
-    userland_log warning "the Neovim submodule has local changes; refused the layout upgrade"
-    return 1
-  fi
-
-  git -C "$USERLAND_ROOT" submodule deinit --force --quiet -- "$userland_legacy_submodule"
-}
-
 userland_repository_refresh_checkout() {
   [ -d "$USERLAND_ROOT/.git" ] || return 0
   command -v git >/dev/null 2>&1 || {
@@ -118,8 +102,6 @@ userland_repository_refresh_checkout() {
     userland_log warning "local and remote main diverged; refused to update"
     return 0
   fi
-
-  userland_prepare_submodule_layout_upgrade || return 0
 
   git -C "$USERLAND_ROOT" merge --ff-only --quiet origin/main
   git -C "$USERLAND_ROOT" submodule sync --quiet --recursive

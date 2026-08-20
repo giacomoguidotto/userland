@@ -1,4 +1,6 @@
 config/xdg/nushell/history.txt
+# An initialized v0.1.3 submodule can remain after its tracked path moves.
+cfg/xdg/nvim/
 *.mdb
 *.mdb-lock
 *.sqlite*

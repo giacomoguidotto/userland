@@ -37,31 +37,45 @@ userland_doctor_json() {
 }
 
 userland_doctor_human() {
+  userland_doctor_mode=${1:-standalone}
   userland_require_mise
   userland_doctor_code=0
 
-  userland_log doctor "mise installation"
+  if [ "$userland_doctor_mode" = standalone ]; then
+    userland_ui command doctor "Check drift and machine health. Nothing will be changed."
+  fi
+
+  userland_ui section "Toolchain"
   "$USERLAND_MISE" doctor || userland_doctor_code=1
 
-  userland_log doctor "declared machine state"
+  userland_ui section "Machine state"
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap status --missing || userland_doctor_code=1
 
-  userland_log doctor "userland adapters"
+  userland_ui section "Personal state"
   userland_run_adapters doctor || userland_doctor_code=1
 
   if [ "$userland_doctor_code" -eq 0 ]; then
-    userland_log healthy "userland matches the declaration"
+    if [ "$userland_doctor_mode" = standalone ]; then
+      userland_ui summary ok "Everything matches."
+    else
+      userland_log healthy "Userland matches the declaration"
+    fi
   else
-    userland_log attention "userland found drift or a manual step"
+    if [ "$userland_doctor_mode" = standalone ]; then
+      userland_ui summary attention "Needs attention. Review the items above."
+    else
+      userland_log attention "Userland found drift or a manual step"
+    fi
   fi
   return "$userland_doctor_code"
 }
 
 userland_doctor() {
+  userland_doctor_mode=${1:-standalone}
   userland_require_schema
   if [ "${userland_doctor_format:-human}" = json ]; then
     userland_doctor_json
   else
-    userland_doctor_human
+    userland_doctor_human "$userland_doctor_mode"
   fi
 }

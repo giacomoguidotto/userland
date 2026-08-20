@@ -20,16 +20,24 @@ export PATH
 export USERLAND_HOME USERLAND_DATA_DIR USERLAND_CACHE_DIR USERLAND_STATE_DIR
 export USERLAND_REPOSITORY_TTL_SECONDS
 
-userland_now() {
-  date '+%Y-%m-%dT%H:%M:%S%z'
-}
+# shellcheck source=ui.sh
+. "$USERLAND_ROOT/lib/ui.sh"
 
 userland_log() {
   userland_log_level=$1
   shift
-  userland_log_message=$*
-  userland_log_message=$(printf '%s\n' "$userland_log_message" | sed "s|$USERLAND_HOME|~|g")
-  printf '%s  %-7s %s\n' "$(userland_now)" "$userland_log_level" "$userland_log_message"
+  case "$userland_log_level" in
+    current | healthy | ready) userland_log_state=ok ;;
+    change) userland_log_state=change ;;
+    changed | preserved) userland_log_state=changed ;;
+    manual) userland_log_state=manual ;;
+    attention | warning) userland_log_state=$userland_log_level ;;
+    error) userland_log_state=error ;;
+    cancelled) userland_log_state=cancelled ;;
+    plan | sync | doctor | consent | info) userland_log_state=info ;;
+    *) userland_log_state=info ;;
+  esac
+  userland_ui status "$userland_log_state" "$*"
 }
 
 userland_die() {

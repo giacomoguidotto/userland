@@ -48,6 +48,92 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
+@test "plain output is structured, stable, and free of terminal control bytes" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=plain \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command plan "Preview declared state"; userland_ui section "Applications"; userland_log current "Home is $USERLAND_HOME"; userland_ui summary ok "Plan complete"'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"userland plan: Preview declared state"* ]]
+  [[ "$output" == *"== Applications"* ]]
+  [[ "$output" == *"[ok] Home is ~"* ]]
+  [[ "$output" == *"[ok] Plan complete"* ]]
+  [[ "$output" != *$'\e['* ]]
+  [[ "$output" != *"$USERLAND_HOME"* ]]
+}
+
+@test "rich output uses restrained status marks and respects NO_COLOR" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    TERM=xterm-256color \
+    NO_COLOR= \
+    CLICOLOR_FORCE=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command doctor "Check this Mac"; userland_ui section "Security"; userland_log healthy "FileVault is on"'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"userland"*"doctor"* ]]
+  [[ "$output" == *"✓"*"FileVault is on"* ]]
+  [[ "$output" == *$'\e['* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    TERM=xterm-256color \
+    CLICOLOR_FORCE=1 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_log attention "Manual approval remains"'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"! Manual approval remains"* ]]
+  [[ "$output" != *$'\e['* ]]
+}
+
+@test "the renderer rejects unknown events and confirmation stays default-deny" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=plain \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui sparkle "nope"'
+  [ "$status" -eq 64 ]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=plain \
+    USERLAND_ASSUME_YES=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[info] Apply this plan? yes"* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE= \
+    LC_ALL=C \
+    NO_COLOR=1 \
+    sh -c 'unset USERLAND_UNICODE; . "$USERLAND_ROOT/lib/common.sh"; userland_log healthy "Portable output"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"ok Portable output"* ]]
+  [[ "$output" != *"✓"* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=plain \
+    USERLAND_ASSUME_YES= \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"[error] Apply this plan? requires an interactive terminal"* ]]
+}
+
 @test "the installed command resolves its managed symlink" {
   mkdir -p "$USERLAND_HOME/.local/bin"
   ln -s "$TEST_ROOT/bin/userland" "$USERLAND_HOME/.local/bin/userland"

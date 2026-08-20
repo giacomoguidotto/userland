@@ -10,26 +10,20 @@
 . "$USERLAND_ROOT/lib/preflight.sh"
 
 userland_confirm_sync() {
-  if [ "${USERLAND_ASSUME_YES:-}" = 1 ]; then
-    userland_log consent "continuing because USERLAND_ASSUME_YES=1"
-    return 0
+  userland_confirm_code=0
+  userland_ui confirm "Apply this plan?" || userland_confirm_code=$?
+  if [ "$userland_confirm_code" -eq 3 ]; then
+    userland_ui summary cancelled "Cancelled. No changes were applied."
   fi
-  [ -t 0 ] || userland_die "sync needs an interactive terminal to confirm its plan"
-  printf 'Apply this plan? [y/N] ' >/dev/tty
-  IFS= read -r userland_confirmation </dev/tty
-  case "$userland_confirmation" in
-    y | Y | yes | YES) ;;
-    *)
-      userland_log cancelled "no changes were applied"
-      return 3
-      ;;
-  esac
+  return "$userland_confirm_code"
 }
 
 userland_sync() {
   userland_require_schema
   userland_require_mise
   userland_mkdirs
+  userland_ui command sync "Update userland, apply declared state, then verify it."
+  userland_ui section "Preflight"
   userland_sync_preflight
 
   # Sync updates its own clean main checkout first. The plan and consent below
@@ -54,28 +48,31 @@ userland_sync() {
   # The same native operations run below without force semantics.
   # shellcheck source=plan.sh
   . "$USERLAND_ROOT/lib/plan.sh"
-  userland_plan
+  userland_plan embedded
   userland_confirm_sync
 
-  userland_log sync "installing missing rolling packages"
+  userland_ui section "Apply packages"
+  userland_log info "Installing missing rolling packages"
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages apply --yes --jobs "${USERLAND_JOBS:-4}"
 
-  userland_log sync "upgrading installed rolling packages"
+  userland_log info "Upgrading installed rolling packages"
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages upgrade --yes --jobs "${USERLAND_JOBS:-4}"
 
   userland_prepare_legacy_dotfiles
 
-  userland_log sync "applying declared tools, dotfiles, repositories, and macOS preferences"
+  userland_ui section "Apply machine state"
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap --yes --skip packages --jobs "${USERLAND_JOBS:-4}"
 
-  userland_log sync "applying attended and app-specific state"
+  userland_ui section "Apply personal state"
   userland_run_adapters apply
 
-  userland_log sync "verifying the result"
+  userland_ui section "Verify"
   # shellcheck source=doctor.sh
   . "$USERLAND_ROOT/lib/doctor.sh"
-  if userland_doctor; then
+  if userland_doctor embedded; then
+    userland_ui summary ok "Sync complete. This Mac matches userland."
     return 0
   fi
+  userland_ui summary attention "Sync complete with steps that need attention."
   return 2
 }

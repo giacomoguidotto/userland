@@ -46,17 +46,7 @@ export USERLAND_MISE
 . "$USERLAND_ROOT/lib/common.sh"
 
 usage() {
-  cat <<'EOF'
-Usage: userland <command>
-
-Commands:
-  plan        Show what would change without changing the machine
-  sync        Update userland, apply declared state, then verify it
-  doctor      Report drift and machine health without changing anything
-
-Options:
-  doctor --json   Print a stable machine-readable summary
-EOF
+  userland_ui usage
 }
 
 if [ "$#" -eq 0 ]; then

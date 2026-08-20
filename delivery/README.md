@@ -42,7 +42,7 @@ The public source is `giacomoguidotto/userland`. Its repository settings:
 - make every published GitHub Release immutable;
 - prevent `v*` tags from being deleted or moved;
 - require Giacomo's approval in the `release` environment;
-- allow that environment to deploy only from `v*` tags.
+- allow pushed releases from `v*` tags and recovery dispatches from `main`.
 
 ## One-time Cloudflare setup
 

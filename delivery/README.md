@@ -35,15 +35,20 @@ The bootstrap runs the release in archive mode and then clones the public reposi
 
 A successful checkout leaves local `main` at the released commit tracking `origin/main`, and the command link moves to that checkout. On a rerun, bootstrap does not fetch into or edit an existing checkout. It requires the canonical HTTPS origin, a clean work tree, `main` tracking `origin/main`, the released commit in the checkout history, and a HEAD that remains on GitHub's current `main` history. It validates those facts before trusting `mise.toml` or linking the checkout command. Later `userland sync` runs can advance a valid checkout with a fast-forward-only update.
 
-## One-time GitHub and Cloudflare setup
+## GitHub safeguards
 
-These settings require a repository or Cloudflare administrator:
+The public source is `giacomoguidotto/userland`. Its repository settings:
 
-- Rename the GitHub repository to `userland` before the first release.
-- Enable GitHub immutable releases.
-- Protect tags matching `v*`.
-- Create a GitHub environment named `release`. Require approval and restrict it to protected tags.
-- Add `CLOUDFLARE_ACCOUNT_ID` and a scoped `CLOUDFLARE_API_TOKEN` as environment secrets. The token only needs permission to deploy this Worker and manage its custom domain.
+- make every published GitHub Release immutable;
+- prevent `v*` tags from being deleted or moved;
+- require Giacomo's approval in the `release` environment;
+- allow that environment to deploy only from `v*` tags.
+
+## One-time Cloudflare setup
+
+These settings require a Cloudflare administrator:
+
+- Add `CLOUDFLARE_ACCOUNT_ID` and a scoped `CLOUDFLARE_API_TOKEN` as `release` environment secrets. The token only needs permission to deploy this Worker and manage its custom domain.
 - Confirm that `userland.guidotto.dev` belongs to the same Cloudflare account. Wrangler creates the Worker custom-domain record during the first deploy.
 
 The release environment is the only job with write permissions. Pull-request checks receive read-only repository access. Third-party actions use full commit SHAs.

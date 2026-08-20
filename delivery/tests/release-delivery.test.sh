@@ -30,6 +30,47 @@ done
 work=$(mktemp -d "${TMPDIR:-/tmp}/userland-delivery-test.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
+mkdir -p "$work/verify-bin"
+cat >"$work/verify-bin/curl" <<'EOF'
+#!/bin/sh
+set -eu
+output=
+headers=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) output=$2; shift 2 ;;
+    --dump-header) headers=$2; shift 2 ;;
+    --write-out) shift 2 ;;
+    *) shift ;;
+  esac
+done
+attempt=$(cat "$VERIFY_COUNTER")
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" >"$VERIFY_COUNTER"
+if [ "$attempt" -lt 13 ]; then
+  printf 'certificate pending\n' >"$output"
+  : >"$headers"
+  printf '000'
+  exit 0
+fi
+cp "$VERIFY_EXPECTED" "$output"
+printf 'HTTP/2 200\nContent-Type: text/plain\nCache-Control: public, max-age=31536000, immutable\n' >"$headers"
+printf '200'
+EOF
+chmod +x "$work/verify-bin/curl"
+printf '0\n' >"$work/verify-counter"
+printf 'bootstrap bytes\n' >"$work/verify-expected"
+PATH="$work/verify-bin:$PATH" \
+  VERIFY_COUNTER="$work/verify-counter" \
+  VERIFY_EXPECTED="$work/verify-expected" \
+  USERLAND_VERIFY_ATTEMPTS=13 \
+  USERLAND_VERIFY_SLEEP=0 \
+  "$delivery_dir/scripts/verify-endpoint.sh" \
+  https://userland.example/v0.1.0 \
+  "$work/verify-expected" \
+  version || fail "endpoint verifier did not outlast certificate provisioning"
+[ "$(cat "$work/verify-counter")" = 13 ] || fail "endpoint verifier did not use the configured retry budget"
+
 mkdir -p "$work/cache/v1.0.0" "$work/cache/v1.1.0-rc.1" "$work/cache/v1.1.0"
 printf '#!/bin/sh\nprintf stable-one\\n\n' >"$work/cache/v1.0.0/bootstrap"
 printf '#!/bin/sh\nprintf candidate\\n\n' >"$work/cache/v1.1.0-rc.1/bootstrap"

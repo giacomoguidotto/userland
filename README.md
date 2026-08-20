@@ -16,7 +16,7 @@ curl -fsSL https://userland.guidotto.dev | sh
 Pin an exact release:
 
 ```sh
-curl -fsSL https://userland.guidotto.dev/v0.1.4 | sh
+curl -fsSL https://userland.guidotto.dev/v0.1.5 | sh
 ```
 
 The installer verifies the release checksum, runs the first sync, and creates a managed checkout at `~/.local/share/userland/repo`.

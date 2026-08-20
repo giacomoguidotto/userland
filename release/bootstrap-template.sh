@@ -27,6 +27,31 @@ sha256() {
   fi
 }
 
+replace_link_atomically() {
+  replacement_link=$1
+  destination_link=$2
+
+  # BSD mv needs -h to replace a symlink to a directory instead of following
+  # it. GNU mv expresses the same rule with -T.
+  if /bin/mv -fh "$replacement_link" "$destination_link" 2>/dev/null; then
+    return 0
+  fi
+  if /bin/mv -fT "$replacement_link" "$destination_link" 2>/dev/null; then
+    return 0
+  fi
+  die "could not replace managed link: $destination_link"
+}
+
+cleanup_stale_current_links() {
+  for stale_link in "$data_dir"/releases/*/.current.new.*; do
+    [ -L "$stale_link" ] || continue
+    stale_target=$(readlink "$stale_link")
+    case "$stale_target" in
+      "$data_dir"/releases/*) rm "$stale_link" ;;
+    esac
+  done
+}
+
 install_command_link() {
   command_target=$1
   command_path="$bin_dir/userland"
@@ -45,7 +70,7 @@ install_command_link() {
   [ ! -e "$temporary_link" ] && [ ! -L "$temporary_link" ] ||
     die "temporary command path already exists: $temporary_link"
   ln -s "$command_target" "$temporary_link"
-  mv -f "$temporary_link" "$command_path"
+  replace_link_atomically "$temporary_link" "$command_path"
 }
 
 install_current_release_link() {
@@ -64,7 +89,7 @@ install_current_release_link() {
   [ ! -e "$temporary_link" ] && [ ! -L "$temporary_link" ] ||
     die "temporary release path already exists: $temporary_link"
   ln -s "$release_dir" "$temporary_link"
-  mv -f "$temporary_link" "$current_path"
+  replace_link_atomically "$temporary_link" "$current_path"
 }
 
 checkout_git() {
@@ -162,6 +187,7 @@ else
 fi
 
 install_current_release_link
+cleanup_stale_current_links
 install_command_link "$release_dir/bin/userland"
 "$release_dir/bin/mise" trust --yes "$release_dir/mise.toml"
 

@@ -167,6 +167,45 @@ grep -Fq "$attention_home/.local/share/userland/repo/mise.toml" "$work/rerun-tru
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$tag" ] ||
   fail "safe rerun did not retain the pinned mise release"
 
+ln -s "$attention_home/.local/share/userland/releases/$tag" \
+  "$attention_home/.local/share/userland/releases/$tag/.current.new.managed"
+ln -s /tmp/personal-current-link \
+  "$attention_home/.local/share/userland/releases/$tag/.current.new.personal"
+
+upgrade_tag=v1.2.4
+upgrade_commit=1123456789abcdef0123456789abcdef01234567
+upgrade_fixture="$work/upgrade-fixture/userland-1.2.4"
+mkdir -p "$upgrade_fixture"
+cp -R "$fixture/." "$upgrade_fixture"
+tar -czf "$work/userland-v1.2.4.tar.gz" -C "$work/upgrade-fixture" userland-1.2.4
+upgrade_archive_sha=$(shasum -a 256 "$work/userland-v1.2.4.tar.gz" | awk '{ print $1 }')
+sed \
+  -e "s|@USERLAND_TAG@|$upgrade_tag|g" \
+  -e "s|@USERLAND_COMMIT@|$upgrade_commit|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256@|$upgrade_archive_sha|g" \
+  "$repository_root/release/bootstrap-template.sh" >"$work/upgrade-bootstrap"
+
+upgrade_status=0
+HOME="$attention_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.4.tar.gz" \
+  TEST_COMMIT="$upgrade_commit" \
+  TEST_GIT_HEAD="$upgrade_commit" \
+  TEST_GIT_REMOTE_MAIN="$upgrade_commit" \
+  TEST_OBSERVATION="$work/upgrade-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  TEST_TRUST_LOG="$work/upgrade-trust" \
+  USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || upgrade_status=$?
+[ "$upgrade_status" -eq 0 ] || fail "upgrade run returned $upgrade_status"
+[ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$upgrade_tag" ] ||
+  fail "upgrade run did not move the current release pointer"
+[ ! -e "$attention_home/.local/share/userland/releases/$tag/.current.new.managed" ] ||
+  fail "upgrade run retained a userland-owned stale current link"
+[ -L "$attention_home/.local/share/userland/releases/$tag/.current.new.personal" ] ||
+  fail "upgrade run removed an unmanaged stale-link lookalike"
+
 prepare_existing_checkout() {
   existing_home=$1
   prepare_home "$existing_home"

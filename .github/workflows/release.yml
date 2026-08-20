@@ -1,0 +1,269 @@
+name: Release userland
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing SemVer tag to release
+        required: true
+        type: string
+
+concurrency:
+  group: userland-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  USERLAND_ORIGIN: https://userland.guidotto.dev
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.TAG }}
+          submodules: recursive
+
+      - name: Install the release generator
+        uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
+        with:
+          version: 2026.8.9
+          install: false
+          cache: false
+
+      - name: Install the delivery test runtime
+        run: npm ci --ignore-scripts --prefix delivery/cloudflare
+
+      - name: Check release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          delivery/tests/release-delivery.test.sh
+          delivery/tests/cloudflare.test.sh
+          delivery/scripts/build-release.sh "$TAG" "$(git rev-parse HEAD)" "$RUNNER_TEMP/release-first"
+          delivery/scripts/build-release.sh "$TAG" "$(git rev-parse HEAD)" "$RUNNER_TEMP/release-second"
+          cmp "$RUNNER_TEMP/release-first/bootstrap" "$RUNNER_TEMP/release-second/bootstrap"
+          cmp "$RUNNER_TEMP/release-first/checksums.txt" "$RUNNER_TEMP/release-second/checksums.txt"
+          cmp "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG.tar.gz"
+          grep -R '@USERLAND_' "$RUNNER_TEMP/release-first" && exit 1 || true
+
+  release:
+    needs: check
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.TAG }}
+          submodules: recursive
+
+      - name: Install the release generator
+        uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
+        with:
+          version: 2026.8.9
+          install: false
+          cache: false
+
+      - name: Install the Cloudflare deployer
+        run: npm ci --ignore-scripts --prefix delivery/cloudflare
+
+      - name: Validate the release
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          . delivery/scripts/release-lib.sh
+          release_validate_tag "$TAG" || release_die "invalid SemVer tag: $TAG"
+
+          tag_commit=$(git rev-parse "$TAG^{commit}")
+          head_commit=$(git rev-parse HEAD)
+          [[ "$tag_commit" == "$head_commit" ]] || release_die "checkout does not match $TAG"
+
+          default_branch=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+          git fetch --no-tags origin "$default_branch"
+          git merge-base --is-ancestor "$tag_commit" "origin/$default_branch" ||
+            release_die "$TAG is not an ancestor of $default_branch"
+
+          immutable=$(
+            gh api \
+              -H 'X-GitHub-Api-Version: 2026-03-10' \
+              "repos/$GITHUB_REPOSITORY/immutable-releases" \
+              --jq .enabled
+          )
+          [[ "$immutable" == true ]] || release_die "GitHub immutable releases are not enabled"
+
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" >"$RUNNER_TEMP/releases.json"
+          previous_stable=$(
+            jq -r --arg tag "$TAG" \
+              '.[][] | select(.draft == false and .prerelease == false and .tag_name != $tag) | .tag_name' \
+              "$RUNNER_TEMP/releases.json" |
+              while IFS= read -r candidate; do
+                release_validate_tag "$candidate" || continue
+                [[ "$candidate" == *-* ]] || printf '%s\n' "$candidate"
+              done |
+              sort -V |
+              tail -n 1
+          )
+
+          if [[ "$TAG" == *-* ]]; then
+            prerelease=true
+          else
+            prerelease=false
+            if [[ -n "$previous_stable" ]]; then
+              newest=$(printf '%s\n%s\n' "$previous_stable" "$TAG" | sort -V | tail -n 1)
+              [[ "$newest" == "$TAG" && "$previous_stable" != "$TAG" ]] ||
+                release_die "$TAG would move latest stable backward from $previous_stable"
+            fi
+          fi
+
+          {
+            printf 'commit=%s\n' "$tag_commit"
+            printf 'prerelease=%s\n' "$prerelease"
+            printf 'previous_stable=%s\n' "${previous_stable:-none}"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Build release assets
+        run: delivery/scripts/build-release.sh "$TAG" "${{ steps.metadata.outputs.commit }}" "$RUNNER_TEMP/release"
+
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/bootstrap
+            ${{ runner.temp }}/release/checksums.txt
+            ${{ runner.temp }}/release/userland-${{ env.TAG }}.tar.gz
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=(
+            "$RUNNER_TEMP/release/bootstrap#bootstrap"
+            "$RUNNER_TEMP/release/checksums.txt#checksums.txt"
+            "$RUNNER_TEMP/release/userland-$TAG.tar.gz#userland-$TAG.tar.gz"
+          )
+
+          if release_json=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isImmutable,isPrerelease 2>/dev/null); then
+            existing_prerelease=$(jq -r .isPrerelease <<<"$release_json")
+            [[ "$existing_prerelease" == "$PRERELEASE" ]] || {
+              printf 'release %s has the wrong prerelease status\n' "$TAG" >&2
+              exit 1
+            }
+
+            if [[ $(jq -r .isDraft <<<"$release_json") == true ]]; then
+              gh release upload "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+            else
+              [[ $(jq -r .isImmutable <<<"$release_json") == true ]] || {
+                printf 'published release %s is mutable\n' "$TAG" >&2
+                exit 1
+              }
+              mkdir -p "$RUNNER_TEMP/published-release"
+              gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/published-release"
+              cmp "$RUNNER_TEMP/release/bootstrap" "$RUNNER_TEMP/published-release/bootstrap"
+              cmp "$RUNNER_TEMP/release/checksums.txt" "$RUNNER_TEMP/published-release/checksums.txt"
+              cmp "$RUNNER_TEMP/release/userland-$TAG.tar.gz" "$RUNNER_TEMP/published-release/userland-$TAG.tar.gz"
+            fi
+          else
+            arguments=(
+              "$TAG"
+              "${assets[@]}"
+              --repo "$GITHUB_REPOSITORY"
+              --draft
+              --generate-notes
+              --title "userland $TAG"
+              --verify-tag
+            )
+            if [[ "$PRERELEASE" == true ]]; then
+              arguments+=(--prerelease)
+            fi
+            gh release create "${arguments[@]}"
+          fi
+
+          if [[ $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft) == true ]]; then
+            publish_arguments=("$TAG" --repo "$GITHUB_REPOSITORY" --draft=false)
+            if [[ "$PRERELEASE" == false ]]; then
+              publish_arguments+=(--latest)
+            fi
+            gh release edit "${publish_arguments[@]}"
+          fi
+          [[ $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isImmutable --jq .isImmutable) == true ]] || {
+            printf 'GitHub did not make release %s immutable\n' "$TAG" >&2
+            exit 1
+          }
+
+      - name: Build the exact-version deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROOT_TAG: ${{ steps.metadata.outputs.previous_stable }}
+        run: |
+          delivery/scripts/fetch-release-bootstraps.sh "$GITHUB_REPOSITORY" "$RUNNER_TEMP/release-cache"
+          delivery/scripts/assemble-site.sh "$RUNNER_TEMP/release-cache" "$ROOT_TAG" delivery/cloudflare/dist-exact
+
+      - name: Deploy the exact version
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          npm exec --prefix delivery/cloudflare -- wrangler deploy
+          --config delivery/cloudflare/wrangler.jsonc
+          --assets delivery/cloudflare/dist-exact
+
+      - name: Verify the exact version
+        run: |
+          delivery/scripts/verify-endpoint.sh \
+            "$USERLAND_ORIGIN/$TAG" \
+            "$RUNNER_TEMP/release-cache/$TAG/bootstrap" \
+            version
+
+      - name: Keep a prerelease away from root
+        if: steps.metadata.outputs.prerelease == 'true' && steps.metadata.outputs.previous_stable != 'none'
+        run: |
+          delivery/scripts/verify-endpoint.sh \
+            "$USERLAND_ORIGIN" \
+            "$RUNNER_TEMP/release-cache/${{ steps.metadata.outputs.previous_stable }}/bootstrap" \
+            root
+
+      - name: Build the stable promotion
+        if: steps.metadata.outputs.prerelease == 'false'
+        run: |
+          delivery/scripts/assemble-site.sh "$RUNNER_TEMP/release-cache" "$TAG" delivery/cloudflare/dist-promote
+
+      - name: Promote the stable release
+        if: steps.metadata.outputs.prerelease == 'false'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: >-
+          npm exec --prefix delivery/cloudflare -- wrangler deploy
+          --config delivery/cloudflare/wrangler.jsonc
+          --assets delivery/cloudflare/dist-promote
+
+      - name: Verify the stable root
+        if: steps.metadata.outputs.prerelease == 'false'
+        run: |
+          delivery/scripts/verify-endpoint.sh \
+            "$USERLAND_ORIGIN" \
+            "$RUNNER_TEMP/release-cache/$TAG/bootstrap" \
+            root

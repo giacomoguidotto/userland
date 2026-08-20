@@ -1,0 +1,60 @@
+[user]
+	name = Giacomo Guidotto
+	email = giacomo.guidotto@gmail.com
+    signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINoa9KM7X6vxq/mXeA86sKpOGeszjDOJi8qIhVOVcmxS
+
+[init]
+	defaultBranch = main
+
+[core]
+    autocrlf = input
+    pager = delta
+    attributesfile = ./attributes
+
+[interactive]
+    diffFilter = delta --color-only
+
+[fetch]
+    prune = true
+
+[pull]
+    rebase = true
+
+[merge]
+    conflictstyle = zdiff3
+
+[rebase]
+	updateRefs = true
+	autoSquash = true
+	autoStash = true
+
+[rerere]
+	enabled = true
+
+[delta]
+    navigate = true
+    line-numbers = true
+    hyperlinks = true
+    hyperlinks-file-link-format = "lazygit-edit://{path}:{line}"
+    side-by-side = true
+    paging = never
+    features = catppuccin-mocha
+
+[gpg]
+  format = ssh
+
+[gpg "ssh"]
+  program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
+
+[commit]
+  gpgsign = true
+
+[include]
+    path = ./catppuccin.gitconfig
+
+# url rewrites works on a first-match basis, so needs to be after the overrides
+[url "git@life-github:"]
+    insteadOf = "https://github.com/"
+
+[url "git@life-github:"]
+    insteadOf = "git@github.com:"

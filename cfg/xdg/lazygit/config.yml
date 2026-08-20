@@ -1,0 +1,6 @@
+notARepository: skip
+git:
+  pagers:
+    - pager: delta
+gui:
+  sidePanelWidth: 0.25

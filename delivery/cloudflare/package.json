@@ -1,0 +1,10 @@
+{
+  "name": "@guidotto/userland-delivery",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "npm@11.6.2",
+  "devDependencies": {
+    "wrangler": "4.124.0"
+  }
+}
+

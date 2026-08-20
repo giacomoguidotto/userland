@@ -1,0 +1,194 @@
+min_version = "2026.8.9"
+
+[settings]
+lockfile = true
+locked = true
+jobs = 4
+
+[tools]
+node = "24.19.0"
+bun = "1.3.14"
+op = "2.39.0"
+java = "temurin-21.0.12+8.0.LTS"
+gradle = "9.7.0"
+"aqua:bats-core/bats-core" = "1.14.0"
+"aqua:koalaman/shellcheck" = "0.11.0"
+"aqua:mvdan/sh" = "3.13.1"
+"npm:@earendil-works/pi-coding-agent" = "0.84.2"
+"npm:@openai/codex" = "0.148.0"
+"npm:eas-cli" = "22.0.0"
+"npm:tree-sitter-cli" = "0.26.12"
+pitchfork = "2.22.0"
+uv = "0.12.5"
+python = "3.14.7"
+
+# CLI programs intentionally roll forward. mise.lock pins the tools above.
+# Homebrew applications and vendor updaters do not offer equivalent locks.
+[bootstrap.packages]
+"brew:bat" = "latest"
+"brew:btop" = "latest"
+"brew:atuin" = "latest"
+"brew:carapace" = "latest"
+"brew:colima" = "latest"
+"brew:direnv" = "latest"
+"brew:docker" = "latest"
+"brew:docker-compose" = "latest"
+"brew:dust" = "latest"
+"brew:duti" = "latest"
+"brew:eza" = "latest"
+"brew:fd" = "latest"
+"brew:ffmpeg" = "latest"
+"brew:fzf" = "latest"
+"brew:gh" = "latest"
+"brew:git" = "latest"
+"brew:git-absorb" = "latest"
+"brew:git-filter-repo" = "latest"
+"brew:git-delta" = "latest"
+"brew:hyperfine" = "latest"
+"brew:jq" = "latest"
+"brew:k9s" = "latest"
+"brew:kondo" = "latest"
+"brew:kubectx" = "latest"
+"brew:kubernetes-cli" = "latest"
+"brew:lazydocker" = "latest"
+"brew:lazygit" = "latest"
+"brew:lazysql" = "latest"
+"brew:nmap" = "latest"
+"brew:neovim" = "latest"
+"brew:nushell" = "latest"
+"brew:ollama" = "latest"
+"brew:ripgrep" = "latest"
+"brew:starship" = "latest"
+"brew:spotify_player" = "latest"
+"brew:tokei" = "latest"
+"brew:tree" = "latest"
+"brew:usage" = "latest"
+"brew:watchexec" = "latest"
+"brew:watchman" = "latest"
+"brew:xh" = "latest"
+"brew:yazi" = "latest"
+"brew:zellij" = "latest"
+"brew:zoxide" = "latest"
+
+[dotfiles]
+"~/.zshrc" = { source = "cfg/home/zshrc", mode = "symlink" }
+"~/.zshenv" = { source = "cfg/home/zshenv", mode = "symlink" }
+"~/.hushlogin" = { source = "cfg/home/hushlogin", mode = "symlink" }
+"~/.ssh/config" = { source = "cfg/home/ssh/config", mode = "symlink" }
+"~/.agents/skills" = { source = "cfg/home/agents/skills", mode = "symlink-each" }
+"~/.claude/skills" = { source = "cfg/home/agents/skills", mode = "symlink-each" }
+"~/.claude/settings.json" = { source = "cfg/home/claude/settings.json", mode = "symlink" }
+"~/.codex/AGENTS.md" = { source = "cfg/home/agents/AGENT.md", mode = "symlink" }
+"~/.config/opencode/AGENTS.md" = { source = "cfg/home/agents/opencode/AGENTS.md", mode = "symlink" }
+
+"~/.config/aerospace" = { source = "cfg/xdg/aerospace", mode = "symlink-each" }
+"~/.config/atuin" = { source = "cfg/xdg/atuin", mode = "symlink-each" }
+"~/.config/bat" = { source = "cfg/xdg/bat", mode = "symlink-each" }
+"~/.config/btop" = { source = "cfg/xdg/btop", mode = "symlink-each" }
+"~/.config/ghostty" = { source = "cfg/xdg/ghostty", mode = "symlink-each" }
+"~/.config/git" = { source = "cfg/xdg/git", mode = "symlink-each" }
+"~/.config/gh" = { source = "cfg/xdg/gh", mode = "symlink-each" }
+"~/.config/k9s" = { source = "cfg/xdg/k9s", mode = "symlink-each" }
+"~/.config/lazydocker" = { source = "cfg/xdg/lazydocker", mode = "symlink-each" }
+"~/.config/lazygit" = { source = "cfg/xdg/lazygit", mode = "symlink-each" }
+"~/.config/mise" = { source = "cfg/xdg/mise", mode = "symlink-each" }
+"~/.config/neofetch" = { source = "cfg/xdg/neofetch", mode = "symlink-each" }
+"~/.config/nvim" = { source = "cfg/xdg/nvim", mode = "symlink-each" }
+"~/.config/nushell" = { source = "cfg/xdg/nushell", mode = "symlink-each" }
+"~/.config/posting" = { source = "cfg/xdg/posting", mode = "symlink-each" }
+"~/.config/projs" = { source = "cfg/xdg/projs", mode = "symlink-each" }
+"~/.config/scry" = { source = "cfg/xdg/scry", mode = "symlink-each" }
+"~/.config/spotify-player" = { source = "cfg/xdg/spotify-player", mode = "symlink-each" }
+"~/.config/starship" = { source = "cfg/xdg/starship", mode = "symlink-each" }
+"~/.config/yazi" = { source = "cfg/xdg/yazi", mode = "symlink-each" }
+"~/.config/zellij" = { source = "cfg/xdg/zellij", mode = "symlink-each" }
+"~/.config/zed/keymap.json" = { source = "cfg/xdg/zed/keymap.json", mode = "symlink" }
+"~/.config/zed/settings.json" = { source = "cfg/xdg/zed/settings.json", mode = "symlink" }
+
+[bootstrap.macos.dock]
+autohide = true
+orientation = "bottom"
+show_recents = false
+
+[bootstrap.macos.defaults."com.apple.finder"]
+AppleShowAllExtensions = true
+AppleShowAllFiles = true
+CreateDesktop = false
+FXPreferredViewStyle = "Nlsv"
+QuitMenuItem = true
+NewWindowTarget = "Home"
+
+[bootstrap.macos.defaults.NSGlobalDomain]
+InitialKeyRepeat = 20
+KeyRepeat = 2
+ApplePressAndHoldEnabled = false
+NSWindowShouldDragOnGesture = true
+AppleInterfaceStyle = "Dark"
+_HIHideMenuBar = true
+"com.apple.sound.beep.feedback" = 0
+"com.apple.sound.beep.volume" = 0.0
+
+[bootstrap.macos.defaults."com.apple.dock"]
+expose-group-apps = true
+largesize = 16
+magnification = false
+mineffect = "genie"
+minimize-to-application = true
+tilesize = 36
+wvous-tl-corner = 2
+wvous-tr-corner = 12
+wvous-bl-corner = 5
+wvous-br-corner = 5
+
+[bootstrap.macos.defaults."com.apple.spaces"]
+spans-displays = true
+
+[bootstrap.macos.defaults."com.apple.AppleMultitouchTrackpad"]
+ActuateDetents = 1
+Clicking = 1
+DragLock = 0
+Dragging = 0
+FirstClickThreshold = 1
+ForceSuppressed = 0
+HIDScrollZoomModifierMask = 0
+SecondClickThreshold = 1
+TrackpadCornerSecondaryClick = 0
+TrackpadFiveFingerPinchGesture = 2
+TrackpadFourFingerHorizSwipeGesture = 2
+TrackpadFourFingerPinchGesture = 2
+TrackpadFourFingerVertSwipeGesture = 2
+TrackpadHandResting = 1
+TrackpadHorizScroll = 1
+TrackpadMomentumScroll = 1
+TrackpadPinch = 1
+TrackpadRightClick = 1
+TrackpadRotate = 1
+TrackpadScroll = 1
+TrackpadThreeFingerDrag = 0
+TrackpadThreeFingerHorizSwipeGesture = 2
+TrackpadThreeFingerTapGesture = 0
+TrackpadThreeFingerVertSwipeGesture = 2
+TrackpadTwoFingerDoubleTapGesture = 1
+TrackpadTwoFingerFromRightEdgeSwipeGesture = 3
+USBMouseStopsTrackpad = 0
+
+[bootstrap.macos.defaults."com.apple.HIToolbox"]
+AppleFnUsageType = 1
+AppleCurrentKeyboardLayoutInputSourceID = "com.apple.keylayout.ABC"
+
+[tasks.test]
+description = "Run userland behavior and release tests"
+run = [
+  "bats tests",
+  "delivery/tests/release-delivery.test.sh",
+  "npm ci --ignore-scripts --prefix delivery/cloudflare",
+  "delivery/tests/cloudflare.test.sh",
+]
+
+[tasks.lint]
+description = "Check shell sources and repository formatting"
+run = [
+  "shellcheck --severity=warning bin/userland libexec/userland/*.sh libexec/userland/commands/*.sh libexec/userland/adapters/*.sh delivery/scripts/*.sh delivery/bootstrap/*.sh.in delivery/tests/*.sh",
+  "shfmt -d -i 2 -ci bin/userland libexec/userland delivery/scripts delivery/bootstrap delivery/tests",
+  "git diff --check",
+]

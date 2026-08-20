@@ -1,0 +1,106 @@
+# ignore config for non-interactive shells
+[[ ${-} = ${-/i/} ]] && return
+
+# launch nushell, if interactive shell, not already running, and not in VS Code
+# if [ -t 1 ] && command -v nu > /dev/null 2>&1 && [ -z "$VSCODE_INJECTION" ]; then
+#   exec nu
+# fi
+
+# aliases
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias .....="cd ../../../.."
+alias ......="cd ../../../../.."
+
+alias bunr="bun run"
+alias c="code"
+alias cc="claude"
+cod() {
+  local career_ops="$HOME/dev/life/career-system"
+  local dashboard="$career_ops/dashboard/career-dashboard"
+
+  if [[ ! -x "$dashboard" ]]; then
+    if command -v mise > /dev/null 2>&1; then
+      (cd "$career_ops" && mise run dashboard) || return
+    else
+      (cd "$career_ops/dashboard" && go build -o career-dashboard .) || return
+    fi
+  fi
+
+  "$dashboard" --path "$career_ops" "$@"
+}
+alias cl="clear"
+alias d="colima start"
+alias ds="colima stop"
+alias dlz="d && lzd"
+alias de="direnv"
+alias k="kubectl"
+alias kc="kubectl config"
+alias kg="kubectl get"
+alias kx="kubectx"
+alias l="eza -la --icons --git --sort type"
+alias lt="l --tree --level=2 --long"
+alias la="tree"
+lz() {
+  local cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/lazygit"
+  local flavor
+  if defaults read -g AppleInterfaceStyle &>/dev/null; then
+    flavor=mocha
+  else
+    flavor=latte
+  fi
+  LG_CONFIG_FILE="$cfg_dir/config.yml,$cfg_dir/themes/$flavor-blue.yml" \
+    lazygit "$@"
+}
+alias lzd="lazydocker"
+alias lzq="lazysql"
+alias rd="rm -rf"
+alias spt="spotify_player"
+alias tp="btop"
+alias v="nvim"
+alias x="exit"
+alias za="zellij a"
+alias zz="zellij"
+
+# navigation
+_fselect() { fd "$@" 2>/dev/null | fzf --height 40% --reverse --preview 'tree -C {} | head -100' --query "${@: -1}"; }
+
+cx() { cd "$@" && l; }
+mkcd() { mkdir -p "$1" && cd "$1" }
+ff() { aerospace list-windows --all | fzf --bind 'enter:execute(bash -c "aerospace focus --window-id {1}")+abort'}
+
+function y() {
+	local tmp="$(mktemp -t "yazi-cwd.XXXXXX")" cwd
+	command yazi "$@" --cwd-file="$tmp"
+	IFS= read -r -d '' cwd < "$tmp"
+	[ "$cwd" != "$PWD" ] && [ -d "$cwd" ] && builtin cd -- "$cwd"
+	rm -f -- "$tmp"
+}
+
+klp() { for p in "$@"; do lsof -ti ":$p" | xargs kill -9 2>/dev/null && echo "killed port $p" || echo "no process on port $p"; done; }
+
+# key bindings
+bindkey jj vi-cmd-mode
+
+# userland generates this file during sync. Shell startup reads static text and
+# never invokes completion generators, Homebrew, or mise activation hooks.
+if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/init.zsh" ]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/init.zsh"
+fi
+
+# bun completions
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# Launch pi with secrets injected from 1Password (NOTION_TOKEN, etc.).
+# Edit ~/.config/pi/secrets.env to add more `op://...` references.
+pi() {
+  op run --env-file="$HOME/.config/pi/secrets.env" -- command pi "$@"
+}
+
+# opencode
+export PATH="$HOME/.opencode/bin:$PATH"

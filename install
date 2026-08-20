@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+printf '%s\n' 'The legacy installer is retired. Running userland sync.' >&2
+exec "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/bin/userland" sync

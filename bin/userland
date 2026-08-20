@@ -1,0 +1,92 @@
+#!/bin/sh
+
+set -eu
+
+userland_entry=$0
+userland_link_depth=0
+while [ -L "$userland_entry" ]; do
+  userland_link_depth=$((userland_link_depth + 1))
+  [ "$userland_link_depth" -le 40 ] || {
+    printf 'userland: command symlink chain is too deep\n' >&2
+    exit 1
+  }
+  userland_link_target=$(readlink "$userland_entry")
+  case "$userland_link_target" in
+    /*) userland_entry=$userland_link_target ;;
+    *) userland_entry=$(dirname -- "$userland_entry")/$userland_link_target ;;
+  esac
+done
+USERLAND_ROOT=$(CDPATH='' cd -- "$(dirname -- "$userland_entry")/.." && pwd)
+export USERLAND_ROOT
+
+# Release archives include a pinned mise launcher beside this command. A normal
+# checkout uses mise from PATH.
+if [ -n "${USERLAND_MISE:-}" ] && [ -x "$USERLAND_MISE" ]; then
+  :
+elif [ -x "$USERLAND_ROOT/bin/mise" ]; then
+  USERLAND_MISE="$USERLAND_ROOT/bin/mise"
+elif command -v mise >/dev/null 2>&1; then
+  USERLAND_MISE=$(command -v mise)
+else
+  USERLAND_MISE=""
+fi
+export USERLAND_MISE
+
+# shellcheck source=../libexec/userland/common.sh
+. "$USERLAND_ROOT/libexec/userland/common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: userland <command>
+
+Commands:
+  plan        Show what would change without changing the machine
+  sync        Update userland, apply declared state, then verify it
+  doctor      Report drift and machine health without changing anything
+
+Options:
+  doctor --json   Print a stable machine-readable summary
+EOF
+}
+
+if [ "$#" -eq 0 ]; then
+  usage
+  exit 64
+fi
+
+userland_command=$1
+shift
+
+case "$userland_command" in
+  plan)
+    [ "$#" -eq 0 ] || userland_die "plan does not accept arguments" 64
+    # shellcheck source=../libexec/userland/commands/plan.sh
+    . "$USERLAND_ROOT/libexec/userland/commands/plan.sh"
+    userland_plan
+    ;;
+  sync)
+    [ "$#" -eq 0 ] || userland_die "sync does not accept arguments" 64
+    # shellcheck source=../libexec/userland/commands/sync.sh
+    . "$USERLAND_ROOT/libexec/userland/commands/sync.sh"
+    userland_sync
+    ;;
+  doctor)
+    userland_doctor_format=human
+    if [ "$#" -eq 1 ] && [ "$1" = "--json" ]; then
+      userland_doctor_format=json
+    elif [ "$#" -ne 0 ]; then
+      userland_die "doctor accepts only --json" 64
+    fi
+    export userland_doctor_format
+    # shellcheck source=../libexec/userland/commands/doctor.sh
+    . "$USERLAND_ROOT/libexec/userland/commands/doctor.sh"
+    userland_doctor
+    ;;
+  help | -h | --help)
+    usage
+    ;;
+  *)
+    usage >&2
+    userland_die "unknown command: $userland_command" 64
+    ;;
+esac

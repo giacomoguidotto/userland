@@ -1,0 +1,17 @@
+cfg/xdg/nushell/history.txt
+*.mdb
+*.mdb-lock
+*.sqlite*
+*.rayconfig.tmp
+
+.DS_Store
+
+btop.log*
+btop.log
+
+# Added by ggshield
+.cache_ggshield
+
+# userland runtime state never belongs in the public repository
+.userland/
+.wrangler/

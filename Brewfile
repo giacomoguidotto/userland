@@ -1,0 +1,31 @@
+tap "nikitabobko/tap"
+
+brew "mas"
+
+cask "1password", args: { adopt: true }
+cask "android-commandlinetools", args: { adopt: true }
+cask "aerospace", args: { adopt: true }
+cask "bazecor", args: { adopt: true }
+cask "betterdisplay", args: { adopt: true }
+cask "chatgpt", args: { adopt: true }
+cask "font-blex-mono-nerd-font", args: { adopt: true }
+cask "font-jetbrains-mono-nerd-font", args: { adopt: true }
+cask "font-zed-mono-nerd-font", args: { adopt: true }
+cask "ghostty", args: { adopt: true }
+cask "google-chrome", args: { adopt: true }
+cask "helium-browser", args: { adopt: true }
+cask "notion", args: { adopt: true }
+cask "notion-calendar", args: { adopt: true }
+cask "paper", args: { adopt: true }
+cask "postman", args: { adopt: true }
+cask "shottr", args: { adopt: true }
+cask "signal", args: { adopt: true }
+cask "spotify", args: { adopt: true }
+cask "t3-code", args: { adopt: true }
+cask "typefully", args: { adopt: true }
+cask "wispr-flow", args: { adopt: true }
+cask "yubico-authenticator", args: { adopt: true }
+cask "zed", args: { adopt: true }
+
+# The App Store may ask for an Apple Account, Touch ID, or a new license.
+mas "Xcode", id: 497799835

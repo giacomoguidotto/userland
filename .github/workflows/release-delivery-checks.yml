@@ -1,0 +1,37 @@
+name: Release delivery checks
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-delivery-checks.yml"
+      - "delivery/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release.yml"
+      - ".github/workflows/release-delivery-checks.yml"
+      - "delivery/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: recursive
+
+      - name: Run release delivery tests
+        run: delivery/tests/release-delivery.test.sh
+
+      - name: Install Wrangler
+        run: npm ci --ignore-scripts --prefix delivery/cloudflare
+
+      - name: Test Cloudflare endpoints locally
+        run: delivery/tests/cloudflare.test.sh

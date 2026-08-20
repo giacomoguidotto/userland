@@ -1,0 +1,4 @@
+# name	application path	reason
+DaVinci Resolve	/Applications/DaVinci Resolve/DaVinci Resolve.app	Blackmagic requires an attended vendor download and license flow
+OpenScreen	/Applications/OpenScreen.app	No supported Homebrew cask or unattended vendor installer is available
+Raycast Beta	/Applications/Raycast Beta.app	Keep the beta channel until Raycast ships its planned major release

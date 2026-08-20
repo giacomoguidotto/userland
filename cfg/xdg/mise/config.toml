@@ -1,0 +1,11 @@
+[settings]
+trusted_config_paths = ["~/dev", "~/.t3/worktrees"]
+
+[tools]
+node = "lts"
+"npm:@earendil-works/pi-coding-agent" = "latest"
+"npm:@openai/codex" = "latest"
+"npm:eas-cli" = "22.0.0"
+"npm:tree-sitter-cli" = "latest"
+pitchfork = "latest"
+uv = "latest"

@@ -75,11 +75,9 @@ python = "3.14.7"
 "~/.zshenv" = { source = "cfg/home/zshenv", mode = "symlink" }
 "~/.hushlogin" = { source = "cfg/home/hushlogin", mode = "symlink" }
 "~/.ssh/config" = { source = "cfg/home/ssh/config", mode = "symlink" }
-"~/.agents/skills" = { source = "cfg/home/agents/skills", mode = "symlink-each" }
-"~/.claude/skills" = { source = "cfg/home/agents/skills", mode = "symlink-each" }
-"~/.claude/settings.json" = { source = "cfg/home/claude/settings.json", mode = "symlink" }
-"~/.codex/AGENTS.md" = { source = "cfg/home/agents/AGENT.md", mode = "symlink" }
-"~/.config/opencode/AGENTS.md" = { source = "cfg/home/agents/opencode/AGENTS.md", mode = "symlink" }
+"~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
+"~/.claude/skills" = { source = "agents/skills", mode = "symlink-each" }
+"~/.claude/settings.json" = { source = "agents/claude/settings.json", mode = "symlink" }
 
 "~/.config/aerospace" = { source = "cfg/xdg/aerospace", mode = "symlink-each" }
 "~/.config/atuin" = { source = "cfg/xdg/atuin", mode = "symlink-each" }

@@ -56,9 +56,17 @@ teardown() {
     install.conf.yaml \
     bkps/dygma \
     cfg/apps/cursor \
+    cfg/home/agents \
+    cfg/home/claude \
     cfg/xdg/nushell/nu_scripts; do
     [ ! -e "$TEST_ROOT/$retired_path" ]
   done
+
+  [ -d "$TEST_ROOT/agents/skills" ]
+  [ -f "$TEST_ROOT/agents/claude/settings.json" ]
+  grep -Fq 'source = "agents/skills"' "$TEST_ROOT/mise.toml"
+  grep -Fq 'source = "agents/claude/settings.json"' "$TEST_ROOT/mise.toml"
+  ! grep -Fq 'opencode/AGENTS.md' "$TEST_ROOT/mise.toml"
 }
 
 @test "the installed command resolves its managed symlink" {

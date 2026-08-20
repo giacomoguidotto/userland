@@ -9,7 +9,7 @@ userland_link_target() {
 
 userland_is_owned_legacy_source() {
   case "$1" in
-    */workspace/cfg/* | "$USERLAND_DATA_DIR"/releases/*/cfg/*) return 0 ;;
+    */workspace/cfg/* | "$USERLAND_ROOT"/cfg/* | "$USERLAND_DATA_DIR"/releases/*/cfg/*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -36,7 +36,22 @@ userland_migrate_legacy_link() {
   userland_is_owned_legacy_source "$userland_legacy_source" || return 0
 
   userland_cfg_suffix=${userland_legacy_source#*/cfg/}
-  userland_replacement_source=$USERLAND_ROOT/cfg/$userland_cfg_suffix
+  case "$userland_cfg_suffix" in
+    home/agents/AGENT.md | home/agents/opencode/AGENTS.md)
+      rm "$userland_legacy_link"
+      userland_log changed "removed retired agent instructions at $userland_legacy_link"
+      return 0
+      ;;
+    home/agents/skills)
+      userland_replacement_source=$USERLAND_ROOT/agents/skills
+      ;;
+    home/claude/settings.json)
+      userland_replacement_source=$USERLAND_ROOT/agents/claude/settings.json
+      ;;
+    *)
+      userland_replacement_source=$USERLAND_ROOT/cfg/$userland_cfg_suffix
+      ;;
+  esac
   [ -e "$userland_replacement_source" ] || return 0
 
   if [ -d "$userland_legacy_source" ]; then

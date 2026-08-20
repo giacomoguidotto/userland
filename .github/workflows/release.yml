@@ -34,6 +34,26 @@ jobs:
           ref: ${{ env.TAG }}
           submodules: recursive
 
+      - name: Normalize legacy release layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -d delivery && ! -d release ]] || exit 0
+          mkdir -p release tests
+          ln -s ../delivery/scripts/assemble-site.sh release/assemble-site.sh
+          ln -s ../delivery/scripts/build-release.sh release/build-release.sh
+          cp -R delivery/cloudflare release/cloudflare
+          ln -s ../delivery/scripts/create-archive.py release/create-archive.py
+          ln -s ../delivery/scripts/fetch-release-bootstraps.sh release/fetch-release-bootstraps.sh
+          ln -s ../delivery/scripts/release-lib.sh release/release-lib.sh
+          ln -s ../delivery/scripts/verify-endpoint.sh release/verify-endpoint.sh
+          ln -s delivery/bootstrap bootstrap
+          # shellcheck disable=SC2016
+          printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/../delivery/tests/release-delivery.test.sh" "$@"' > tests/release-delivery.sh
+          # shellcheck disable=SC2016
+          printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/../delivery/tests/cloudflare.test.sh" "$@"' > tests/release-cloudflare.sh
+          chmod +x tests/release-delivery.sh tests/release-cloudflare.sh
+
       - name: Install the release generator
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
         with:
@@ -42,16 +62,16 @@ jobs:
           cache: false
 
       - name: Install the delivery test runtime
-        run: npm ci --ignore-scripts --prefix delivery/cloudflare
+        run: npm ci --ignore-scripts --prefix release/cloudflare
 
       - name: Check release inputs
         shell: bash
         run: |
           set -euo pipefail
-          delivery/tests/release-delivery.test.sh
-          delivery/tests/cloudflare.test.sh
-          delivery/scripts/build-release.sh "$TAG" "$(git rev-parse HEAD)" "$RUNNER_TEMP/release-first"
-          delivery/scripts/build-release.sh "$TAG" "$(git rev-parse HEAD)" "$RUNNER_TEMP/release-second"
+          tests/release-delivery.sh
+          tests/release-cloudflare.sh
+          release/build-release.sh "$TAG" "$(git rev-parse HEAD)" "$RUNNER_TEMP/release-first"
+          release/build-release.sh "$TAG" "$(git rev-parse HEAD)" "$RUNNER_TEMP/release-second"
           cmp "$RUNNER_TEMP/release-first/bootstrap" "$RUNNER_TEMP/release-second/bootstrap"
           cmp "$RUNNER_TEMP/release-first/checksums.txt" "$RUNNER_TEMP/release-second/checksums.txt"
           cmp "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG.tar.gz"
@@ -74,6 +94,26 @@ jobs:
           ref: ${{ env.TAG }}
           submodules: recursive
 
+      - name: Normalize legacy release layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -d delivery && ! -d release ]] || exit 0
+          mkdir -p release tests
+          ln -s ../delivery/scripts/assemble-site.sh release/assemble-site.sh
+          ln -s ../delivery/scripts/build-release.sh release/build-release.sh
+          cp -R delivery/cloudflare release/cloudflare
+          ln -s ../delivery/scripts/create-archive.py release/create-archive.py
+          ln -s ../delivery/scripts/fetch-release-bootstraps.sh release/fetch-release-bootstraps.sh
+          ln -s ../delivery/scripts/release-lib.sh release/release-lib.sh
+          ln -s ../delivery/scripts/verify-endpoint.sh release/verify-endpoint.sh
+          ln -s delivery/bootstrap bootstrap
+          # shellcheck disable=SC2016
+          printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/../delivery/tests/release-delivery.test.sh" "$@"' > tests/release-delivery.sh
+          # shellcheck disable=SC2016
+          printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/../delivery/tests/cloudflare.test.sh" "$@"' > tests/release-cloudflare.sh
+          chmod +x tests/release-delivery.sh tests/release-cloudflare.sh
+
       - name: Install the release generator
         uses: jdx/mise-action@9e7f7633ff6f6d6048a9418a68d48f288f50eb14 # v4.2.3
         with:
@@ -82,7 +122,7 @@ jobs:
           cache: false
 
       - name: Install the Cloudflare deployer
-        run: npm ci --ignore-scripts --prefix delivery/cloudflare
+        run: npm ci --ignore-scripts --prefix release/cloudflare
 
       - name: Validate the release
         id: metadata
@@ -91,7 +131,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          . delivery/scripts/release-lib.sh
+          . release/release-lib.sh
           release_validate_tag "$TAG" || release_die "invalid SemVer tag: $TAG"
 
           tag_commit=$(git rev-parse "$TAG^{commit}")
@@ -134,7 +174,7 @@ jobs:
           } >>"$GITHUB_OUTPUT"
 
       - name: Build release assets
-        run: delivery/scripts/build-release.sh "$TAG" "${{ steps.metadata.outputs.commit }}" "$RUNNER_TEMP/release"
+        run: release/build-release.sh "$TAG" "${{ steps.metadata.outputs.commit }}" "$RUNNER_TEMP/release"
 
       - name: Attest release assets
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
@@ -210,21 +250,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ROOT_TAG: ${{ steps.metadata.outputs.previous_stable }}
         run: |
-          delivery/scripts/fetch-release-bootstraps.sh "$GITHUB_REPOSITORY" "$RUNNER_TEMP/release-cache"
-          delivery/scripts/assemble-site.sh "$RUNNER_TEMP/release-cache" "$ROOT_TAG" delivery/cloudflare/dist-exact
+          release/fetch-release-bootstraps.sh "$GITHUB_REPOSITORY" "$RUNNER_TEMP/release-cache"
+          release/assemble-site.sh "$RUNNER_TEMP/release-cache" "$ROOT_TAG" release/cloudflare/dist-exact
 
       - name: Deploy the exact version
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: >-
-          npm exec --prefix delivery/cloudflare -- wrangler deploy
-          --config delivery/cloudflare/wrangler.jsonc
-          --assets delivery/cloudflare/dist-exact
+          npm exec --prefix release/cloudflare -- wrangler deploy
+          --config release/cloudflare/wrangler.jsonc
+          --assets release/cloudflare/dist-exact
 
       - name: Verify the exact version
         run: |
-          delivery/scripts/verify-endpoint.sh \
+          release/verify-endpoint.sh \
             "$USERLAND_ORIGIN/$TAG" \
             "$RUNNER_TEMP/release-cache/$TAG/bootstrap" \
             version
@@ -232,7 +272,7 @@ jobs:
       - name: Keep a prerelease away from root
         if: steps.metadata.outputs.prerelease == 'true' && steps.metadata.outputs.previous_stable != 'none'
         run: |
-          delivery/scripts/verify-endpoint.sh \
+          release/verify-endpoint.sh \
             "$USERLAND_ORIGIN" \
             "$RUNNER_TEMP/release-cache/${{ steps.metadata.outputs.previous_stable }}/bootstrap" \
             root
@@ -240,7 +280,7 @@ jobs:
       - name: Build the stable promotion
         if: steps.metadata.outputs.prerelease == 'false'
         run: |
-          delivery/scripts/assemble-site.sh "$RUNNER_TEMP/release-cache" "$TAG" delivery/cloudflare/dist-promote
+          release/assemble-site.sh "$RUNNER_TEMP/release-cache" "$TAG" release/cloudflare/dist-promote
 
       - name: Promote the stable release
         if: steps.metadata.outputs.prerelease == 'false'
@@ -248,14 +288,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: >-
-          npm exec --prefix delivery/cloudflare -- wrangler deploy
-          --config delivery/cloudflare/wrangler.jsonc
-          --assets delivery/cloudflare/dist-promote
+          npm exec --prefix release/cloudflare -- wrangler deploy
+          --config release/cloudflare/wrangler.jsonc
+          --assets release/cloudflare/dist-promote
 
       - name: Verify the stable root
         if: steps.metadata.outputs.prerelease == 'false'
         run: |
-          delivery/scripts/verify-endpoint.sh \
+          release/verify-endpoint.sh \
             "$USERLAND_ORIGIN" \
             "$RUNNER_TEMP/release-cache/$TAG/bootstrap" \
             root

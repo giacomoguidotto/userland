@@ -1,92 +1,58 @@
-<h1 align="center">userland</h1>
+# userland
 
-<p align="center">
-  <strong>A new Mac. My machine, one command later.</strong><br>
-  <sub>macOS setup &middot; mise &middot; Homebrew &middot; immutable releases</sub>
-</p>
+My personal macOS configuration. It restores the tools, applications, preferences, and files that make a new Mac feel like mine.
 
-<p align="center">
-  <a href="https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml"><img src="https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml/badge.svg" alt="Checks"></a>
-  <a href="https://github.com/giacomoguidotto/userland/releases/latest"><img src="https://img.shields.io/github/v/release/giacomoguidotto/userland" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/giacomoguidotto/userland" alt="MIT license"></a>
-</p>
+[![Checks](https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml/badge.svg)](https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml)
+[![Latest release](https://img.shields.io/github/v/release/giacomoguidotto/userland)](https://github.com/giacomoguidotto/userland/releases/latest)
 
-<br>
+## Install
 
-A new Mac should feel new, not unfamiliar.
-
-I built `userland` to turn the blank-machine ritual into one command, then three quiet verbs: plan, sync, doctor. It brings back the tools, applications, preferences, and small decisions that make macOS feel like mine. It also knows what not to touch.
-
-> The machine changes. The way it feels does not.
-
-<p align="center">
-  <a href="https://github.com/giacomoguidotto/userland/releases/latest"><strong>See the latest release &rarr;</strong></a>
-</p>
-
-## Make it mine
-
-Install the latest stable release:
+Latest stable release:
 
 ```sh
 curl -fsSL https://userland.guidotto.dev | sh
 ```
 
-Or pin the current release:
+Pin an exact release:
 
 ```sh
 curl -fsSL https://userland.guidotto.dev/v0.1.3 | sh
 ```
 
-The installer downloads a checksum-verified release, runs it, then creates a managed checkout at `~/.local/share/userland/repo`. Later runs use that checkout. They move `main` forward only when the repository is clean and the update is a fast-forward.
+The installer verifies the release checksum, runs the first sync, and creates a managed checkout at `~/.local/share/userland/repo`.
 
-## What comes home
+## Use
 
-- Developer tools and personal applications
-- Shell, terminal, editor, Git, SSH, and agent configuration
-- Selected macOS defaults, file handlers, Dock items, and login items
-- A declared set of Chrome extensions, installed with human approval
-- An encrypted Raycast export, imported in Raycast with human approval
-- Personal repositories, cloned only when they are missing
-
-Corporate software stays out. So do credentials, browser profiles, histories, caches, application databases, and machine-local authentication.
-
-## Three verbs
-
-| Command | What it does |
+| Command | Purpose |
 | --- | --- |
-| `userland plan` | Shows one read-only plan with sources, expected duration, restart implications, and rollback boundaries. Repository discovery is cached for 24 hours. |
-| `userland sync` | Shows the same plan, asks once, updates rolling tools and applications, applies declared state, handles attended steps, then runs the doctor. Re-run it after an interruption. |
-| `userland doctor` | Checks declared state, attended imports, file handlers, security posture, free disk space, and repository discovery without changing the machine. |
+| `userland plan` | Show what would change without changing the machine. |
+| `userland sync` | Apply declared state, guide attended steps, then run the doctor. Safe to rerun after an interruption. |
+| `userland doctor` | Report drift and machine health without changing anything. Use `--json` for structured output. |
 
-`userland doctor --json` returns the same health report for other tools. There is no separate resume command because `sync` is safe to run again.
+## Repository map
 
-## What stays yours
-
-- `sync` never stashes, resets, cleans, or edits another repository.
-- Dotfile conflicts stop the run. Automatic migration is limited to links created by the old repository or a verified userland release.
-- Directory migrations preserve undeclared children, including local authentication and history.
-- Unmanaged packages, applications, files, Dock items, caches, and login items are never pruned.
-- Personal repositories listed in `state/repositories.tsv` clone only when missing. Existing checkouts, including dirty ones, are never refreshed or rewritten.
-- Browser extensions remain an attended Chrome Web Store step. Userland never copies a browser profile.
-- App Store authentication, macOS privacy approvals, licenses, DaVinci Resolve, OpenScreen, Raycast Beta, and Raycast's encrypted import may still need attention.
-- Xcode comes from the App Store. Android development uses command-line tools and emulators without Android Studio.
-
-## Under the hood
-
-| Layer | Responsibility |
+| Folder | Contents |
 | --- | --- |
-| mise 2026.8.9 | CLI packages, dotfiles, macOS defaults, locked developer tools, and status |
-| Homebrew Bundle | Native applications and Xcode records that mise 2026.8.9 cannot currently parse |
-| POSIX shell modules | Safe checkout refresh, migration, repository caching, health checks, file handlers, and attended application state |
-| GitHub Releases | Immutable, SemVer-tagged release assets |
-| Cloudflare Workers Static Assets | The root and exact-version bootstrap endpoints, served without redirects or paid storage |
+| `bin/` | The public `userland` command. |
+| `config/` | Personal machine state, including dotfiles, applications, repositories, and agent assets. |
+| `lib/` | Command implementation and external-system adapters. |
+| `release/` | Checksum-verified release and bootstrap delivery. |
+| `tests/` | Behavior checks at the command, migration, release, and HTTP interfaces. |
 
-Release and endpoint details live in [delivery/README.md](delivery/README.md).
+## Ownership
 
-## Still becoming
+Userland owns only the personal state declared here. Corporate software, work accounts, credentials, browser profiles, histories, caches, application databases, and machine-local authentication stay out.
 
-`v0.1.3` is live. A real fresh-Mac parity run is still the final proof.
+Sync never stashes, resets, cleans, or edits another repository. It does not prune unmanaged packages, applications, files, Dock items, login items, or browser extensions. Dotfile conflicts stop the run; supported legacy migrations preserve undeclared children.
 
-This is personal configuration in public, not a universal dotfiles framework. Fork what helps. Expect the defaults to be opinionated.
+## Manual gates
+
+macOS and application security still require a person for some steps: App Store authentication, privacy approvals, licenses, browser extensions, Android SDK licenses, vendor-only installers, and Raycast's encrypted import. `userland sync` opens or explains each attended step and remains safe to rerun.
+
+## Release integrity
+
+Strict SemVer tags produce immutable GitHub Release assets. The public bootstrap verifies the archive checksum before extraction. `userland.guidotto.dev` serves the same bootstrap bytes at the root and exact-version endpoints without redirects.
+
+A real fresh-Mac parity run remains the final proof. This is personal configuration in public, not a general-purpose dotfiles framework.
 
 MIT licensed.

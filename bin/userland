@@ -19,12 +19,22 @@ done
 USERLAND_ROOT=$(CDPATH='' cd -- "$(dirname -- "$userland_entry")/.." && pwd)
 export USERLAND_ROOT
 
-# Release archives include a pinned mise launcher beside this command. A normal
-# checkout uses mise from PATH.
+# Release archives include a pinned mise launcher beside this command. Managed
+# checkouts reuse the newest installed release launcher so a global mise cannot
+# become too old for the declaration.
+userland_data_dir=${USERLAND_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/userland}
+if [ -x "$USERLAND_ROOT/bin/mise" ]; then
+  USERLAND_MISE="$USERLAND_ROOT/bin/mise"
+elif [ -x "$userland_data_dir/current/bin/mise" ]; then
+  USERLAND_MISE="$userland_data_dir/current/bin/mise"
+else
+  for userland_release_mise in "$userland_data_dir"/releases/v*/bin/mise; do
+    [ -x "$userland_release_mise" ] || continue
+    USERLAND_MISE=$userland_release_mise
+  done
+fi
 if [ -n "${USERLAND_MISE:-}" ] && [ -x "$USERLAND_MISE" ]; then
   :
-elif [ -x "$USERLAND_ROOT/bin/mise" ]; then
-  USERLAND_MISE="$USERLAND_ROOT/bin/mise"
 elif command -v mise >/dev/null 2>&1; then
   USERLAND_MISE=$(command -v mise)
 else
@@ -32,8 +42,8 @@ else
 fi
 export USERLAND_MISE
 
-# shellcheck source=../libexec/userland/common.sh
-. "$USERLAND_ROOT/libexec/userland/common.sh"
+# shellcheck source=../lib/common.sh
+. "$USERLAND_ROOT/lib/common.sh"
 
 usage() {
   cat <<'EOF'
@@ -60,14 +70,14 @@ shift
 case "$userland_command" in
   plan)
     [ "$#" -eq 0 ] || userland_die "plan does not accept arguments" 64
-    # shellcheck source=../libexec/userland/commands/plan.sh
-    . "$USERLAND_ROOT/libexec/userland/commands/plan.sh"
+    # shellcheck source=../lib/plan.sh
+    . "$USERLAND_ROOT/lib/plan.sh"
     userland_plan
     ;;
   sync)
     [ "$#" -eq 0 ] || userland_die "sync does not accept arguments" 64
-    # shellcheck source=../libexec/userland/commands/sync.sh
-    . "$USERLAND_ROOT/libexec/userland/commands/sync.sh"
+    # shellcheck source=../lib/sync.sh
+    . "$USERLAND_ROOT/lib/sync.sh"
     userland_sync
     ;;
   doctor)
@@ -78,8 +88,8 @@ case "$userland_command" in
       userland_die "doctor accepts only --json" 64
     fi
     export userland_doctor_format
-    # shellcheck source=../libexec/userland/commands/doctor.sh
-    . "$USERLAND_ROOT/libexec/userland/commands/doctor.sh"
+    # shellcheck source=../lib/doctor.sh
+    . "$USERLAND_ROOT/lib/doctor.sh"
     userland_doctor
     ;;
   help | -h | --help)

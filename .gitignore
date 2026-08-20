@@ -1,4 +1,4 @@
-cfg/xdg/nushell/history.txt
+config/xdg/nushell/history.txt
 *.mdb
 *.mdb-lock
 *.sqlite*

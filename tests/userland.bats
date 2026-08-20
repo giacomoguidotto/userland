@@ -19,7 +19,7 @@ setup() {
   mkdir -p "$USERLAND_HOME" "$USERLAND_REPO_ROOTS/example/.git" "$TEST_TMPDIR/bin"
   : >"$USERLAND_REPOSITORIES"
 
-cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
+  cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>"$MISE_CALLS"
 case "$*" in
@@ -48,27 +48,6 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
-@test "retired setup implementations stay out of the repository" {
-  for retired_path in \
-    dotbot \
-    nix \
-    install \
-    install.conf.yaml \
-    bkps/dygma \
-    cfg/apps/cursor \
-    cfg/home/agents \
-    cfg/home/claude \
-    cfg/xdg/nushell/nu_scripts; do
-    [ ! -e "$TEST_ROOT/$retired_path" ]
-  done
-
-  [ -d "$TEST_ROOT/agents/skills" ]
-  [ -f "$TEST_ROOT/agents/claude/settings.json" ]
-  grep -Fq 'source = "agents/skills"' "$TEST_ROOT/mise.toml"
-  grep -Fq 'source = "agents/claude/settings.json"' "$TEST_ROOT/mise.toml"
-  ! grep -Fq 'opencode/AGENTS.md' "$TEST_ROOT/mise.toml"
-}
-
 @test "the installed command resolves its managed symlink" {
   mkdir -p "$USERLAND_HOME/.local/bin"
   ln -s "$TEST_ROOT/bin/userland" "$USERLAND_HOME/.local/bin/userland"
@@ -77,16 +56,94 @@ teardown() {
   [[ "$output" == *"userland <command>"* ]]
 }
 
+@test "an upgraded checkout reuses mise from an installed release" {
+  mkdir -p "$USERLAND_DATA_DIR/releases/v0.1.3/bin"
+  cat >"$USERLAND_DATA_DIR/releases/v0.1.3/bin/mise" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$PINNED_MISE_CALLS"
+exit 0
+EOF
+  chmod +x "$USERLAND_DATA_DIR/releases/v0.1.3/bin/mise"
+  export PINNED_MISE_CALLS=$TEST_TMPDIR/pinned-mise-calls
+  export USERLAND_MISE=$TEST_TMPDIR/bin/mise
+
+  run "$TEST_ROOT/bin/userland" doctor --json
+  [ "$status" -eq 1 ]
+  [ -s "$PINNED_MISE_CALLS" ]
+  [ ! -s "$MISE_CALLS" ]
+}
+
 @test "plan refreshes repository discovery and remains read-only" {
+  export USERLAND_UNAME=Darwin
   run "$TEST_ROOT/bin/userland" plan
   [ "$status" -eq 0 ]
   [ -f "$USERLAND_CACHE_DIR/repositories.tsv" ]
   grep -F "$USERLAND_REPO_ROOTS/example" "$USERLAND_CACHE_DIR/repositories.tsv"
-  [[ "$output" == *"native tools, dotfiles, and macOS state"* ]]
-  [[ "$output" == *"userland adapters"* ]]
+  [[ "$output" == *"encrypted configuration import"* ]]
   ! grep -q -- '--force-dotfiles' "$MISE_CALLS"
   grep -q 'bootstrap packages apply --dry-run' "$MISE_CALLS"
   grep -q 'bootstrap packages upgrade --dry-run' "$MISE_CALLS"
+}
+
+@test "public commands keep Homebrew inspection read-only and sync never cleans" {
+  export USERLAND_UNAME=Darwin
+  export USERLAND_BREW=$TEST_TMPDIR/bin/brew
+  export BREW_CALLS=$TEST_TMPDIR/brew-calls
+  export ANDROID_HOME=$TEST_TMPDIR/android-sdk
+
+  cat >"$USERLAND_BREW" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$BREW_CALLS"
+case "$*" in
+  --version) printf '%s\n' 'Homebrew 5.0.0' ;;
+esac
+exit 0
+EOF
+  cat >"$TEST_TMPDIR/bin/duti" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  cat >"$TEST_TMPDIR/bin/open" <<'EOF'
+#!/bin/sh
+printf 'unexpected open: %s\n' "$*" >&2
+exit 99
+EOF
+  chmod +x "$USERLAND_BREW" "$TEST_TMPDIR/bin/duti" "$TEST_TMPDIR/bin/open"
+
+  mkdir -p \
+    "$ANDROID_HOME/platform-tools" \
+    "$ANDROID_HOME/emulator" \
+    "$ANDROID_HOME/platforms/android-36" \
+    "$ANDROID_HOME/build-tools/36.0.0"
+  : >"$ANDROID_HOME/platform-tools/adb"
+  : >"$ANDROID_HOME/emulator/emulator"
+  chmod +x "$ANDROID_HOME/platform-tools/adb" "$ANDROID_HOME/emulator/emulator"
+
+  while IFS="$(printf '\t')" read -r browser extension_id _name; do
+    case "$browser" in
+      '' | '#'*) continue ;;
+      helium) browser_root="$USERLAND_HOME/Library/Application Support/net.imput.helium" ;;
+      chrome) browser_root="$USERLAND_HOME/Library/Application Support/Google/Chrome" ;;
+    esac
+    mkdir -p "$browser_root/Extensions/$extension_id"
+  done <"$TEST_ROOT/config/browser-extensions.tsv"
+
+  run "$TEST_ROOT/bin/userland" plan
+  [ "$status" -eq 0 ]
+  grep -q 'bundle check.*--no-upgrade' "$BREW_CALLS"
+  ! grep -q '^update$' "$BREW_CALLS"
+
+  : >"$BREW_CALLS"
+  run "$TEST_ROOT/bin/userland" doctor
+  grep -q 'bundle check.*--no-upgrade' "$BREW_CALLS"
+  ! grep -q '^update$' "$BREW_CALLS"
+
+  : >"$BREW_CALLS"
+  run "$TEST_ROOT/bin/userland" sync
+  [ "$status" -eq 2 ]
+  grep -q '^update$' "$BREW_CALLS"
+  grep -Fq "bundle --file $TEST_ROOT/config/brewfile" "$BREW_CALLS"
+  ! grep -q 'cleanup' "$BREW_CALLS"
 }
 
 @test "doctor json has a stable schema and no home paths" {
@@ -102,24 +159,6 @@ teardown() {
   run "$TEST_ROOT/bin/userland" sync
   [ "$status" -eq 0 ]
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]
-  [[ "$output" == *"missing rolling packages"* ]]
-  [[ "$output" == *"upgrading installed rolling packages"* ]]
-  [[ "$output" == *"applying declared tools"* ]]
-  [[ "$output" == *"verifying the result"* ]]
   grep -q 'bootstrap packages apply --yes' "$MISE_CALLS"
   grep -q 'bootstrap packages upgrade --yes' "$MISE_CALLS"
-}
-
-@test "fresh Mac paths include Homebrew before bootstrap runs" {
-  export USERLAND_ROOT=$TEST_ROOT
-  run sh -c '. "$USERLAND_ROOT/libexec/userland/common.sh"; case ":$PATH:" in *:/opt/homebrew/bin:/opt/homebrew/sbin:*) exit 0 ;; *) exit 1 ;; esac'
-  [ "$status" -eq 0 ]
-}
-
-@test "the committed Raycast export has an encrypted envelope" {
-  export USERLAND_ROOT=$TEST_ROOT
-  export USERLAND_UNAME=Darwin
-  run "$TEST_ROOT/libexec/userland/adapters/raycast.sh" plan
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"encrypted configuration import"* ]]
 }

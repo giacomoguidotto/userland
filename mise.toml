@@ -71,37 +71,37 @@ python = "3.14.7"
 "brew:zoxide" = "latest"
 
 [dotfiles]
-"~/.zshrc" = { source = "cfg/home/zshrc", mode = "symlink" }
-"~/.zshenv" = { source = "cfg/home/zshenv", mode = "symlink" }
-"~/.hushlogin" = { source = "cfg/home/hushlogin", mode = "symlink" }
-"~/.ssh/config" = { source = "cfg/home/ssh/config", mode = "symlink" }
-"~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
-"~/.claude/skills" = { source = "agents/skills", mode = "symlink-each" }
-"~/.claude/settings.json" = { source = "agents/claude/settings.json", mode = "symlink" }
+"~/.zshrc" = { source = "config/home/zshrc", mode = "symlink" }
+"~/.zshenv" = { source = "config/home/zshenv", mode = "symlink" }
+"~/.hushlogin" = { source = "config/home/hushlogin", mode = "symlink" }
+"~/.ssh/config" = { source = "config/home/ssh/config", mode = "symlink" }
+"~/.agents/skills" = { source = "config/agents/skills", mode = "symlink-each" }
+"~/.claude/skills" = { source = "config/agents/skills", mode = "symlink-each" }
+"~/.claude/settings.json" = { source = "config/agents/claude/settings.json", mode = "symlink" }
 
-"~/.config/aerospace" = { source = "cfg/xdg/aerospace", mode = "symlink-each" }
-"~/.config/atuin" = { source = "cfg/xdg/atuin", mode = "symlink-each" }
-"~/.config/bat" = { source = "cfg/xdg/bat", mode = "symlink-each" }
-"~/.config/btop" = { source = "cfg/xdg/btop", mode = "symlink-each" }
-"~/.config/ghostty" = { source = "cfg/xdg/ghostty", mode = "symlink-each" }
-"~/.config/git" = { source = "cfg/xdg/git", mode = "symlink-each" }
-"~/.config/gh" = { source = "cfg/xdg/gh", mode = "symlink-each" }
-"~/.config/k9s" = { source = "cfg/xdg/k9s", mode = "symlink-each" }
-"~/.config/lazydocker" = { source = "cfg/xdg/lazydocker", mode = "symlink-each" }
-"~/.config/lazygit" = { source = "cfg/xdg/lazygit", mode = "symlink-each" }
-"~/.config/mise" = { source = "cfg/xdg/mise", mode = "symlink-each" }
-"~/.config/neofetch" = { source = "cfg/xdg/neofetch", mode = "symlink-each" }
-"~/.config/nvim" = { source = "cfg/xdg/nvim", mode = "symlink-each" }
-"~/.config/nushell" = { source = "cfg/xdg/nushell", mode = "symlink-each" }
-"~/.config/posting" = { source = "cfg/xdg/posting", mode = "symlink-each" }
-"~/.config/projs" = { source = "cfg/xdg/projs", mode = "symlink-each" }
-"~/.config/scry" = { source = "cfg/xdg/scry", mode = "symlink-each" }
-"~/.config/spotify-player" = { source = "cfg/xdg/spotify-player", mode = "symlink-each" }
-"~/.config/starship" = { source = "cfg/xdg/starship", mode = "symlink-each" }
-"~/.config/yazi" = { source = "cfg/xdg/yazi", mode = "symlink-each" }
-"~/.config/zellij" = { source = "cfg/xdg/zellij", mode = "symlink-each" }
-"~/.config/zed/keymap.json" = { source = "cfg/xdg/zed/keymap.json", mode = "symlink" }
-"~/.config/zed/settings.json" = { source = "cfg/xdg/zed/settings.json", mode = "symlink" }
+"~/.config/aerospace" = { source = "config/xdg/aerospace", mode = "symlink-each" }
+"~/.config/atuin" = { source = "config/xdg/atuin", mode = "symlink-each" }
+"~/.config/bat" = { source = "config/xdg/bat", mode = "symlink-each" }
+"~/.config/btop" = { source = "config/xdg/btop", mode = "symlink-each" }
+"~/.config/ghostty" = { source = "config/xdg/ghostty", mode = "symlink-each" }
+"~/.config/git" = { source = "config/xdg/git", mode = "symlink-each" }
+"~/.config/gh" = { source = "config/xdg/gh", mode = "symlink-each" }
+"~/.config/k9s" = { source = "config/xdg/k9s", mode = "symlink-each" }
+"~/.config/lazydocker" = { source = "config/xdg/lazydocker", mode = "symlink-each" }
+"~/.config/lazygit" = { source = "config/xdg/lazygit", mode = "symlink-each" }
+"~/.config/mise" = { source = "config/xdg/mise", mode = "symlink-each" }
+"~/.config/neofetch" = { source = "config/xdg/neofetch", mode = "symlink-each" }
+"~/.config/nvim" = { source = "config/xdg/nvim", mode = "symlink-each" }
+"~/.config/nushell" = { source = "config/xdg/nushell", mode = "symlink-each" }
+"~/.config/posting" = { source = "config/xdg/posting", mode = "symlink-each" }
+"~/.config/projs" = { source = "config/xdg/projs", mode = "symlink-each" }
+"~/.config/scry" = { source = "config/xdg/scry", mode = "symlink-each" }
+"~/.config/spotify-player" = { source = "config/xdg/spotify-player", mode = "symlink-each" }
+"~/.config/starship" = { source = "config/xdg/starship", mode = "symlink-each" }
+"~/.config/yazi" = { source = "config/xdg/yazi", mode = "symlink-each" }
+"~/.config/zellij" = { source = "config/xdg/zellij", mode = "symlink-each" }
+"~/.config/zed/keymap.json" = { source = "config/xdg/zed/keymap.json", mode = "symlink" }
+"~/.config/zed/settings.json" = { source = "config/xdg/zed/settings.json", mode = "symlink" }
 
 [bootstrap.macos.dock]
 autohide = true
@@ -178,15 +178,15 @@ AppleCurrentKeyboardLayoutInputSourceID = "com.apple.keylayout.ABC"
 description = "Run userland behavior and release tests"
 run = [
   "bats tests",
-  "delivery/tests/release-delivery.test.sh",
-  "npm ci --ignore-scripts --prefix delivery/cloudflare",
-  "delivery/tests/cloudflare.test.sh",
+  "tests/release-delivery.sh",
+  "npm ci --ignore-scripts --prefix release/cloudflare",
+  "tests/release-cloudflare.sh",
 ]
 
 [tasks.lint]
 description = "Check shell sources and repository formatting"
 run = [
-  "shellcheck --severity=warning bin/userland libexec/userland/*.sh libexec/userland/commands/*.sh libexec/userland/adapters/*.sh delivery/scripts/*.sh delivery/bootstrap/*.sh.in delivery/tests/*.sh",
-  "shfmt -d -i 2 -ci bin/userland libexec/userland delivery/scripts delivery/bootstrap delivery/tests",
+  "shellcheck --severity=warning bin/userland lib/*.sh lib/adapters/*.sh release/*.sh release/bootstrap-template.sh tests/release-*.sh",
+  "shfmt -d -i 2 -ci bin/userland lib release tests/*.bats tests/release-*.sh",
   "git diff --check",
 ]

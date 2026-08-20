@@ -89,10 +89,43 @@ userland_run_adapters() {
       userland_adapter_failures=$((userland_adapter_failures + 1))
       continue
     }
-    if "$userland_adapter" "$userland_adapter_action"; then
+    case "$userland_adapter_name" in
+      homebrew-apps) userland_adapter_label='Homebrew applications' ;;
+      android-sdk) userland_adapter_label='Android development tools' ;;
+      personal-repos) userland_adapter_label='Personal repositories' ;;
+      browser-extensions) userland_adapter_label='Browser extensions' ;;
+      file-handlers) userland_adapter_label='File handlers' ;;
+      raycast) userland_adapter_label='Raycast configuration' ;;
+      shell-cache) userland_adapter_label='Shell cache' ;;
+      manual-apps) userland_adapter_label='Manual applications' ;;
+      repository-snapshot) userland_adapter_label='Repository snapshot' ;;
+      security-health) userland_adapter_label='Security health' ;;
+    esac
+    if [ "$userland_adapter_action" = apply ]; then
+      if case "$userland_adapter_name" in
+        android-sdk | raycast) "$userland_adapter" "$userland_adapter_action" ;;
+        *) userland_ui task apply "$userland_adapter_label" "$userland_adapter" "$userland_adapter_action" ;;
+      esac then
+        userland_adapter_code=0
+      else
+        userland_adapter_code=$?
+      fi
+    elif [ "$userland_adapter_action" = doctor ]; then
+      if userland_ui task check "$userland_adapter_label" "$userland_adapter" "$userland_adapter_action"; then
+        userland_adapter_code=0
+      else
+        userland_adapter_code=$?
+      fi
+    else
+      if "$userland_adapter" "$userland_adapter_action"; then
+        userland_adapter_code=0
+      else
+        userland_adapter_code=$?
+      fi
+    fi
+    if [ "$userland_adapter_code" -eq 0 ]; then
       :
     else
-      userland_adapter_code=$?
       if [ "$userland_adapter_code" -eq 2 ]; then
         userland_adapter_attention=1
       else

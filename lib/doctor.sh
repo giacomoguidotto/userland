@@ -44,15 +44,20 @@ userland_doctor_human() {
   if [ "$userland_doctor_mode" = standalone ]; then
     userland_ui command doctor "Check drift and machine health. Nothing will be changed."
   fi
+  userland_mkdirs
 
   userland_ui section "Toolchain"
-  "$USERLAND_MISE" doctor || userland_doctor_code=1
+  userland_ui task check "Toolchain" "$USERLAND_MISE" doctor || userland_doctor_code=1
 
   userland_ui section "Machine state"
-  "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap status --missing || userland_doctor_code=1
+  userland_ui task check "Machine state" \
+    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap status --missing || userland_doctor_code=1
 
   userland_ui section "Personal state"
+  USERLAND_UI_HIDE_OK=1
+  export USERLAND_UI_HIDE_OK
   userland_run_adapters doctor || userland_doctor_code=1
+  unset USERLAND_UI_HIDE_OK
 
   if [ "$userland_doctor_code" -eq 0 ]; then
     if [ "$userland_doctor_mode" = standalone ]; then

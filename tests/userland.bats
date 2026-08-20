@@ -24,11 +24,18 @@ setup() {
 printf '%s\n' "$*" >>"$MISE_CALLS"
 case "$*" in
   *doctor*--json*) printf '%s\n' '{"healthy":true}' ;;
-  *plan*--json*) printf '%s\n' '{"changes":[]}' ;;
+  *bootstrap*plan*--json*) printf '%s\n' '{"resources":[],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":0}}' ;;
+  *bootstrap*dotfiles*status*--json*) printf '%s\n' '{"files":[],"edits":[]}' ;;
 esac
 exit 0
 EOF
   chmod +x "$TEST_TMPDIR/bin/mise"
+  cat >"$TEST_TMPDIR/bin/failing-task" <<'EOF'
+#!/bin/sh
+printf '%s\n' first 'last failure'
+exit 7
+EOF
+  chmod +x "$TEST_TMPDIR/bin/failing-task"
   export PATH="$TEST_TMPDIR/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 }
 
@@ -134,6 +141,76 @@ teardown() {
   [[ "$output" == *"[error] Apply this plan? requires an interactive terminal"* ]]
 }
 
+@test "rich tasks keep successful native logs out of scrollback and render the report once" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui report begin; userland_ui section "Software"; userland_ui task inspect "Inspect packages" /usr/bin/printf "native-one\nnative-two\n"; userland_log change "2 package upgrades"; userland_log current "40 packages are current"; userland_ui report render'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"native-one"* ]]
+  [[ "$output" != *"40 packages are current"* ]]
+  [[ "$output" == *"Plan"* ]]
+  [[ "$output" == *"Software"* ]]
+  [[ "$output" == *"2 package upgrades"* ]]
+  grep -q "native-one" "$USERLAND_STATE_DIR/last-run.log"
+}
+
+@test "rich plans stay bounded and keep every hidden item in details" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command plan "Preview"; userland_ui report begin; userland_ui section "Personal state"; for item in 1 2 3 4 5 6; do userland_log manual "Manual item $item"; done; userland_ui report render'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"2 more in details"* ]]
+  [[ "$output" != *"Manual item 6"* ]]
+  grep -q "Manual item 6" "$USERLAND_STATE_DIR/last-run.log"
+}
+
+@test "rich task failures show a bounded excerpt and preserve the command status" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    FAILURE_TASK="$TEST_TMPDIR/bin/failing-task" \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui task apply "Install packages" "$FAILURE_TASK"'
+
+  [ "$status" -eq 7 ]
+  [[ "$output" == *"Install packages failed"* ]]
+  [[ "$output" == *"last failure"* ]]
+  [[ "$output" == *"Log:"*"last-run.log"* ]]
+}
+
+@test "plain tasks stream every native line without terminal controls" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_UI_MODE=plain \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui task inspect "Inspect packages" /usr/bin/printf "native-one\nnative-two\n"'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"native-one"* ]]
+  [[ "$output" == *"native-two"* ]]
+  [[ "$output" != *$'\e['* ]]
+}
+
 @test "the installed command resolves its managed symlink" {
   mkdir -p "$USERLAND_HOME/.local/bin"
   ln -s "$TEST_ROOT/bin/userland" "$USERLAND_HOME/.local/bin/userland"
@@ -167,8 +244,24 @@ EOF
   grep -F "$USERLAND_REPO_ROOTS/example" "$USERLAND_CACHE_DIR/repositories.tsv"
   [[ "$output" == *"encrypted configuration import"* ]]
   ! grep -q -- '--force-dotfiles' "$MISE_CALLS"
-  grep -q 'bootstrap packages apply --dry-run' "$MISE_CALLS"
-  grep -q 'bootstrap packages upgrade --dry-run' "$MISE_CALLS"
+  grep -q 'bootstrap plan --json' "$MISE_CALLS"
+  ! grep -q 'bootstrap packages upgrade --dry-run' "$MISE_CALLS"
+  grep -q 'bootstrap dotfiles status --json' "$MISE_CALLS"
+}
+
+@test "plan refuses unreadable machine-state JSON before consent" {
+  printf '%s\n' '#!/bin/sh' \
+    'case "$*" in' \
+    '  *bootstrap*plan*--json*) printf "%s\\n" "not-json" ;;' \
+    '  *bootstrap*dotfiles*status*--json*) printf "%s\\n" "{\"files\":[],\"edits\":[]}" ;;' \
+    'esac' \
+    'exit 0' >"$TEST_TMPDIR/bin/mise"
+  chmod +x "$TEST_TMPDIR/bin/mise"
+
+  run "$TEST_ROOT/bin/userland" plan
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"unreadable plan"* ]]
+  [[ "$output" == *"no approval was requested"* ]]
 }
 
 @test "public commands keep Homebrew inspection read-only and sync never cleans" {

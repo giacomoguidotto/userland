@@ -103,14 +103,6 @@ jobs:
           git merge-base --is-ancestor "$tag_commit" "origin/$default_branch" ||
             release_die "$TAG is not an ancestor of $default_branch"
 
-          immutable=$(
-            gh api \
-              -H 'X-GitHub-Api-Version: 2026-03-10' \
-              "repos/$GITHUB_REPOSITORY/immutable-releases" \
-              --jq .enabled
-          )
-          [[ "$immutable" == true ]] || release_die "GitHub immutable releases are not enabled"
-
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" >"$RUNNER_TEMP/releases.json"
           previous_stable=$(
             jq -r --arg tag "$TAG" \

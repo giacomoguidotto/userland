@@ -3,6 +3,7 @@ set -eu
 
 test_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 delivery_dir=$(CDPATH='' cd -- "$test_dir/.." && pwd)
+release_workflow="$delivery_dir/../.github/workflows/release.yml"
 # shellcheck source=../scripts/release-lib.sh
 . "$delivery_dir/scripts/release-lib.sh"
 
@@ -10,6 +11,11 @@ fail() {
   printf 'FAIL: %s\n' "$*" >&2
   exit 1
 }
+
+if grep -Fq 'immutable-releases' "$release_workflow"; then
+  fail "release workflow calls the admin-only immutable-release settings endpoint"
+fi
+grep -Fq 'isImmutable' "$release_workflow" || fail "published release immutability check missing"
 
 for tag in v0.0.0 v1.2.3 v1.3.0-rc.1 v10.20.30-alpha-1; do
   release_validate_tag "$tag" || fail "valid tag rejected: $tag"

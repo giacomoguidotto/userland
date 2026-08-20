@@ -31,10 +31,10 @@ Install the latest stable release:
 curl -fsSL https://userland.guidotto.dev | sh
 ```
 
-Or pin the first public release:
+Or pin the current release:
 
 ```sh
-curl -fsSL https://userland.guidotto.dev/v0.1.0 | sh
+curl -fsSL https://userland.guidotto.dev/v0.1.1 | sh
 ```
 
 The installer downloads a checksum-verified release, runs it, then creates a managed checkout at `~/.local/share/userland/repo`. Later runs use that checkout. They move `main` forward only when the repository is clean and the update is a fast-forward.
@@ -85,7 +85,7 @@ The design lives in [docs/architecture.md](docs/architecture.md). Release and en
 
 ## Still becoming
 
-`v0.1.0` is live. A real fresh-Mac parity run is still the final proof.
+`v0.1.1` is live. A real fresh-Mac parity run is still the final proof.
 
 This is personal configuration in public, not a universal dotfiles framework. Fork what helps. Expect the defaults to be opinionated.
 

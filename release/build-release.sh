@@ -39,7 +39,8 @@ esac
 
 release_tree=$work/tree/userland-$version
 mkdir -p "$release_tree/bin"
-git archive --format=tar "$commit" | tar -xf - -C "$release_tree"
+git archive --format=tar "$commit" LICENSE bin config lib mise.lock mise.toml |
+  tar -xf - -C "$release_tree"
 
 if [ -f .gitmodules ]; then
   git config --file .gitmodules --get-regexp '^[^.]+\..*\.path$' |

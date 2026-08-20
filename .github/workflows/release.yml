@@ -75,6 +75,8 @@ jobs:
           cmp "$RUNNER_TEMP/release-first/bootstrap" "$RUNNER_TEMP/release-second/bootstrap"
           cmp "$RUNNER_TEMP/release-first/checksums.txt" "$RUNNER_TEMP/release-second/checksums.txt"
           cmp "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG.tar.gz"
+          tar -tzf "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" > "$RUNNER_TEMP/archive-files"
+          grep -Eq '/(tests|release|\.github)/' "$RUNNER_TEMP/archive-files" && exit 1 || true
           grep -R '@USERLAND_' "$RUNNER_TEMP/release-first" && exit 1 || true
 
   release:

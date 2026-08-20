@@ -8,29 +8,6 @@ $env.config.show_banner = false
 $env.config.edit_mode = "vi"
 $env.config.buffer_editor = "v"
 
-# system management functions
-def swc [] {
-  if (which nix | is-empty) {
-    echo "nix not found, skipping switch..."
-  } else if (which darwin-rebuild | is-not-empty) {
-    sudo darwin-rebuild switch --flake ~/.config/nix-darwin
-  } else {
-    echo "first time running, switching with nix..."
-    sudo nix run "nix-darwin/master#darwin-rebuild" -- switch --flake ~/.config/nix-darwin
-  }
-}
-
-def gc [] {
-  sudo nix-collect-garbage -d
-}
-
-def up [] {
-  sudo determinate-nixd upgrade
-  nix flake update --flake ~/.config/nix-darwin
-  swc
-  gc
-}
-
 # aliases
 alias ..      = cd ..
 alias ...     = cd ...
@@ -120,8 +97,21 @@ starship init nu | save -f ($autoload_dir | path join "starship.nu")
 zoxide init nushell | save -f ($autoload_dir | path join "zoxide.nu")
 
 # direnv - directory-specific environments
-$env.config.hooks.pre_prompt = (
-  $env.config.hooks.pre_prompt | append (source nu_scripts/nu-hooks/nu-hooks/direnv/config.nu)
+# Adapted from the MIT-licensed Nushell nu_scripts Direnv hook.
+$env.config.hooks.env_change.PWD = (
+  $env.config.hooks.env_change.PWD | append { ||
+    if (which direnv | is-empty) {
+      return
+    }
+
+    let userland_direnv = (direnv export json | complete)
+    if $userland_direnv.exit_code != 0 or ($userland_direnv.stdout | str trim | is-empty) {
+      return
+    }
+
+    $userland_direnv.stdout | from json | load-env
+    $env.PATH = $env.PATH | split row (char env_sep)
+  }
 )
 
 # 1password - password manager

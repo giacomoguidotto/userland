@@ -1,10 +1,3 @@
-[submodule "dotbot"]
-	path = dotbot
-	url = https://github.com/anishathalye/dotbot
-	ignore = dirty
-[submodule "cfg/xdg/nushell/nu_scripts"]
-	path = cfg/xdg/nushell/nu_scripts
-	url = https://github.com/nushell/nu_scripts.git
 [submodule "cfg/xdg/nvim"]
 	path = cfg/xdg/nvim
 	url = https://github.com/GiacomoGuidotto/kickstart.nvim.git

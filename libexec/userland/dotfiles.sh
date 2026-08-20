@@ -48,11 +48,11 @@ userland_migrate_legacy_link() {
   else
     rm "$userland_legacy_link"
   fi
-  userland_log changed "released legacy Dotbot ownership of $userland_legacy_link"
+  userland_log changed "released legacy workspace ownership of $userland_legacy_link"
 }
 
 userland_prepare_legacy_dotfiles() {
-  userland_log sync "checking legacy Dotbot links"
+  userland_log sync "checking legacy workspace links"
 
   for userland_legacy_link in \
     "$USERLAND_HOME"/.zshrc \
@@ -86,8 +86,8 @@ userland_plan_legacy_dotfiles() {
     [ -L "$userland_legacy_link" ] || continue
     userland_legacy_source=$(userland_link_target "$userland_legacy_link")
     userland_is_owned_legacy_source "$userland_legacy_source" || continue
-    userland_log change "release legacy Dotbot link $userland_legacy_link"
+    userland_log change "release legacy workspace link $userland_legacy_link"
     userland_legacy_count=$((userland_legacy_count + 1))
   done
-  [ "$userland_legacy_count" -ne 0 ] || userland_log current "no legacy Dotbot links need migration"
+  [ "$userland_legacy_count" -ne 0 ] || userland_log current "no legacy workspace links need migration"
 }

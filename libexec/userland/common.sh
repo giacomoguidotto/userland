@@ -12,8 +12,8 @@ USERLAND_COMMON_LOADED=1
 : "${USERLAND_STATE_DIR:=${XDG_STATE_HOME:-$USERLAND_HOME/.local/state}/userland}"
 : "${USERLAND_REPOSITORY_TTL_SECONDS:=86400}"
 
-# A fresh Mac has these paths. Keep them explicit because Nix, app launchers,
-# and recovery shells can replace PATH with a narrower value.
+# A fresh Mac has these paths. Keep them explicit because app launchers and
+# recovery shells can replace PATH with a narrower value.
 PATH="$USERLAND_HOME/.local/share/mise/shims:$USERLAND_HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 export PATH
 

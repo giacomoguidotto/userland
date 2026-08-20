@@ -48,6 +48,19 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
+@test "retired setup implementations stay out of the repository" {
+  for retired_path in \
+    dotbot \
+    nix \
+    install \
+    install.conf.yaml \
+    bkps/dygma \
+    cfg/apps/cursor \
+    cfg/xdg/nushell/nu_scripts; do
+    [ ! -e "$TEST_ROOT/$retired_path" ]
+  done
+}
+
 @test "the installed command resolves its managed symlink" {
   mkdir -p "$USERLAND_HOME/.local/bin"
   ln -s "$TEST_ROOT/bin/userland" "$USERLAND_HOME/.local/bin/userland"

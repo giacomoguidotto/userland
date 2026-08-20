@@ -19,12 +19,5 @@ export DOCKER_HOST="unix://$HOME/.config/colima/docker.sock"
 
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 
-# Keep the old Home Manager session available only while it still exists.
-# userland does not install or manage Nix on new machines.
-if [ -z "${TERMUX_VERSION-}" ] && [ -r "/etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh" ]; then
-  . "/etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh"
-fi
-
-# Keep stock recovery tools and userland shims available even while the old
-# Home Manager profile is still installed.
+# Keep stock recovery tools, package managers, and userland shims available.
 export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"

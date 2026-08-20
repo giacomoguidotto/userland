@@ -85,7 +85,7 @@ The design lives in [docs/architecture.md](docs/architecture.md). Release and en
 
 ## Still becoming
 
-`v0.1.0` is live. A real fresh-Mac parity run is still the final proof. Nix and Dotbot remain in the repository only as migration references until that check passes; their legacy manifests should not be run.
+`v0.1.0` is live. A real fresh-Mac parity run is still the final proof.
 
 This is personal configuration in public, not a universal dotfiles framework. Fork what helps. Expect the defaults to be opinionated.
 

@@ -18,8 +18,24 @@ mkdir -p "$fixture/bin"
 
 cat >"$fixture/bin/userland" <<'EOF'
 #!/bin/sh
-readlink "$HOME/.local/bin/userland" >"$TEST_OBSERVATION"
+entry_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+printf 'root=%s\n' "$entry_root" >"$TEST_OBSERVATION"
+printf 'link=%s\n' "$(readlink "$HOME/.local/bin/userland")" >>"$TEST_OBSERVATION"
 printf 'original-path=%s\n' "${USERLAND_ORIGINAL_PATH:-}" >>"$TEST_OBSERVATION"
+if [ "${TEST_MARK_APPLY_STARTED:-0}" = 1 ]; then
+  [ -d "$USERLAND_BOOTSTRAP_CONTROL" ] || exit 81
+  [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/owner")" = "$USERLAND_BOOTSTRAP_TOKEN" ] || exit 82
+  printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$USERLAND_BOOTSTRAP_CONTROL/.apply-started.$$"
+  mv "$USERLAND_BOOTSTRAP_CONTROL/.apply-started.$$" "$USERLAND_BOOTSTRAP_CONTROL/apply-started"
+fi
+if [ "${TEST_SIGNAL_PARENT:-0}" = 1 ]; then
+  kill -INT "$PPID"
+  exit 130
+fi
+if [ "${TEST_DIRTY_DURING_SYNC:-0}" = 1 ]; then
+  : >"$entry_root/.git/test-dirty"
+  printf 'user edit\n' >>"$entry_root/mise.toml"
+fi
 exit "$TEST_SYNC_STATUS"
 EOF
 cat >"$fixture/bin/mise" <<'EOF'
@@ -68,11 +84,18 @@ while [ "${1:-}" = -c ]; do
   shift 2
 done
 if [ "$1" = clone ]; then
-  destination=$5
+  for destination do :; done
+  if [ "${TEST_GIT_CLONE_FAIL:-0}" = 1 ]; then
+    mkdir -p "$destination"
+    exit 12
+  fi
   mkdir -p "$destination/.git" "$destination/bin"
   cp "$TEST_REPO_COMMAND" "$destination/bin/userland"
   chmod +x "$destination/bin/userland"
   printf 'min_version = "2026.8.9"\n' >"$destination/mise.toml"
+  printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-head"
+  printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" >"$destination/.git/test-remote-main"
+  printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-fetched-commit"
   exit 0
 fi
 if [ "$1" = ls-remote ]; then
@@ -82,6 +105,7 @@ if [ "$1" = ls-remote ]; then
   exit 0
 fi
 if [ "$1" = -C ]; then
+  checkout_path=$2
   case "$3" in
     config)
       if [ "${7:-}" = core.worktree ]; then
@@ -96,6 +120,7 @@ if [ "$1" = -C ]; then
       [ "${GIT_CONFIG_GLOBAL:-}" = /dev/null ] || exit 9
       [ "${GIT_CONFIG_NOSYSTEM:-}" = 1 ] || exit 9
       [ "${TEST_GIT_DIRTY:-0}" = 0 ] || printf ' M mise.toml\n'
+      [ ! -e "$checkout_path/.git/test-dirty" ] || printf ' M mise.toml\n'
       ;;
     symbolic-ref)
       printf '%s\n' "${TEST_GIT_BRANCH:-main}"
@@ -104,9 +129,26 @@ if [ "$1" = -C ]; then
       case "$4" in
         --is-inside-work-tree) printf 'true\n' ;;
         --abbrev-ref) printf '%s\n' "${TEST_GIT_UPSTREAM:-origin/main}" ;;
-        refs/remotes/origin/main*) printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" ;;
-        *) printf '%s\n' "${TEST_GIT_HEAD:-$TEST_COMMIT}" ;;
+        refs/remotes/origin/main*) cat "$checkout_path/.git/test-remote-main" ;;
+        refs/userland/bootstrap/*) cat "$checkout_path/.git/test-fetched-commit" ;;
+        *) cat "$checkout_path/.git/test-head" ;;
       esac
+      ;;
+    fetch)
+      printf '%s\n' "$TEST_COMMIT" >"$checkout_path/.git/test-fetched-commit"
+      printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" >"$checkout_path/.git/test-remote-main"
+      ;;
+    checkout | merge)
+      printf '%s\n' "$TEST_COMMIT" >"$checkout_path/.git/test-head"
+      ;;
+    reset)
+      for reset_target do :; done
+      printf '%s\n' "$reset_target" >"$checkout_path/.git/test-head"
+      ;;
+    submodule)
+      if [ "$4" = update ] && [ "${TEST_GIT_SUBMODULE_FAIL:-0}" = 1 ]; then
+        exit 13
+      fi
       ;;
     cat-file)
       [ "${TEST_GIT_MISSING_COMMIT:-0}" = 0 ] && exit 0
@@ -123,10 +165,7 @@ EOF
   chmod +x "$home/.local/bin/curl" "$home/.local/bin/caffeinate" "$home/.local/bin/git"
 }
 
-cat >"$work/repo-userland" <<'EOF'
-#!/bin/sh
-exit 0
-EOF
+cp "$fixture/bin/userland" "$work/repo-userland"
 chmod +x "$work/repo-userland"
 
 attention_home="$work/attention-home"
@@ -138,18 +177,24 @@ HOME="$attention_home" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
   TEST_COMMIT="$commit" \
   TEST_OBSERVATION="$work/attention-observation" \
+  TEST_MARK_APPLY_STARTED=1 \
   TEST_REPO_COMMAND="$work/repo-userland" \
   TEST_SYNC_STATUS=2 \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >/dev/null 2>&1 || attention_status=$?
 [ "$attention_status" -eq 0 ] || fail "completed attention run returned $attention_status"
-grep -Fq "$attention_home/.local/share/userland/releases/$tag/bin/userland" "$work/attention-observation" ||
-  fail "release command was not linked before sync"
+attention_root=$(CDPATH='' cd -- "$attention_home/.userland" && pwd)
+grep -Fq "root=$attention_root" "$work/attention-observation" ||
+  fail "sync did not run from the canonical userland path"
+grep -Fq "link=$attention_home/.userland/bin/userland" "$work/attention-observation" ||
+  fail "canonical userland command was not linked before sync"
 grep -Fq "original-path=$attention_original_path" "$work/attention-observation" ||
   fail "bootstrap did not preserve the caller PATH"
-[ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.local/share/userland/repo/bin/userland" ] ||
+[ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.userland/bin/userland" ] ||
   fail "attention run did not finish the repository link"
+[ -d "$attention_home/.userland/.git" ] || fail "attention run did not promote the canonical checkout"
+[ ! -e "$attention_home/.local/share/userland/repo" ] || fail "attention run created the legacy checkout path"
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$tag" ] ||
   fail "attention run did not retain the pinned mise release"
 
@@ -160,14 +205,15 @@ HOME="$attention_home" \
   TEST_OBSERVATION="$work/rerun-observation" \
   TEST_REPO_COMMAND="$work/repo-userland" \
   TEST_SYNC_STATUS=0 \
+  TEST_MARK_APPLY_STARTED=1 \
   TEST_TRUST_LOG="$work/rerun-trust" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >/dev/null 2>&1 || rerun_status=$?
 [ "$rerun_status" -eq 0 ] || fail "safe rerun returned $rerun_status"
-grep -Fq "$attention_home/.local/share/userland/repo/mise.toml" "$work/rerun-trust" ||
+grep -Fq "$attention_home/.userland/mise.toml" "$work/rerun-trust" ||
   fail "safe checkout was not trusted"
-[ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.local/share/userland/repo/bin/userland" ] ||
+[ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.userland/bin/userland" ] ||
   fail "safe rerun did not restore the repository link"
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$tag" ] ||
   fail "safe rerun did not retain the pinned mise release"
@@ -194,16 +240,18 @@ upgrade_status=0
 HOME="$attention_home" \
   TEST_ARCHIVE="$work/userland-v1.2.4.tar.gz" \
   TEST_COMMIT="$upgrade_commit" \
-  TEST_GIT_HEAD="$upgrade_commit" \
   TEST_GIT_REMOTE_MAIN="$upgrade_commit" \
   TEST_OBSERVATION="$work/upgrade-observation" \
   TEST_REPO_COMMAND="$work/repo-userland" \
   TEST_SYNC_STATUS=0 \
+  TEST_MARK_APPLY_STARTED=1 \
   TEST_TRUST_LOG="$work/upgrade-trust" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || upgrade_status=$?
 [ "$upgrade_status" -eq 0 ] || fail "upgrade run returned $upgrade_status"
+[ "$(cat "$attention_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
+  fail "upgrade run did not fast-forward the canonical checkout"
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$upgrade_tag" ] ||
   fail "upgrade run did not move the current release pointer"
 [ ! -e "$attention_home/.local/share/userland/releases/$tag/.current.new.managed" ] ||
@@ -214,23 +262,89 @@ HOME="$attention_home" \
 prepare_existing_checkout() {
   existing_home=$1
   prepare_home "$existing_home"
-  existing_repo="$existing_home/.local/share/userland/repo"
+  existing_repo="$existing_home/.userland"
   mkdir -p "$existing_repo/.git" "$existing_repo/bin"
   cp "$work/repo-userland" "$existing_repo/bin/userland"
   chmod +x "$existing_repo/bin/userland"
   printf 'original checkout config\n' >"$existing_repo/mise.toml"
+  printf '%s\n' "$commit" >"$existing_repo/.git/test-head"
+  printf '%s\n' "$commit" >"$existing_repo/.git/test-remote-main"
 }
+
+interrupted_upgrade_home="$work/interrupted-upgrade-home"
+prepare_existing_checkout "$interrupted_upgrade_home"
+interrupted_upgrade_status=0
+HOME="$interrupted_upgrade_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.4.tar.gz" \
+  TEST_COMMIT="$upgrade_commit" \
+  TEST_GIT_REMOTE_MAIN="$upgrade_commit" \
+  TEST_GIT_SUBMODULE_FAIL=1 \
+  TEST_OBSERVATION="$work/interrupted-upgrade-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$interrupted_upgrade_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || interrupted_upgrade_status=$?
+[ "$interrupted_upgrade_status" -eq 13 ] ||
+  fail "interrupted checkout upgrade returned $interrupted_upgrade_status"
+[ "$(cat "$interrupted_upgrade_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
+  fail "interrupted checkout upgrade rewound the verified commit"
+
+recovered_upgrade_status=0
+HOME="$interrupted_upgrade_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.4.tar.gz" \
+  TEST_COMMIT="$upgrade_commit" \
+  TEST_GIT_REMOTE_MAIN="$upgrade_commit" \
+  TEST_MARK_APPLY_STARTED=1 \
+  TEST_OBSERVATION="$work/recovered-upgrade-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$interrupted_upgrade_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || recovered_upgrade_status=$?
+[ "$recovered_upgrade_status" -eq 0 ] || fail "recovered checkout upgrade returned $recovered_upgrade_status"
+[ "$(cat "$interrupted_upgrade_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
+  fail "recovered checkout upgrade did not reach the released commit"
+
+edited_upgrade_home="$work/edited-upgrade-home"
+prepare_existing_checkout "$edited_upgrade_home"
+edited_upgrade_status=0
+HOME="$edited_upgrade_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.4.tar.gz" \
+  TEST_COMMIT="$upgrade_commit" \
+  TEST_DIRTY_DURING_SYNC=1 \
+  TEST_GIT_REMOTE_MAIN="$upgrade_commit" \
+  TEST_OBSERVATION="$work/edited-upgrade-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=3 \
+  USERLAND_DATA_DIR="$edited_upgrade_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/upgrade-bootstrap" >"$work/edited-upgrade-output" 2>&1 || edited_upgrade_status=$?
+[ "$edited_upgrade_status" -eq 3 ] ||
+  fail "edited checkout cancellation returned $edited_upgrade_status"
+[ "$(cat "$edited_upgrade_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
+  fail "edited checkout cancellation rolled back the prepared commit"
+grep -Fq 'user edit' "$edited_upgrade_home/.userland/mise.toml" ||
+  fail "edited checkout cancellation discarded the user edit"
+[ -d "$edited_upgrade_home/.userland" ] ||
+  fail "edited checkout cancellation removed the canonical checkout"
+[ "$(readlink "$edited_upgrade_home/.local/bin/userland")" = "$edited_upgrade_home/.userland/bin/userland" ] ||
+  fail "edited checkout cancellation replaced the canonical command"
+
+if grep -Fq 'reset --hard' "$repository_root/release/bootstrap-template.sh"; then
+  fail "bootstrap contains a destructive checkout rollback"
+fi
 
 assert_checkout_refused() {
   case_name=$1
   case_home=$2
   case_status=$3
   [ "$case_status" -ne 0 ] || fail "$case_name checkout was accepted"
-  [ "$(cat "$case_home/.local/share/userland/repo/mise.toml")" = 'original checkout config' ] ||
+  [ "$(cat "$case_home/.userland/mise.toml")" = 'original checkout config' ] ||
     fail "$case_name checkout was modified"
   [ "$(readlink "$case_home/.local/bin/userland")" = "$case_home/.local/share/userland/releases/$tag/bin/userland" ] ||
     fail "$case_name checkout replaced the release command"
-  if grep -Fq "$case_home/.local/share/userland/repo/mise.toml" "$work/$case_name-trust"; then
+  if grep -Fq "$case_home/.userland/mise.toml" "$work/$case_name-trust"; then
     fail "$case_name checkout was trusted"
   fi
 }
@@ -283,22 +397,162 @@ HOME="$ancestry_home" \
   sh "$work/bootstrap" >/dev/null 2>&1 || ancestry_status=$?
 assert_checkout_refused ancestry "$ancestry_home" "$ancestry_status"
 
-fatal_home="$work/fatal-home"
-prepare_home "$fatal_home"
-fatal_status=0
-HOME="$fatal_home" \
+cancel_home="$work/cancel-home"
+prepare_home "$cancel_home"
+cancel_status=0
+HOME="$cancel_home" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
   TEST_COMMIT="$commit" \
-  TEST_OBSERVATION="$work/fatal-observation" \
+  TEST_OBSERVATION="$work/cancel-observation" \
   TEST_REPO_COMMAND="$work/repo-userland" \
-  TEST_SYNC_STATUS=7 \
-  USERLAND_DATA_DIR="$fatal_home/.local/share/userland" \
+  TEST_SYNC_STATUS=3 \
+  USERLAND_DATA_DIR="$cancel_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || fatal_status=$?
-[ "$fatal_status" -eq 7 ] || fail "fatal run returned $fatal_status"
-[ "$(readlink "$fatal_home/.local/bin/userland")" = "$fatal_home/.local/share/userland/releases/$tag/bin/userland" ] ||
-  fail "fatal run did not preserve the release command"
-[ ! -e "$fatal_home/.local/share/userland/repo" ] || fail "fatal run attempted the repository clone"
+  sh "$work/bootstrap" >/dev/null 2>&1 || cancel_status=$?
+[ "$cancel_status" -eq 3 ] || fail "cancelled run returned $cancel_status"
+[ "$(readlink "$cancel_home/.local/bin/userland")" = "$cancel_home/.local/share/userland/releases/$tag/bin/userland" ] ||
+  fail "cancelled run did not restore the release command"
+[ ! -e "$cancel_home/.userland" ] || fail "cancelled run retained its provisional checkout"
+
+signal_home="$work/signal-home"
+prepare_home "$signal_home"
+signal_status=0
+HOME="$signal_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/signal-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SIGNAL_PARENT=1 \
+  TEST_SYNC_STATUS=130 \
+  USERLAND_DATA_DIR="$signal_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || signal_status=$?
+[ "$signal_status" -eq 130 ] || fail "interrupted run returned $signal_status"
+[ ! -e "$signal_home/.userland" ] || fail "interrupted run retained its provisional checkout"
+[ "$(readlink "$signal_home/.local/bin/userland")" = "$signal_home/.local/share/userland/releases/$tag/bin/userland" ] ||
+  fail "interrupted run did not restore the release command"
+
+retained_home="$work/retained-home"
+prepare_home "$retained_home"
+retained_status=0
+HOME="$retained_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_MARK_APPLY_STARTED=1 \
+  TEST_OBSERVATION="$work/retained-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SIGNAL_PARENT=1 \
+  TEST_SYNC_STATUS=130 \
+  USERLAND_DATA_DIR="$retained_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || retained_status=$?
+[ "$retained_status" -eq 130 ] || fail "post-approval interruption returned $retained_status"
+[ -f "$retained_home/.userland/.userland-stage" ] ||
+  fail "post-approval failure did not retain the canonical stage"
+[ "$(readlink "$retained_home/.local/bin/userland")" = "$retained_home/.userland/bin/userland" ] ||
+  fail "post-approval failure did not retain the canonical command"
+
+cross_release_status=0
+HOME="$retained_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.4.tar.gz" \
+  TEST_COMMIT="$upgrade_commit" \
+  TEST_GIT_REMOTE_MAIN="$upgrade_commit" \
+  TEST_OBSERVATION="$work/cross-release-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$retained_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/upgrade-bootstrap" >"$work/cross-release-output" 2>&1 || cross_release_status=$?
+[ "$cross_release_status" -ne 0 ] || fail "new release accepted an unfinished older stage"
+grep -Fq "https://userland.guidotto.dev/$tag" "$work/cross-release-output" ||
+  fail "unfinished older stage did not provide its pinned recovery command"
+
+promotion_home="$work/promotion-home"
+prepare_home "$promotion_home"
+promotion_status=0
+HOME="$promotion_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_GIT_CLONE_FAIL=1 \
+  TEST_MARK_APPLY_STARTED=1 \
+  TEST_OBSERVATION="$work/promotion-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$promotion_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || promotion_status=$?
+[ "$promotion_status" -eq 12 ] || fail "failed promotion returned $promotion_status"
+[ -f "$promotion_home/.userland/.userland-stage" ] ||
+  fail "failed promotion discarded the applied archive stage"
+[ ! -d "$promotion_home/.userland/.git" ] || fail "failed promotion published an invalid Git checkout"
+
+printf '%s\n' tampered >>"$promotion_home/.userland/mise.toml"
+tampered_status=0
+HOME="$promotion_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/tampered-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$promotion_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || tampered_status=$?
+[ "$tampered_status" -ne 0 ] || fail "tampered archive stage was accepted"
+[ ! -e "$work/tampered-observation" ] || fail "tampered archive stage was executed"
+
+existing_cancel_home="$work/existing-cancel-home"
+prepare_existing_checkout "$existing_cancel_home"
+printf '%s\n' keep >"$existing_cancel_home/.userland/.git/userland-test-sentinel"
+existing_cancel_status=0
+HOME="$existing_cancel_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/existing-cancel-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=3 \
+  USERLAND_DATA_DIR="$existing_cancel_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || existing_cancel_status=$?
+[ "$existing_cancel_status" -eq 3 ] || fail "existing checkout cancellation returned $existing_cancel_status"
+[ "$(cat "$existing_cancel_home/.userland/.git/userland-test-sentinel")" = keep ] ||
+  fail "existing checkout cancellation modified the checkout"
+
+personal_home="$work/personal-home"
+prepare_home "$personal_home"
+mkdir "$personal_home/.userland"
+printf '%s\n' personal >"$personal_home/.userland/keep"
+personal_status=0
+HOME="$personal_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/personal-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$personal_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || personal_status=$?
+[ "$personal_status" -ne 0 ] || fail "personal ~/.userland directory was accepted"
+[ "$(cat "$personal_home/.userland/keep")" = personal ] || fail "personal ~/.userland directory was modified"
+[ ! -e "$work/personal-observation" ] || fail "sync ran with a personal ~/.userland directory"
+
+locked_home="$work/locked-home"
+prepare_home "$locked_home"
+mkdir -p "$locked_home/.local/share/userland/bootstrap.lock"
+printf '%s\n' other-run >"$locked_home/.local/share/userland/bootstrap.lock/owner"
+locked_status=0
+HOME="$locked_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/locked-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$locked_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || locked_status=$?
+[ "$locked_status" -ne 0 ] || fail "concurrent bootstrap lock was ignored"
+[ "$(cat "$locked_home/.local/share/userland/bootstrap.lock/owner")" = other-run ] ||
+  fail "concurrent bootstrap lock was modified"
+[ ! -e "$locked_home/.userland" ] || fail "locked bootstrap published a checkout"
 
 unmanaged_home="$work/unmanaged-home"
 prepare_home "$unmanaged_home"

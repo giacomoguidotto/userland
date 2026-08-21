@@ -22,6 +22,14 @@ setup() {
   cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>"$MISE_CALLS"
+if [ "${TEST_CHECK_BOOTSTRAP_CHECKPOINT:-0}" = 1 ]; then
+  case "$*" in
+    *bootstrap*plan*--json*) [ ! -e "$USERLAND_BOOTSTRAP_CONTROL/apply-started" ] || exit 91 ;;
+    *bootstrap*packages*apply*)
+      [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/apply-started" 2>/dev/null)" = "$USERLAND_BOOTSTRAP_TOKEN" ] || exit 92
+      ;;
+  esac
+fi
 case "$*" in
   *doctor*--json*) printf '%s\n' '{"healthy":true}' ;;
   *bootstrap*plan*--json*) printf '%s\n' '{"resources":[],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":0}}' ;;
@@ -54,6 +62,17 @@ teardown() {
 
   run "$TEST_ROOT/bin/userland" update
   [ "$status" -eq 64 ]
+}
+
+@test "direct sync refuses a checkout owned by an active bootstrap" {
+  mkdir -p "$USERLAND_DATA_DIR/bootstrap.lock"
+  printf '%s\n' bootstrap-owner >"$USERLAND_DATA_DIR/bootstrap.lock/owner"
+
+  run "$TEST_ROOT/bin/userland" sync
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"finish or cancel that run first"* ]]
+  [ ! -s "$MISE_CALLS" ]
 }
 
 @test "plain output is structured, stable, and free of terminal control bytes" {
@@ -411,8 +430,18 @@ EOF
 }
 
 @test "sync uses the pinned interface and creates the shell cache" {
+  export USERLAND_BOOTSTRAP_CONTROL=$TEST_TMPDIR/bootstrap-control
+  export USERLAND_BOOTSTRAP_TOKEN=bootstrap-test-token
+  export TEST_CHECK_BOOTSTRAP_CHECKPOINT=1
+  mkdir -m 700 "$USERLAND_BOOTSTRAP_CONTROL"
+  printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$USERLAND_BOOTSTRAP_CONTROL/owner"
+  mkdir -p "$USERLAND_DATA_DIR/bootstrap.lock"
+  printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$USERLAND_DATA_DIR/bootstrap.lock/owner"
+
   run "$TEST_ROOT/bin/userland" sync
   [ "$status" -eq 0 ]
+  [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/apply-started")" = "$USERLAND_BOOTSTRAP_TOKEN" ]
+  [ -z "$(find "$USERLAND_BOOTSTRAP_CONTROL" -name '.apply-started.*' -print)" ]
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]
   grep -q 'bootstrap packages apply --yes' "$MISE_CALLS"
   grep -q 'bootstrap packages upgrade --yes' "$MISE_CALLS"

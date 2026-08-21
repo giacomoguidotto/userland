@@ -41,13 +41,13 @@ layout {
     }
     tab name="userland" focus=true hide_floating_panes=true {
         pane split_direction="vertical" {
-            pane command="lazygit" cwd="dev/life/userland" size="35%" {
+            pane command="lazygit" cwd=".userland" size="35%" {
                 start_suspended true
             }
-            pane command="claude" cwd="dev/life/userland" focus=true size="30%" {
+            pane command="claude" cwd=".userland" focus=true size="30%" {
                 start_suspended true
             }
-            pane command="claude" cwd="dev/life/userland" size="35%" {
+            pane command="claude" cwd=".userland" size="35%" {
                 start_suspended true
             }
         }

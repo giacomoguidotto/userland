@@ -18,7 +18,7 @@ projects:
   userland:
     name: Userland
     aliases: ["cfg", "aerospace", "raycast"]
-    path: life/userland
+    path: ~/.userland
     apps:
       browser:
         tabs:

@@ -18,10 +18,40 @@ userland_confirm_sync() {
   return "$userland_confirm_code"
 }
 
+userland_bootstrap_mark_apply_started() {
+  [ -n "${USERLAND_BOOTSTRAP_CONTROL:-}" ] || return 0
+  [ -n "${USERLAND_BOOTSTRAP_TOKEN:-}" ] ||
+    userland_die "bootstrap control token is missing"
+  [ -d "$USERLAND_BOOTSTRAP_CONTROL" ] && [ ! -L "$USERLAND_BOOTSTRAP_CONTROL" ] ||
+    userland_die "bootstrap control directory is invalid"
+  [ -f "$USERLAND_BOOTSTRAP_CONTROL/owner" ] && [ ! -L "$USERLAND_BOOTSTRAP_CONTROL/owner" ] ||
+    userland_die "bootstrap control owner is invalid"
+  [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/owner")" = "$USERLAND_BOOTSTRAP_TOKEN" ] ||
+    userland_die "bootstrap control owner does not match"
+
+  userland_apply_marker=$USERLAND_BOOTSTRAP_CONTROL/.apply-started.$$
+  printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$userland_apply_marker"
+  mv "$userland_apply_marker" "$USERLAND_BOOTSTRAP_CONTROL/apply-started"
+}
+
+userland_bootstrap_require_lock_access() {
+  userland_bootstrap_lock=$USERLAND_DATA_DIR/bootstrap.lock
+  [ -e "$userland_bootstrap_lock" ] || [ -L "$userland_bootstrap_lock" ] || return 0
+  [ -d "$userland_bootstrap_lock" ] && [ ! -L "$userland_bootstrap_lock" ] ||
+    userland_die "bootstrap lock is invalid: $userland_bootstrap_lock"
+  [ -n "${USERLAND_BOOTSTRAP_TOKEN:-}" ] ||
+    userland_die "bootstrap is preparing ~/.userland; finish or cancel that run first"
+  [ -f "$userland_bootstrap_lock/owner" ] && [ ! -L "$userland_bootstrap_lock/owner" ] ||
+    userland_die "bootstrap lock owner is invalid"
+  [ "$(cat "$userland_bootstrap_lock/owner")" = "$USERLAND_BOOTSTRAP_TOKEN" ] ||
+    userland_die "another userland bootstrap owns this checkout"
+}
+
 userland_sync() {
   userland_require_schema
   userland_require_mise
   userland_mkdirs
+  userland_bootstrap_require_lock_access
   userland_ui command sync "Update userland, apply declared state, then verify it."
   userland_ui section "Preflight"
   userland_sync_preflight
@@ -51,6 +81,7 @@ userland_sync() {
   userland_plan embedded
   userland_plan_require_applicable
   userland_confirm_sync
+  userland_bootstrap_mark_apply_started
 
   userland_ui section "Apply packages"
   userland_ui task apply "Install missing rolling packages" \
@@ -75,6 +106,10 @@ userland_sync() {
   # shellcheck source=doctor.sh
   . "$USERLAND_ROOT/lib/doctor.sh"
   if userland_doctor embedded; then
+    if ! userland_trash_legacy_checkout; then
+      userland_ui summary attention "Sync complete, but a legacy checkout needs review."
+      return 2
+    fi
     userland_ui summary ok "Sync complete. This Mac matches userland."
     return 0
   fi

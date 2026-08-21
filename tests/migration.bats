@@ -81,6 +81,25 @@ teardown() {
   [ ! -L "$USERLAND_HOME/.agents/skills" ]
 }
 
+@test "current-layout release links are recognized as legacy ownership" {
+  old_release=$USERLAND_DATA_DIR/releases/v0.1.11
+  old_checkout=$USERLAND_DATA_DIR/repo
+  rm "$USERLAND_HOME/.config/gh"
+  mkdir -p "$old_release/config/xdg/gh" "$old_checkout/config/home" "$USERLAND_HOME/.config/gh"
+  printf '%s\n' managed >"$old_release/config/xdg/gh/config.yml"
+  printf '%s\n' managed >"$old_checkout/config/home/zshrc"
+  printf '%s\n' local >"$USERLAND_HOME/.config/gh/hosts.yml"
+  ln -s "$old_release/config/xdg/gh/config.yml" "$USERLAND_HOME/.config/gh/config.yml"
+  ln -s "$old_checkout/config/home/zshrc" "$USERLAND_HOME/.zshrc"
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_prepare_legacy_dotfiles'
+
+  [ "$status" -eq 0 ]
+  [ -f "$USERLAND_HOME/.config/gh/hosts.yml" ]
+  [ ! -e "$USERLAND_HOME/.config/gh/config.yml" ]
+  [ ! -e "$USERLAND_HOME/.zshrc" ]
+}
+
 @test "v0.1.3 symlink-each trees release every old source" {
   old_checkout=$USERLAND_DATA_DIR/repo
   rm "$USERLAND_HOME/.config/gh"
@@ -102,4 +121,37 @@ teardown() {
   [ ! -e "$USERLAND_HOME/.agents/skills/unslop/SKILL.md" ]
   [ ! -L "$USERLAND_HOME/.config/gh/config.yml" ]
   [ ! -L "$USERLAND_HOME/.agents/skills/unslop/SKILL.md" ]
+}
+
+@test "legacy checkout cleanup waits for links and moves all local state to Trash" {
+  old_checkout=$USERLAND_DATA_DIR/repo
+  export USERLAND_TRASH_DIR=$TEST_TMPDIR/trash
+  mkdir -p "$old_checkout/config/home" "$USERLAND_CACHE_DIR"
+  printf '%s\n' managed >"$old_checkout/config/home/zshrc"
+  printf '*.secret\n' >"$old_checkout/.gitignore"
+  git -C "$old_checkout" init -b main >/dev/null
+  git -C "$old_checkout" add config/home/zshrc .gitignore
+  git -C "$old_checkout" -c user.name=Userland -c user.email=userland@example.invalid commit -m fixture >/dev/null
+  git -C "$old_checkout" remote add origin https://github.com/giacomoguidotto/userland.git
+  printf '%s\n' ignored-local-state >"$old_checkout/machine.secret"
+  git -C "$old_checkout" checkout -b local-work >/dev/null
+  printf '%s\n' branch-local-state >"$old_checkout/branch-only"
+  git -C "$old_checkout" add branch-only
+  git -C "$old_checkout" -c user.name=Userland -c user.email=userland@example.invalid commit -m local >/dev/null
+  git -C "$old_checkout" checkout main >/dev/null
+  ln -s "$old_checkout/config/home/zshrc" "$USERLAND_HOME/.zshrc"
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_trash_legacy_checkout'
+  [ "$status" -eq 2 ]
+  [ -d "$old_checkout/.git" ]
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_prepare_legacy_dotfiles; userland_trash_legacy_checkout'
+  [ "$status" -eq 0 ]
+  [ ! -e "$old_checkout" ]
+  trashed_checkout=$(find "$USERLAND_TRASH_DIR" -type d -name checkout -print -quit)
+  [ -n "$trashed_checkout" ]
+  [ -f "$trashed_checkout/machine.secret" ]
+  grep -q ignored-local-state "$trashed_checkout/machine.secret"
+  git -C "$trashed_checkout" show-ref --verify --quiet refs/heads/local-work
+  [ "$(git -C "$trashed_checkout" show local-work:branch-only)" = branch-local-state ]
 }

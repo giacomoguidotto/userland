@@ -106,7 +106,8 @@ teardown() {
   [[ "$output" == *"doctor"*"Check this Mac"* ]]
   [[ "$output" == *"▗▖ ▗▖ ▗▄▄▖"*"▝▚▄▞▘▗▄▄▞▘"* ]]
   [[ "$output" == *$'\n '*"┌"* ]]
-  [[ "$output" == *$'\e[37m┌'* ]]
+  [[ "$output" == *$'\e[0m\n ┌'* ]]
+  [[ "$output" != *$'\e[37m┌'* ]]
   [[ "$output" != *$'\e[36m┌'* ]]
   [[ "$output" == *$'\n │'* ]]
   [[ "$output" == *$'\n '*"◆"*"Security"* ]]
@@ -178,6 +179,7 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
   [ "$status" -eq 0 ]
   [[ "$output" == *$'?  Apply this plan? [y/N] › Y\n │'* ]]
+  [ "$(grep -Fc 'stty -echo' "$TEST_ROOT/lib/ui.sh")" -eq 0 ]
 
   run env \
     USERLAND_ROOT="$TEST_ROOT" \

@@ -41,7 +41,6 @@ userland_ui_prepare_stream() {
     userland_ui_yellow="${userland_ui_escape}[33m"
     userland_ui_red="${userland_ui_escape}[31m"
     userland_ui_cyan="${userland_ui_escape}[36m"
-    userland_ui_white="${userland_ui_escape}[37m"
   else
     userland_ui_reset=
     userland_ui_bold=
@@ -50,7 +49,6 @@ userland_ui_prepare_stream() {
     userland_ui_yellow=
     userland_ui_red=
     userland_ui_cyan=
-    userland_ui_white=
   fi
 
   if [ -n "${USERLAND_UNICODE+x}" ]; then
@@ -134,15 +132,7 @@ userland_ui_clear_active() {
   fi
 }
 
-userland_ui_restore_tty() {
-  if [ -n "${userland_ui_tty_state:-}" ] && [ -r /dev/tty ]; then
-    stty "$userland_ui_tty_state" </dev/tty 2>/dev/null || :
-    unset userland_ui_tty_state
-  fi
-}
-
 userland_ui_cleanup() {
-  userland_ui_restore_tty
   userland_ui_clear_active
   if [ -n "${userland_ui_child_pid:-}" ]; then
     kill "$userland_ui_child_pid" 2>/dev/null || :
@@ -315,6 +305,11 @@ userland_ui_status() {
       userland_ui_tint=$userland_ui_green
       userland_ui_plain_state=ok
       ;;
+    done)
+      userland_ui_symbol=$userland_ui_done
+      userland_ui_tint=$userland_ui_green
+      userland_ui_plain_state=ok
+      ;;
     change)
       userland_ui_symbol=$userland_ui_change_symbol
       userland_ui_tint=$userland_ui_cyan
@@ -406,17 +401,7 @@ userland_ui_confirm() {
   fi
 
   if [ "$userland_ui_confirm_output" = /dev/tty ]; then
-    userland_ui_tty_state=$(stty -g </dev/tty) || {
-      userland_ui_status error "$userland_ui_text could not read the terminal"
-      return 1
-    }
-    stty -echo </dev/tty || {
-      unset userland_ui_tty_state
-      userland_ui_status error "$userland_ui_text could not read the terminal"
-      return 1
-    }
     IFS= read -r userland_ui_confirmation </dev/tty || userland_ui_confirmation=
-    userland_ui_restore_tty
   fi
 
   case "$userland_ui_confirmation" in
@@ -429,6 +414,10 @@ userland_ui_confirm() {
       userland_ui_confirmation_status=3
       ;;
   esac
+  if [ "$userland_ui_confirm_output" = /dev/tty ] && [ "$userland_ui_active_mode" = rich ]; then
+    printf '%s[1A\r%s[2K' "$userland_ui_escape" "$userland_ui_escape" >"$userland_ui_confirm_output"
+    printf '%s%s?%s  %s %s[y/N]%s %s›%s ' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_reset" >"$userland_ui_confirm_output"
+  fi
   printf '%s\n' "$userland_ui_confirmation_choice" >"$userland_ui_confirm_output"
   if [ "$userland_ui_active_mode" = rich ]; then
     printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail" >"$userland_ui_confirm_output"
@@ -462,7 +451,7 @@ userland_ui() {
         else
           userland_ui_title_rule='----------------------------------------'
         fi
-        printf '%s%s%s%s%s\n' "$userland_ui_margin" "$userland_ui_white" "$userland_ui_open" "$userland_ui_title_rule" "$userland_ui_reset"
+        printf '%s%s%s\n' "$userland_ui_margin" "$userland_ui_open" "$userland_ui_title_rule"
         printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
         printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"
       else
@@ -476,6 +465,14 @@ userland_ui() {
         printf '%s%s\n%s%s%s%s  %s\n%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_margin" "$userland_ui_rail"
       else
         printf '== %s\n' "$userland_ui_text"
+      fi
+      ;;
+    spacer)
+      [ "$#" -eq 0 ] || return 64
+      if [ "$userland_ui_active_mode" = rich ]; then
+        printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail"
+      else
+        printf '\n'
       fi
       ;;
     status)

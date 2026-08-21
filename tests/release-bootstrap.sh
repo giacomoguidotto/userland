@@ -424,11 +424,16 @@ HOME="$cancel_home" \
   NO_COLOR=1 \
   sh "$work/bootstrap" >"$work/cancel-output" 2>&1 || cancel_status=$?
 [ "$cancel_status" -eq 3 ] || fail "cancelled run returned $cancel_status"
-grep -Fq '·  Deleting ~/.userland' "$work/cancel-output" ||
+grep -Fq '◇  Deleting ~/.userland' "$work/cancel-output" ||
   fail "cancelled run did not put checkout deletion in the UI"
 grep -Fq '└  Cancelled. No changes were applied.' "$work/cancel-output" ||
   fail "cancelled run did not restore the final cancellation message"
-delete_line=$(grep -nF '·  Deleting ~/.userland' "$work/cancel-output" | cut -d: -f1)
+expected_cancel_flow='◇  Deleting ~/.userland
+ │
+ └  Cancelled. No changes were applied.'
+grep -Fq "$expected_cancel_flow" "$work/cancel-output" ||
+  fail "cancelled run did not pad checkout deletion before the summary"
+delete_line=$(grep -nF '◇  Deleting ~/.userland' "$work/cancel-output" | cut -d: -f1)
 cancel_line=$(grep -nF '└  Cancelled. No changes were applied.' "$work/cancel-output" | cut -d: -f1)
 [ "$delete_line" -lt "$cancel_line" ] || fail "cancelled run closed before deleting the checkout"
 if grep -Fq 'userland: remov' "$work/cancel-output"; then
@@ -452,7 +457,7 @@ HOME="$signal_home" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >"$work/signal-output" 2>&1 || signal_status=$?
 [ "$signal_status" -eq 130 ] || fail "interrupted run returned $signal_status"
-grep -Fq '[info] Deleting ~/.userland' "$work/signal-output" ||
+grep -Fq '[ok] Deleting ~/.userland' "$work/signal-output" ||
   fail "interrupted run did not put checkout deletion in the UI"
 grep -Fq '[cancelled] Cancelled. No changes were applied.' "$work/signal-output" ||
   fail "interrupted run did not restore the final cancellation message"

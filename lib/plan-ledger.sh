@@ -145,22 +145,14 @@ userland_plan_render() {
     printf '%s%s%s  Plan\n%s\n' "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_ui_rail"
   fi
 
-  userland_plan_section_index=0
   while IFS="$userland_plan_tab" read -r userland_plan_row userland_plan_a userland_plan_b userland_plan_c userland_plan_d; do
     case "$userland_plan_row" in
       section)
-        userland_plan_section_index=$((userland_plan_section_index + 1))
         userland_plan_current_area=$userland_plan_a
         userland_plan_current_count=$userland_plan_c
         if [ "$userland_ui_active_mode" = rich ]; then
-          if [ "$userland_plan_section_index" -lt 4 ]; then
-            userland_plan_branch='├─'
-            userland_plan_item_prefix="$userland_ui_rail  "
-          else
-            userland_plan_branch='└─'
-            userland_plan_item_prefix='   '
-          fi
-          printf '%s%s%s %s%s%s\n' "$userland_ui_cyan" "$userland_plan_branch" "$userland_ui_reset" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
+          userland_plan_item_prefix="$userland_ui_rail  "
+          printf '%s├%s %s%s%s\n' "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
           if [ "$userland_plan_current_count" -eq 0 ]; then
             if [ "$userland_plan_current_area" = cleanup ]; then
               printf '%s%sNo stale userland-owned items%s\n' "$userland_plan_item_prefix" "$userland_ui_dim" "$userland_ui_reset"

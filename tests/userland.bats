@@ -179,8 +179,10 @@ teardown() {
   [[ "$output" == *"App 6"* ]]
   [[ "$output" == *"~/.stale-1"* ]]
   [[ "$output" == *"~/.stale-6"* ]]
-  [[ "$output" == *$'\n├─ OS changes'* ]]
-  [[ "$output" == *$'\n└─ Cleanup'* ]]
+  [[ "$output" == *$'\n├ OS changes'* ]]
+  [[ "$output" == *$'\n├ Cleanup'* ]]
+  [[ "$output" == *$'\n│  -  ~/.stale-6'* ]]
+  [[ "$output" != *"└"* ]]
   [[ "$output" != *"│  ├"* ]]
   grep -q "App 6" "$USERLAND_STATE_DIR/last-run.log"
   grep -q "~/.stale-6" "$USERLAND_STATE_DIR/last-run.log"

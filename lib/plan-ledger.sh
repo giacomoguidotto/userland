@@ -113,50 +113,26 @@ userland_plan_render() {
       handling[NR] = $3
       target[NR] = $5
       detail[NR] = $6
-      proof[NR] = $7
       count[$1]++
       if ($3 == "automatic" && $1 != "cleanup") automatic++
       if ($3 == "attended") attended++
       if ($3 == "blocked") blocked++
       if ($1 == "cleanup") cleanup++
-      if ($1 == "cleanup" && $2 == "release" && $7 ~ /^legacy-link:/) {
-        if ($5 ~ /\/(\.agents|\.claude|\.codex)\// || $5 ~ /\/\.config\/opencode\//) {
-          legacy_agents++
-        } else if ($5 ~ /\/\.config\//) {
-          legacy_config++
-        } else {
-          legacy_shell++
-        }
-      }
     }
     END {
       order[1] = "os"; order[2] = "fs"; order[3] = "apps"; order[4] = "cleanup"
       for (o = 1; o <= 4; o++) {
         a = order[o]
         print "section\t" a "\t" title(a) "\t" count[a] + 0
-        safe_shown = 0
-        hidden = 0
-        if (a == "cleanup") {
-          if (legacy_shell) print "item\t-\tRelease " legacy_shell " legacy shell or SSH links\tVerified userland ownership\tautomatic"
-          if (legacy_agents) print "item\t-\tRelease " legacy_agents " legacy agent links\tExact targets in the private run log\tautomatic"
-          if (legacy_config) print "item\t-\tRelease " legacy_config " legacy app-config links\tUnder ~/.config; exact targets in the private run log\tautomatic"
-        }
         for (priority = 1; priority <= 2; priority++) {
           for (i = 1; i <= NR; i++) {
             if (area[i] != a) continue
-            if (a == "cleanup" && action[i] == "release" && proof[i] ~ /^legacy-link:/) continue
             risky = handling[i] != "automatic" || a == "cleanup"
             if ((priority == 1 && !risky) || (priority == 2 && risky)) continue
-            if (!risky && safe_shown >= 4) {
-              hidden++
-              continue
-            }
             rendered_detail = detail[i] == "" ? "-" : detail[i]
             print "item\t" glyph(action[i], handling[i]) "\t" target[i] "\t" rendered_detail "\t" handling[i]
-            if (!risky) safe_shown++
           }
         }
-        if (hidden) print "more\t+\t" hidden " more automatic changes\tSee the private run log\tautomatic"
       }
       print "summary\t" automatic + 0 "\t" attended + 0 "\t" blocked + 0 "\t" cleanup + 0
     }
@@ -178,16 +154,18 @@ userland_plan_render() {
         userland_plan_current_count=$userland_plan_c
         if [ "$userland_ui_active_mode" = rich ]; then
           if [ "$userland_plan_section_index" -lt 4 ]; then
-            userland_plan_branch='├'
+            userland_plan_branch='├─'
+            userland_plan_item_prefix="$userland_ui_rail  "
           else
-            userland_plan_branch='└'
+            userland_plan_branch='└─'
+            userland_plan_item_prefix='   '
           fi
-          printf '%s  %s%s%s %s%s%s\n' "$userland_ui_rail" "$userland_ui_cyan" "$userland_plan_branch" "$userland_ui_reset" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
+          printf '%s%s%s %s%s%s\n' "$userland_ui_cyan" "$userland_plan_branch" "$userland_ui_reset" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
           if [ "$userland_plan_current_count" -eq 0 ]; then
             if [ "$userland_plan_current_area" = cleanup ]; then
-              printf '%s     %sNo stale userland-owned items%s\n' "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_reset"
+              printf '%s%sNo stale userland-owned items%s\n' "$userland_plan_item_prefix" "$userland_ui_dim" "$userland_ui_reset"
             else
-              printf '%s     %sNo changes%s\n' "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_reset"
+              printf '%s%sNo changes%s\n' "$userland_plan_item_prefix" "$userland_ui_dim" "$userland_ui_reset"
             fi
           fi
         else
@@ -201,7 +179,7 @@ userland_plan_render() {
           fi
         fi
         ;;
-      item | more)
+      item)
         userland_plan_redacted_target=$userland_plan_b
         userland_ui_redact "$userland_plan_redacted_target"
         userland_plan_redacted_target=$userland_ui_text
@@ -213,7 +191,7 @@ userland_plan_render() {
             blocked | attended) userland_plan_item_tint=$userland_ui_yellow ;;
             *) userland_plan_item_tint=$userland_ui_cyan ;;
           esac
-          printf '%s     %s%s%s  %s' "$userland_ui_rail" "$userland_plan_item_tint" "$userland_plan_a" "$userland_ui_reset" "$userland_plan_redacted_target"
+          printf '%s%s%s%s  %s' "$userland_plan_item_prefix" "$userland_plan_item_tint" "$userland_plan_a" "$userland_ui_reset" "$userland_plan_redacted_target"
           [ -z "$userland_plan_redacted_detail" ] || printf '  %s%s%s' "$userland_ui_dim" "$userland_plan_redacted_detail" "$userland_ui_reset"
           printf '\n'
         else
@@ -235,7 +213,7 @@ userland_plan_render() {
         USERLAND_PLAN_BLOCKED=$userland_plan_blocked
         export USERLAND_PLAN_BLOCKED
         if [ "$userland_ui_active_mode" = rich ]; then
-          printf '%s\n%s  %s%s automatic · %s attended · %s cleanup' "$userland_ui_rail" "$userland_ui_rail" "$userland_ui_dim" "$userland_plan_automatic" "$userland_plan_attended" "$userland_plan_cleanup"
+          printf '%s\n%s%s%s  %s automatic · %s attended · %s cleanup' "$userland_ui_rail" "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_plan_automatic" "$userland_plan_attended" "$userland_plan_cleanup"
           [ "$userland_plan_blocked" -eq 0 ] || printf ' · %s blocked' "$userland_plan_blocked"
           printf '%s\n%s\n' "$userland_ui_reset" "$userland_ui_rail"
         else

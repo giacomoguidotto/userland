@@ -162,7 +162,7 @@ teardown() {
   grep -q "native-one" "$USERLAND_STATE_DIR/last-run.log"
 }
 
-@test "rich plans stay bounded and keep exact cleanup targets in the private log" {
+@test "rich plans use one connected tree and show every option" {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
     USERLAND_HOME="$USERLAND_HOME" \
@@ -174,10 +174,14 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; . "$USERLAND_ROOT/lib/plan-ledger.sh"; userland_ui command plan "Preview"; userland_plan_begin; for item in 1 2 3 4 5 6; do userland_plan_add apps install automatic declared "App $item" "Homebrew" "test:app:$item"; done; for item in 1 2 3 4 5 6; do userland_plan_add cleanup release automatic userland "~/.stale-$item" "legacy link" "legacy-link:test:$item"; done; userland_plan_render'
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2 more automatic changes"* ]]
-  [[ "$output" != *"App 6"* ]]
-  [[ "$output" == *"Release 6 legacy shell or SSH links"* ]]
-  [[ "$output" != *"~/.stale-6"* ]]
+  [[ "$output" != *"more automatic changes"* ]]
+  [[ "$output" == *"App 1"* ]]
+  [[ "$output" == *"App 6"* ]]
+  [[ "$output" == *"~/.stale-1"* ]]
+  [[ "$output" == *"~/.stale-6"* ]]
+  [[ "$output" == *$'\n├─ OS changes'* ]]
+  [[ "$output" == *$'\n└─ Cleanup'* ]]
+  [[ "$output" != *"│  ├"* ]]
   grep -q "App 6" "$USERLAND_STATE_DIR/last-run.log"
   grep -q "~/.stale-6" "$USERLAND_STATE_DIR/last-run.log"
 }

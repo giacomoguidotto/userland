@@ -11,6 +11,7 @@ USERLAND_COMMON_LOADED=1
 : "${USERLAND_CACHE_DIR:=${XDG_CACHE_HOME:-$USERLAND_HOME/.cache}/userland}"
 : "${USERLAND_STATE_DIR:=${XDG_STATE_HOME:-$USERLAND_HOME/.local/state}/userland}"
 : "${USERLAND_REPOSITORY_TTL_SECONDS:=86400}"
+: "${USERLAND_ORIGINAL_PATH:=${PATH:-}}"
 
 # A fresh Mac has these paths. Keep them explicit because app launchers and
 # recovery shells can replace PATH with a narrower value.
@@ -19,6 +20,7 @@ export PATH
 
 export USERLAND_HOME USERLAND_DATA_DIR USERLAND_CACHE_DIR USERLAND_STATE_DIR
 export USERLAND_REPOSITORY_TTL_SECONDS
+export USERLAND_ORIGINAL_PATH
 
 # shellcheck source=ui.sh
 . "$USERLAND_ROOT/lib/ui.sh"

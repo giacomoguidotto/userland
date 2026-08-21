@@ -11,8 +11,9 @@ data_dir=${USERLAND_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/userland}
 release_dir="$data_dir/releases/$tag"
 repo_dir="$data_dir/repo"
 bin_dir=${USERLAND_BIN_DIR:-$HOME/.local/bin}
+: "${USERLAND_ORIGINAL_PATH:=${PATH:-}}"
 PATH="$HOME/.local/share/mise/shims:$bin_dir:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
-export PATH
+export PATH USERLAND_ORIGINAL_PATH
 
 die() {
   printf 'userland: %s\n' "$*" >&2

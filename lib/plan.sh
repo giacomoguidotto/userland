@@ -29,6 +29,87 @@ userland_plan_plist_count() {
   printf '%s\n' "$userland_plan_count"
 }
 
+userland_plan_find_command() {
+  (
+    PATH=$USERLAND_ORIGINAL_PATH
+    export PATH
+    command -v "$1"
+  )
+}
+
+userland_plan_formula_command() {
+  userland_plan_formula=${1##*/}
+  userland_plan_formula=${userland_plan_formula%%@*}
+  if userland_plan_find_command "$userland_plan_formula" >/dev/null 2>&1; then
+    printf '%s\n' "$userland_plan_formula"
+    return 0
+  fi
+  case "$userland_plan_formula" in
+    git-delta) userland_plan_formula_alias='delta' ;;
+    kubernetes-cli) userland_plan_formula_alias='kubectl' ;;
+    neovim) userland_plan_formula_alias='nvim' ;;
+    nushell) userland_plan_formula_alias='nu' ;;
+    ripgrep) userland_plan_formula_alias='rg' ;;
+    *) return 1 ;;
+  esac
+  userland_plan_find_command "$userland_plan_formula_alias" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$userland_plan_formula_alias"
+}
+
+userland_plan_resolve_command() {
+  userland_plan_resolved=$1
+  userland_plan_resolve_depth=0
+  while [ -L "$userland_plan_resolved" ]; do
+    userland_plan_resolve_depth=$((userland_plan_resolve_depth + 1))
+    [ "$userland_plan_resolve_depth" -le 40 ] || return 1
+    userland_plan_resolve_target=$(readlink "$userland_plan_resolved") || return 1
+    case "$userland_plan_resolve_target" in
+      /*) userland_plan_resolved=$userland_plan_resolve_target ;;
+      *)
+        userland_plan_resolve_directory=${userland_plan_resolved%/*}
+        [ "$userland_plan_resolve_directory" != "$userland_plan_resolved" ] || userland_plan_resolve_directory=.
+        userland_plan_resolved=$userland_plan_resolve_directory/$userland_plan_resolve_target
+        ;;
+    esac
+  done
+  printf '%s\n' "$userland_plan_resolved"
+}
+
+userland_plan_command_provider() {
+  userland_plan_command_path=$(userland_plan_find_command "$1" 2>/dev/null) || return 1
+  userland_plan_command_resolved=$(userland_plan_resolve_command "$userland_plan_command_path" 2>/dev/null) || userland_plan_command_resolved=$userland_plan_command_path
+  userland_plan_command_locations=$userland_plan_command_path:$userland_plan_command_resolved
+  case "$userland_plan_command_locations" in
+    *"/nix/store/"* | *"/etc/profiles/per-user/"* | *"/.nix-profile/"*) printf 'Nix\n' ;;
+    *"/opt/homebrew/"* | *"/usr/local/Homebrew/"* | *"/usr/local/Cellar/"*) printf 'Homebrew\n' ;;
+    *"/.local/share/mise/"*) printf 'mise\n' ;;
+    *"/opt/local/"*) printf 'MacPorts\n' ;;
+    *"/.cargo/"* | *"/.rustup/"*) printf 'Cargo\n' ;;
+    *"/.bun/"*) printf 'Bun\n' ;;
+    *"/node_modules/.bin/"* | *"/.npm/"*) printf 'npm\n' ;;
+    *"/.local/share/uv/"*) printf 'uv\n' ;;
+    *"/pipx/"*) printf 'pipx\n' ;;
+    *"/.asdf/"*) printf 'asdf\n' ;;
+    /usr/bin/*:* | /bin/*:* | /usr/sbin/*:* | /sbin/*:* | /Library/Apple/usr/bin/*:*) printf 'macOS\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+userland_plan_package_detail() {
+  userland_plan_package=$1
+  userland_plan_package_change=$2
+  if [ "$userland_plan_package_change" = upgrade ]; then
+    printf 'upgrade with Homebrew\n'
+    return 0
+  fi
+  if userland_plan_package_command=$(userland_plan_formula_command "$userland_plan_package") &&
+    userland_plan_package_provider=$(userland_plan_command_provider "$userland_plan_package_command"); then
+    printf 'migrate from %s to Homebrew\n' "$userland_plan_package_provider"
+  else
+    printf 'migrate to Homebrew\n'
+  fi
+}
+
 userland_plan_import_mise() {
   userland_plan_json=$1
   userland_plan_resource_count=$(userland_plan_plist_count resources "$userland_plan_json") || return 1
@@ -58,9 +139,10 @@ userland_plan_import_mise() {
             else
               userland_plan_package_action=upgrade
             fi
+            userland_plan_package_description=$(userland_plan_package_detail "$userland_plan_package_name" "$userland_plan_package_action")
             userland_plan_add apps "$userland_plan_package_action" automatic declared \
               "$userland_plan_package_name" \
-              "$userland_plan_resource_current to $userland_plan_resource_desired" \
+              "$userland_plan_package_description" \
               "mise:$userland_plan_resource_kind:$userland_plan_resource_name" || return 1
             ;;
           file | directory)

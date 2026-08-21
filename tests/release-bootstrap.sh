@@ -19,6 +19,7 @@ mkdir -p "$fixture/bin"
 cat >"$fixture/bin/userland" <<'EOF'
 #!/bin/sh
 readlink "$HOME/.local/bin/userland" >"$TEST_OBSERVATION"
+printf 'original-path=%s\n' "${USERLAND_ORIGINAL_PATH:-}" >>"$TEST_OBSERVATION"
 exit "$TEST_SYNC_STATUS"
 EOF
 cat >"$fixture/bin/mise" <<'EOF'
@@ -130,8 +131,10 @@ chmod +x "$work/repo-userland"
 
 attention_home="$work/attention-home"
 prepare_home "$attention_home"
+attention_original_path="$attention_home/original-bin:$PATH"
 attention_status=0
 HOME="$attention_home" \
+  PATH="$attention_original_path" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
   TEST_COMMIT="$commit" \
   TEST_OBSERVATION="$work/attention-observation" \
@@ -143,6 +146,8 @@ HOME="$attention_home" \
 [ "$attention_status" -eq 0 ] || fail "completed attention run returned $attention_status"
 grep -Fq "$attention_home/.local/share/userland/releases/$tag/bin/userland" "$work/attention-observation" ||
   fail "release command was not linked before sync"
+grep -Fq "original-path=$attention_original_path" "$work/attention-observation" ||
+  fail "bootstrap did not preserve the caller PATH"
 [ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.local/share/userland/repo/bin/userland" ] ||
   fail "attention run did not finish the repository link"
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$tag" ] ||

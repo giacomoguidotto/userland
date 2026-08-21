@@ -297,12 +297,25 @@ EOF
 }
 
 @test "plan classifies exact mise and macOS resources by effect" {
+  fake_nix_bin="$TEST_TMPDIR/etc/profiles/per-user/giacomo/bin"
+  mkdir -p "$fake_nix_bin"
+  cat >"$fake_nix_bin/eza" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  cat >"$fake_nix_bin/git" <<'EOF'
+#!/bin/sh
+exec /usr/bin/git "$@"
+EOF
+  chmod +x "$fake_nix_bin/eza" "$fake_nix_bin/git"
+  export PATH="$fake_nix_bin:$PATH"
+
   cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>"$MISE_CALLS"
 case "$*" in
   *bootstrap*plan*--json*)
-    printf '%s\n' '{"resources":[{"id":{"kind":"package","name":"brew:ripgrep"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"file","name":"~/.config/example"},"current":"old","desired":"managed","action":"update"},{"id":{"kind":"service","name":"retired-agent"},"current":"running","desired":"absent","action":"remove"}],"summary":{"create":1,"update":1,"remove":1,"unchanged":0,"unknown":0}}'
+    printf '%s\n' '{"resources":[{"id":{"kind":"package","name":"brew:eza"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"package","name":"brew:git"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"package","name":"brew:unknown-tool"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"file","name":"~/.config/example"},"current":"old","desired":"managed","action":"update"},{"id":{"kind":"service","name":"retired-agent"},"current":"running","desired":"absent","action":"remove"}],"summary":{"create":3,"update":1,"remove":1,"unchanged":0,"unknown":0}}'
     ;;
   *bootstrap*dotfiles*status*--json*)
     printf '%s\n' '{"files":[{"state":"differs","source":"~/userland/config/home/zshrc","target":"~/.zshrc","mode":"symlink"}],"edits":[]}'
@@ -321,7 +334,9 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Finder · AppleShowAllFiles: false to true"* ]]
   [[ "$output" == *"~/.config/example: old to managed"* ]]
-  [[ "$output" == *"ripgrep: missing to installed"* ]]
+  [[ "$output" == *"eza: migrate from Nix to Homebrew"* ]]
+  [[ "$output" == *"git: migrate from Nix to Homebrew"* ]]
+  [[ "$output" == *"unknown-tool: migrate to Homebrew"* ]]
   [[ "$output" == *"retired-agent: running to absent"* ]]
 }
 

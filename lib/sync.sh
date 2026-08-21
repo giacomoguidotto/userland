@@ -87,11 +87,16 @@ userland_sync() {
   userland_bootstrap_mark_apply_started
 
   userland_ui section "Apply packages"
+  USERLAND_UI_PROGRESS=mise-install
+  export USERLAND_UI_PROGRESS
   userland_ui task apply "Install missing rolling packages" \
     "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages apply --yes --jobs "${USERLAND_JOBS:-4}"
 
+  USERLAND_UI_PROGRESS=mise-upgrade
+  export USERLAND_UI_PROGRESS
   userland_ui task apply "Upgrade installed rolling packages" \
     "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages upgrade --yes --jobs "${USERLAND_JOBS:-4}"
+  unset USERLAND_UI_PROGRESS
 
   userland_prepare_legacy_dotfiles
 

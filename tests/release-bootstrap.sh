@@ -478,12 +478,19 @@ HOME="$retained_home" \
   TEST_SYNC_STATUS=130 \
   USERLAND_DATA_DIR="$retained_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || retained_status=$?
+  USERLAND_UI_MODE=rich \
+  USERLAND_UNICODE=1 \
+  sh "$work/bootstrap" >"$work/retained-output" 2>&1 || retained_status=$?
 [ "$retained_status" -eq 130 ] || fail "post-approval interruption returned $retained_status"
 [ -f "$retained_home/.userland/.userland-stage" ] ||
   fail "post-approval failure did not retain the canonical stage"
 [ "$(readlink "$retained_home/.local/bin/userland")" = "$retained_home/.userland/bin/userland" ] ||
   fail "post-approval failure did not retain the canonical command"
+grep -Fq '└  Cancelled. Applied progress was preserved.' "$work/retained-output" ||
+  fail "post-approval interruption did not render the retained-progress summary"
+if grep -Fq 'Deleting ~/.userland' "$work/retained-output"; then
+  fail "post-approval interruption claimed to delete the retained checkout"
+fi
 
 cross_release_status=0
 HOME="$retained_home" \

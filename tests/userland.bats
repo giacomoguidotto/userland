@@ -259,6 +259,53 @@ teardown() {
   grep -q "native-one" "$USERLAND_STATE_DIR/last-run.log"
 }
 
+@test "package spinners expose elapsed time, direct progress, target, and phase" {
+  plan_file=$TEST_TMPDIR/package-plan
+  task_log=$TEST_TMPDIR/package-task
+  mkdir -p "$USERLAND_CACHE_DIR"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    apps install automatic declared bat Homebrew mise:package:brew:bat \
+    apps install automatic declared ffmpeg Homebrew mise:package:brew:ffmpeg \
+    apps install automatic declared ghostty Homebrew brewfile:Cask:ghostty >"$plan_file"
+  printf '%s\n' \
+    'mise brew:dependency  ✓ 1.0.0' \
+    'mise brew:bat         ✓ 0.26.0' \
+    'mise brew:ffmpeg      download ffmpeg.tar.gz' >"$task_log"
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_PLAN_FILE="$plan_file" \
+    USERLAND_UI_PROGRESS=mise-install \
+    TASK_LOG="$task_log" \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui_task_log=$TASK_LOG; userland_ui_progress_prepare; userland_ui_spinner_started_at=$(($(date +%s) - 65)); userland_ui_progress_refresh; printf "%s\n" "$userland_ui_spinner_detail"'
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '1m 5s · 1/2 · ffmpeg · download' ]
+}
+
+@test "cleanup preserves output from an interrupted task in the private run log" {
+  task_log=$TEST_TMPDIR/interrupted-task
+  mkdir -p "$USERLAND_STATE_DIR"
+  : >"$USERLAND_STATE_DIR/last-run.log"
+  printf '%s\n' 'mise brew:ffmpeg download ffmpeg.tar.gz' >"$task_log"
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_UI_RUN_LOG="$USERLAND_STATE_DIR/last-run.log" \
+    TASK_LOG="$task_log" \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui_task_label="Install missing rolling packages"; userland_ui_task_log=$TASK_LOG; userland_ui_cleanup; cat "$USERLAND_UI_RUN_LOG"'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'## Install missing rolling packages (interrupted)'* ]]
+  [[ "$output" == *'mise brew:ffmpeg download ffmpeg.tar.gz'* ]]
+}
+
 @test "rich plans use one connected tree and show every option" {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \

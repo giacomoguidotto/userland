@@ -137,14 +137,25 @@ userland_ui_cleanup() {
   if [ -n "${userland_ui_child_pid:-}" ]; then
     kill "$userland_ui_child_pid" 2>/dev/null || :
   fi
+  userland_ui_preserve_interrupted_task
   for userland_ui_cleanup_file in \
     "${userland_ui_task_log:-}" \
     "${userland_ui_task_status:-}" \
+    "${userland_ui_progress_file:-}" \
     "${USERLAND_PLAN_RESULT:-}" \
     "${USERLAND_PLAN_FILE:-}"; do
     [ -n "$userland_ui_cleanup_file" ] && [ -f "$userland_ui_cleanup_file" ] && rm -f "$userland_ui_cleanup_file"
   done
   return 0
+}
+
+userland_ui_preserve_interrupted_task() {
+  [ -n "${userland_ui_task_log:-}" ] && [ -f "$userland_ui_task_log" ] || return 0
+  [ -n "${USERLAND_UI_RUN_LOG:-}" ] || return 0
+  {
+    printf '\n## %s (interrupted)\n' "${userland_ui_task_label:-Task}"
+    cat "$userland_ui_task_log"
+  } >>"$USERLAND_UI_RUN_LOG"
 }
 
 userland_ui_exit() {
@@ -198,18 +209,106 @@ userland_ui_spinner_frame() {
   fi
 }
 
+userland_ui_format_duration() {
+  userland_ui_duration_seconds=$1
+  if [ "$userland_ui_duration_seconds" -ge 3600 ]; then
+    userland_ui_duration_text="$((userland_ui_duration_seconds / 3600))h $(((userland_ui_duration_seconds % 3600) / 60))m"
+  elif [ "$userland_ui_duration_seconds" -ge 60 ]; then
+    userland_ui_duration_text="$((userland_ui_duration_seconds / 60))m $((userland_ui_duration_seconds % 60))s"
+  elif [ "$userland_ui_duration_seconds" -gt 0 ]; then
+    userland_ui_duration_text="${userland_ui_duration_seconds}s"
+  else
+    userland_ui_duration_text='<1s'
+  fi
+}
+
+userland_ui_progress_prepare() {
+  userland_ui_progress_file=
+  userland_ui_progress_total=0
+  case "${USERLAND_UI_PROGRESS:-}" in
+    mise-install) userland_ui_progress_action=install ;;
+    mise-upgrade) userland_ui_progress_action=upgrade ;;
+    *) return 0 ;;
+  esac
+  [ -n "${USERLAND_PLAN_FILE:-}" ] && [ -f "$USERLAND_PLAN_FILE" ] || return 0
+
+  userland_ui_progress_file=$(mktemp "$USERLAND_CACHE_DIR/progress.XXXXXX")
+  awk -F '\t' -v action="$userland_ui_progress_action" '
+    $1 == "apps" && $2 == action && $7 ~ /^mise:package:/ { print $5 }
+  ' "$USERLAND_PLAN_FILE" | LC_ALL=C sort -u >"$userland_ui_progress_file"
+  userland_ui_progress_total=$(wc -l <"$userland_ui_progress_file" | tr -d ' ')
+}
+
+userland_ui_progress_refresh() {
+  userland_ui_progress_now=$(date +%s)
+  userland_ui_format_duration "$((userland_ui_progress_now - userland_ui_spinner_started_at))"
+  userland_ui_spinner_detail=$userland_ui_duration_text
+  [ "${userland_ui_progress_total:-0}" -gt 0 ] || return 0
+  [ -n "${userland_ui_task_log:-}" ] && [ -f "$userland_ui_task_log" ] || return 0
+
+  userland_ui_progress_state=$(awk '
+    NR == FNR { planned[$0] = 1; next }
+    {
+      package = ""
+      phase = ""
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ /^brew:/) {
+          package = $i
+          sub(/^brew:/, "", package)
+        }
+        if ($i == "download" || $i == "checksum" || $i == "verify" ||
+            $i == "extract" || $i == "install" || $i == "relocate" ||
+            $i == "codesign" || $i == "link") phase = $i
+        if ($i == "✓" || $i == "done") phase = "done"
+      }
+      if (package != "") {
+        current = package
+        current_phase = phase == "" ? "working" : phase
+        if (phase == "done" && planned[package]) completed[package] = 1
+      }
+    }
+    END {
+      count = 0
+      for (package in completed) count++
+      if (current == "") current = "-"
+      if (current_phase == "") current_phase = "-"
+      printf "%d\t%s\t%s\n", count, current, current_phase
+    }
+  ' "$userland_ui_progress_file" "$userland_ui_task_log")
+  userland_ui_progress_tab=$(printf '\t')
+  userland_ui_progress_completed=${userland_ui_progress_state%%"$userland_ui_progress_tab"*}
+  userland_ui_progress_rest=${userland_ui_progress_state#*"$userland_ui_progress_tab"}
+  userland_ui_progress_target=${userland_ui_progress_rest%%"$userland_ui_progress_tab"*}
+  userland_ui_progress_phase=${userland_ui_progress_rest#*"$userland_ui_progress_tab"}
+  userland_ui_spinner_detail="$userland_ui_duration_text · $userland_ui_progress_completed/$userland_ui_progress_total"
+  if [ "$userland_ui_progress_target" != - ]; then
+    userland_ui_spinner_detail="$userland_ui_spinner_detail · $userland_ui_progress_target"
+  fi
+  if [ "$userland_ui_progress_phase" != - ]; then
+    userland_ui_spinner_detail="$userland_ui_spinner_detail · $userland_ui_progress_phase"
+  fi
+}
+
 userland_ui_spin() {
   userland_ui_spinner_label=$1
   userland_ui_spinner_tick=0
+  userland_ui_spinner_started_at=$(date +%s)
+  userland_ui_progress_refresh
   while kill -0 "$userland_ui_child_pid" 2>/dev/null; do
+    if [ $((userland_ui_spinner_tick % 8)) -eq 0 ]; then
+      userland_ui_progress_refresh
+    fi
     userland_ui_spinner_frame
-    printf '\r%s[2K%s%s%s%s  %s…' \
+    printf '\r%s[2K%s%s%s%s  %s… %s%s%s' \
       "$userland_ui_escape" \
       "$userland_ui_margin" \
       "$userland_ui_cyan" \
       "$userland_ui_spinner_glyph" \
       "$userland_ui_reset" \
-      "$userland_ui_spinner_label"
+      "$userland_ui_spinner_label" \
+      "$userland_ui_dim" \
+      "$userland_ui_spinner_detail" \
+      "$userland_ui_reset"
     userland_ui_active_row=1
     userland_ui_spinner_tick=$((userland_ui_spinner_tick + 1))
     sleep 0.12
@@ -228,6 +327,7 @@ userland_ui_task() {
   userland_ui_task_status=$userland_ui_task_log.status
   : >"$userland_ui_task_status"
   chmod 600 "$userland_ui_task_log" "$userland_ui_task_status"
+  userland_ui_progress_prepare
 
   if [ "$userland_ui_active_mode" = rich ]; then
     (
@@ -274,7 +374,8 @@ userland_ui_task() {
       printf '%s%s%s%s  %s\n' "$userland_ui_margin" "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_ui_task_label"
     fi
     rm -f "$userland_ui_task_log"
-    unset userland_ui_task_log userland_ui_task_status
+    [ -z "${userland_ui_progress_file:-}" ] || rm -f "$userland_ui_progress_file"
+    unset userland_ui_task_log userland_ui_task_status userland_ui_progress_file
     return 0
   fi
 
@@ -287,7 +388,8 @@ userland_ui_task() {
   userland_ui_task_excerpt "$userland_ui_task_log"
   userland_ui_status info "Log: $USERLAND_UI_RUN_LOG"
   rm -f "$userland_ui_task_log"
-  unset userland_ui_task_log userland_ui_task_status
+  [ -z "${userland_ui_progress_file:-}" ] || rm -f "$userland_ui_progress_file"
+  unset userland_ui_task_log userland_ui_task_status userland_ui_progress_file
   return "$userland_ui_task_code"
 }
 
@@ -350,15 +452,8 @@ userland_ui_elapsed() {
     userland_ui_finished_at=$(date +%s)
     userland_ui_elapsed_seconds=$((userland_ui_finished_at - userland_ui_started_at))
   fi
-  if [ "$userland_ui_elapsed_seconds" -ge 3600 ]; then
-    userland_ui_elapsed_text="$((userland_ui_elapsed_seconds / 3600))h $(((userland_ui_elapsed_seconds % 3600) / 60))m"
-  elif [ "$userland_ui_elapsed_seconds" -ge 60 ]; then
-    userland_ui_elapsed_text="$((userland_ui_elapsed_seconds / 60))m $((userland_ui_elapsed_seconds % 60))s"
-  elif [ "$userland_ui_elapsed_seconds" -gt 0 ]; then
-    userland_ui_elapsed_text="${userland_ui_elapsed_seconds}s"
-  else
-    userland_ui_elapsed_text='<1s'
-  fi
+  userland_ui_format_duration "$userland_ui_elapsed_seconds"
+  userland_ui_elapsed_text=$userland_ui_duration_text
 }
 
 userland_ui_usage() {

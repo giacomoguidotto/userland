@@ -336,6 +336,17 @@ cleanup() {
     else
       printf 'userland: could not restore the recovery command; preserving %s\n' "$repo_dir" >&2
     fi
+  elif apply_started && repo_is_owned_by_transaction; then
+    case "$cleanup_status" in
+      129 | 130 | 143)
+        if bootstrap_prepare_cancel_ui; then
+          userland_ui spacer
+          userland_ui summary cancelled "Cancelled. Applied progress was preserved."
+        else
+          printf 'userland: cancelled; applied progress was preserved\n' >&2
+        fi
+        ;;
+    esac
   fi
 
   [ -z "$release_work" ] || rm -rf "$release_work" || :

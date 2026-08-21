@@ -480,6 +480,7 @@ HOME="$retained_home" \
   USERLAND_NO_TTY=1 \
   USERLAND_UI_MODE=rich \
   USERLAND_UNICODE=1 \
+  NO_COLOR=1 \
   sh "$work/bootstrap" >"$work/retained-output" 2>&1 || retained_status=$?
 [ "$retained_status" -eq 130 ] || fail "post-approval interruption returned $retained_status"
 [ -f "$retained_home/.userland/.userland-stage" ] ||

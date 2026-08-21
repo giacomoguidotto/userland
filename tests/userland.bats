@@ -120,6 +120,20 @@ teardown() {
     USERLAND_UI_MODE=rich \
     USERLAND_UNICODE=1 \
     TERM=xterm-256color \
+    NO_COLOR= \
+    CLICOLOR_FORCE=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command sync "Preview"; userland_ui summary cancelled "Cancelled. No changes were applied."'
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\n └\e[0m  Cancelled. No changes were applied.'* ]]
+  [[ "$output" != *$'\e[2m└'* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    TERM=xterm-256color \
     CLICOLOR_FORCE=1 \
     NO_COLOR=1 \
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_log attention "Manual approval remains"'

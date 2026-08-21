@@ -495,7 +495,7 @@ userland_ui() {
           ok) userland_ui_summary_tint=$userland_ui_green ;;
           attention) userland_ui_summary_tint=$userland_ui_yellow ;;
           error) userland_ui_summary_tint=$userland_ui_red ;;
-          *) userland_ui_summary_tint=$userland_ui_dim ;;
+          cancelled) userland_ui_summary_tint= ;;
         esac
         printf '%s%s%s%s  %s\n' "$userland_ui_margin" "$userland_ui_summary_tint" "$userland_ui_close" "$userland_ui_reset" "$userland_ui_text"
         printf '%s   %s%s%s\n' "$userland_ui_margin" "$userland_ui_dim" "$userland_ui_elapsed_text" "$userland_ui_reset"

@@ -21,6 +21,11 @@ userland_ui_prepare_stream() {
       ;;
     *) userland_ui_active_mode=$USERLAND_UI_MODE ;;
   esac
+  if [ "$userland_ui_active_mode" = rich ]; then
+    userland_ui_margin=' '
+  else
+    userland_ui_margin=
+  fi
 
   userland_ui_color=0
   if [ -z "${NO_COLOR:-}" ] && [ "${CLICOLOR:-1}" != 0 ] && [ "${TERM:-}" != dumb ]; then
@@ -79,6 +84,17 @@ userland_ui_prepare_stream() {
     userland_ui_error_symbol='x'
     userland_ui_info_symbol='-'
     userland_ui_cancel_symbol='-'
+  fi
+}
+
+userland_ui_wordmark() {
+  if [ "$userland_ui_unicode" != 0 ]; then
+    printf '%s%s▗▖ ▗▖ ▗▄▄▖▗▄▄▄▖▗▄▄▖ ▗▖    ▗▄▖ ▗▖  ▗▖▗▄▄▄%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
+    printf '%s%s▐▌ ▐▌▐▌   ▐▌   ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌▐▌  █%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
+    printf '%s%s▐▌ ▐▌ ▝▀▚▖▐▛▀▀▘▐▛▀▚▖▐▌   ▐▛▀▜▌▐▌ ▝▜▌▐▌  █%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
+    printf '%s%s▝▚▄▞▘▗▄▄▞▘▐▙▄▄▖▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▌  ▐▌▐▙▄▄▀%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
+  else
+    printf '%s%s+-- USERLAND --+%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
   fi
 }
 
@@ -177,8 +193,9 @@ userland_ui_spin() {
   userland_ui_spinner_tick=0
   while kill -0 "$userland_ui_child_pid" 2>/dev/null; do
     userland_ui_spinner_frame
-    printf '\r%s[2K%s%s%s  %s…' \
+    printf '\r%s[2K%s%s%s%s  %s…' \
       "$userland_ui_escape" \
+      "$userland_ui_margin" \
       "$userland_ui_cyan" \
       "$userland_ui_spinner_glyph" \
       "$userland_ui_reset" \
@@ -244,7 +261,7 @@ userland_ui_task() {
 
   if [ "$userland_ui_task_code" -eq 0 ]; then
     if [ "$userland_ui_active_mode" = rich ]; then
-      printf '%s%s%s  %s\n' "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_ui_task_label"
+      printf '%s%s%s%s  %s\n' "$userland_ui_margin" "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_ui_task_label"
     fi
     rm -f "$userland_ui_task_log"
     unset userland_ui_task_log userland_ui_task_status
@@ -306,7 +323,7 @@ userland_ui_status() {
     *) return 64 ;;
   esac
   if [ "$userland_ui_active_mode" = rich ]; then
-    printf '%s%s%s  %s\n' "$userland_ui_tint" "$userland_ui_symbol" "$userland_ui_reset" "$userland_ui_text"
+    printf '%s%s%s%s  %s\n' "$userland_ui_margin" "$userland_ui_tint" "$userland_ui_symbol" "$userland_ui_reset" "$userland_ui_text"
   else
     printf '[%s] %s\n' "$userland_ui_plain_state" "$userland_ui_text"
   fi
@@ -331,7 +348,8 @@ userland_ui_elapsed() {
 
 userland_ui_usage() {
   if [ "$userland_ui_active_mode" = rich ]; then
-    printf '%suserland%s\n' "$userland_ui_bold" "$userland_ui_reset"
+    userland_ui_wordmark
+    printf '\n'
     printf '%sPersonal macOS state, kept in sync.%s\n\n' "$userland_ui_dim" "$userland_ui_reset"
     printf '%sUsage%s\n  userland <command>\n\n' "$userland_ui_bold" "$userland_ui_reset"
     printf '%sCommands%s\n' "$userland_ui_bold" "$userland_ui_reset"
@@ -355,7 +373,7 @@ userland_ui_confirm() {
     return 1
   fi
   if [ "$userland_ui_active_mode" = rich ]; then
-    printf '%s?%s  %s %s[y/N]%s %s›%s ' "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_reset" >/dev/tty
+    printf '%s%s?%s  %s %s[y/N]%s %s›%s ' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_reset" >/dev/tty
   else
     printf '%s [y/N] ' "$userland_ui_text" >/dev/tty
   fi
@@ -386,9 +404,10 @@ userland_ui() {
       trap 'userland_ui_signal 130' INT
       trap 'userland_ui_signal 143' TERM
       if [ "$userland_ui_active_mode" = rich ]; then
-        printf '%s%s%s  %suserland %s%s\n' "$userland_ui_cyan" "$userland_ui_open" "$userland_ui_reset" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
-        printf '%s  %s%s%s\n' "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"
-        printf '%s\n' "$userland_ui_rail"
+        userland_ui_wordmark
+        printf '\n%s%s%s%s  %suserland %s%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_open" "$userland_ui_reset" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
+        printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"
+        printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail"
       else
         printf 'userland %s: %s\n' "$userland_ui_command" "$userland_ui_description"
       fi
@@ -397,7 +416,7 @@ userland_ui() {
       [ "$#" -eq 1 ] || return 64
       userland_ui_redact "$1"
       if [ "$userland_ui_active_mode" = rich ]; then
-        printf '%s\n%s%s%s  %s\n%s\n' "$userland_ui_rail" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_rail"
+        printf '%s%s\n%s%s%s%s  %s\n%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_margin" "$userland_ui_rail"
       else
         printf '== %s\n' "$userland_ui_text"
       fi
@@ -424,8 +443,8 @@ userland_ui() {
           error) userland_ui_summary_tint=$userland_ui_red ;;
           *) userland_ui_summary_tint=$userland_ui_dim ;;
         esac
-        printf '%s%s%s  %s\n' "$userland_ui_summary_tint" "$userland_ui_close" "$userland_ui_reset" "$userland_ui_text"
-        printf '   %s%s%s\n' "$userland_ui_dim" "$userland_ui_elapsed_text" "$userland_ui_reset"
+        printf '%s%s%s%s  %s\n' "$userland_ui_margin" "$userland_ui_summary_tint" "$userland_ui_close" "$userland_ui_reset" "$userland_ui_text"
+        printf '%s   %s%s%s\n' "$userland_ui_margin" "$userland_ui_dim" "$userland_ui_elapsed_text" "$userland_ui_reset"
       else
         userland_ui_status "$userland_ui_summary_state" "$userland_ui_text ($userland_ui_elapsed_text)"
       fi

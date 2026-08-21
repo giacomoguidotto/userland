@@ -104,6 +104,10 @@ teardown() {
 
   [ "$status" -eq 0 ]
   [[ "$output" == *"userland"*"doctor"* ]]
+  [[ "$output" == *"▗▖ ▗▖ ▗▄▄▖"*"▝▚▄▞▘▗▄▄▞▘"* ]]
+  [[ "$output" == *$'\n ┌'* ]]
+  [[ "$output" == *$'\n │'* ]]
+  [[ "$output" == *$'\n ◆  Security'* ]]
   [[ "$output" == *"✓"*"FileVault is on"* ]]
   [[ "$output" == *$'\e['* ]]
 
@@ -154,6 +158,16 @@ teardown() {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
     USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=0 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command plan "Portable title"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"+-- USERLAND --+"* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
     USERLAND_UI_MODE=plain \
     USERLAND_ASSUME_YES= \
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
@@ -198,11 +212,12 @@ teardown() {
   [[ "$output" == *"App 6"* ]]
   [[ "$output" == *"~/.stale-1"* ]]
   [[ "$output" == *"~/.stale-6"* ]]
-  [[ "$output" == *$'\n ├─ OS changes'* ]]
-  [[ "$output" == *$'\n │\n ├─ Filesystem changes'* ]]
-  [[ "$output" == *$'\n │\n ├─ Application additions'* ]]
-  [[ "$output" == *$'\n │\n ├─ Cleanup'* ]]
-  [[ "$output" == *$'\n │  -  ~/.stale-6'* ]]
+  [[ "$output" == *$'\n ◆  Plan\n  │\n  ├─ OS changes'* ]]
+  [[ "$output" == *$'\n  ├─ OS changes'* ]]
+  [[ "$output" == *$'\n  │\n  ├─ Filesystem changes'* ]]
+  [[ "$output" == *$'\n  │\n  ├─ Application additions'* ]]
+  [[ "$output" == *$'\n  │\n  ├─ Cleanup'* ]]
+  [[ "$output" == *$'\n  │  -  ~/.stale-6'* ]]
   [[ "$output" != *"└"* ]]
   [[ "$output" != *"│  ├"* ]]
   app_detail_column=$(printf '%s\n' "$output" | awk '/App 1/ { print index($0, "Homebrew"); exit }')

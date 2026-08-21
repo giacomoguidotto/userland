@@ -142,7 +142,8 @@ userland_plan_render() {
   USERLAND_PLAN_COLLECTING=0
   export USERLAND_PLAN_ACTIVE USERLAND_PLAN_COLLECTING
   if [ "$userland_ui_active_mode" = rich ]; then
-    userland_plan_rail=" $userland_ui_rail"
+    userland_plan_global_rail="$userland_ui_margin$userland_ui_rail"
+    userland_plan_rail="$userland_ui_margin $userland_ui_rail"
     userland_plan_target_width=24
     while IFS="$userland_plan_tab" read -r userland_plan_width_row _ userland_plan_width_target _; do
       [ "$userland_plan_width_row" = item ] || continue
@@ -152,7 +153,7 @@ userland_plan_render() {
         userland_plan_target_width=$userland_plan_width
       fi
     done <"$userland_plan_render_file"
-    printf '%s%s%s  Plan\n%s\n' "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_plan_rail"
+    printf '%s%s%s%s  Plan\n%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_plan_rail"
   fi
 
   userland_plan_section_index=0
@@ -165,7 +166,7 @@ userland_plan_render() {
           [ "$userland_plan_section_index" -eq 0 ] || printf '%s\n' "$userland_plan_rail"
           userland_plan_section_index=$((userland_plan_section_index + 1))
           userland_plan_item_prefix="$userland_plan_rail  "
-          printf ' %s├─ %s%s%s\n' "$userland_ui_cyan" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
+          printf '%s %s├─ %s%s%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
           if [ "$userland_plan_current_count" -eq 0 ]; then
             if [ "$userland_plan_current_area" = cleanup ]; then
               printf '%s   %sNo stale userland-owned items%s\n' "$userland_plan_rail" "$userland_ui_dim" "$userland_ui_reset"
@@ -222,15 +223,15 @@ userland_plan_render() {
         USERLAND_PLAN_BLOCKED=$userland_plan_blocked
         export USERLAND_PLAN_BLOCKED
         if [ "$userland_ui_active_mode" = rich ]; then
-          printf '%s\n%s%s%s  %s automatic · %s attended · %s cleanup' "$userland_plan_rail" "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_plan_automatic" "$userland_plan_attended" "$userland_plan_cleanup"
+          printf '%s\n%s%s%s%s  %s automatic · %s attended · %s cleanup' "$userland_plan_rail" "$userland_ui_margin" "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_plan_automatic" "$userland_plan_attended" "$userland_plan_cleanup"
           [ "$userland_plan_blocked" -eq 0 ] || printf ' · %s blocked' "$userland_plan_blocked"
-          printf '%s\n%s\n' "$userland_ui_reset" "$userland_ui_rail"
+          printf '%s\n%s\n' "$userland_ui_reset" "$userland_plan_global_rail"
         else
           printf '[info] %s automatic; %s attended; %s cleanup; %s blocked\n' "$userland_plan_automatic" "$userland_plan_attended" "$userland_plan_cleanup" "$userland_plan_blocked"
         fi
         userland_ui_redact "$USERLAND_UI_RUN_LOG"
         if [ "$userland_ui_active_mode" = rich ]; then
-          printf '%s  %sDetails %s%s\n%s\n' "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_text" "$userland_ui_reset" "$userland_ui_rail"
+          printf '%s  %sDetails %s%s\n%s\n' "$userland_plan_global_rail" "$userland_ui_dim" "$userland_ui_text" "$userland_ui_reset" "$userland_plan_global_rail"
         else
           printf '[info] Details: %s\n' "$userland_ui_text"
         fi

@@ -12,7 +12,7 @@
 userland_confirm_sync() {
   userland_confirm_code=0
   userland_ui confirm "Apply this plan?" || userland_confirm_code=$?
-  if [ "$userland_confirm_code" -eq 3 ]; then
+  if [ "$userland_confirm_code" -eq 3 ] && [ "${USERLAND_BOOTSTRAP_CREATED:-0}" != 1 ]; then
     userland_ui summary cancelled "Cancelled. No changes were applied."
   fi
   return "$userland_confirm_code"
@@ -54,6 +54,9 @@ userland_sync() {
   userland_bootstrap_require_lock_access
   userland_ui command sync "Bring this Mac in line with the state declared in giacomoguidotto/userland."
   userland_ui section "Preflight"
+  if [ "${USERLAND_BOOTSTRAP_CREATED:-0}" = 1 ]; then
+    userland_log changed "Creating ~/.userland"
+  fi
   userland_sync_preflight
 
   # Sync updates its own clean main checkout first. The plan and consent below

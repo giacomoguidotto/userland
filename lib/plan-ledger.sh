@@ -153,7 +153,7 @@ userland_plan_render() {
         userland_plan_target_width=$userland_plan_width
       fi
     done <"$userland_plan_render_file"
-    printf '%s%s%s%s  Plan\n%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_plan_rail"
+    printf '%s\n%s%s%s%s  Plan\n%s\n' "$userland_plan_rail" "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_plan_rail"
   fi
 
   userland_plan_section_index=0

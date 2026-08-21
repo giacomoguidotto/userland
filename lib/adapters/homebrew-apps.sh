@@ -41,15 +41,96 @@ userland_homebrew_check() {
     userland_brew bundle check --file "$userland_brewfile" --no-upgrade
 }
 
+userland_homebrew_plan_add() {
+  userland_homebrew_kind=$1
+  userland_homebrew_name=$2
+  case "$userland_homebrew_kind" in
+    Tap) userland_homebrew_detail='add Homebrew tap' ;;
+    Formula) userland_homebrew_detail='install with Homebrew' ;;
+    Cask) userland_homebrew_detail='install or adopt Homebrew cask' ;;
+    App) userland_homebrew_detail='install from Mac App Store' ;;
+    Homebrew) userland_homebrew_detail='install from the pinned Homebrew installer' ;;
+    *) return 64 ;;
+  esac
+
+  if [ "${USERLAND_PLAN_ACTIVE:-0}" = 1 ] && command -v userland_plan_add >/dev/null 2>&1; then
+    userland_plan_add apps install automatic declared \
+      "$userland_homebrew_name" \
+      "$userland_homebrew_detail" \
+      "brewfile:$userland_homebrew_kind:$userland_homebrew_name"
+  else
+    userland_log change "$userland_homebrew_name: $userland_homebrew_detail"
+  fi
+}
+
+userland_homebrew_plan_brewfile() {
+  while IFS= read -r userland_homebrew_line || [ -n "$userland_homebrew_line" ]; do
+    case "$userland_homebrew_line" in
+      '' | \#*) continue ;;
+      tap\ \"* | brew\ \"* | cask\ \"* | mas\ \"*)
+        userland_homebrew_declaration=${userland_homebrew_line%% *}
+        userland_homebrew_name=${userland_homebrew_line#*\"}
+        userland_homebrew_name=${userland_homebrew_name%%\"*}
+        case "$userland_homebrew_declaration" in
+          tap) userland_homebrew_kind=Tap ;;
+          brew) userland_homebrew_kind=Formula ;;
+          cask) userland_homebrew_kind=Cask ;;
+          mas) userland_homebrew_kind=App ;;
+        esac
+        userland_homebrew_plan_add "$userland_homebrew_kind" "$userland_homebrew_name"
+        ;;
+      *)
+        userland_log attention "Unsupported Brewfile declaration: $userland_homebrew_line"
+        return 2
+        ;;
+    esac
+  done <"$userland_brewfile"
+}
+
+userland_homebrew_plan_missing() {
+  userland_homebrew_plan_output=$(mktemp "$USERLAND_CACHE_DIR/homebrew-plan.XXXXXX")
+  if HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 \
+    userland_brew bundle check --file "$userland_brewfile" --no-upgrade --verbose \
+    >"$userland_homebrew_plan_output" 2>&1; then
+    rm -f "$userland_homebrew_plan_output"
+    userland_log current "declared Homebrew applications are installed"
+    return 0
+  fi
+
+  userland_homebrew_missing_count=0
+  while IFS= read -r userland_homebrew_line || [ -n "$userland_homebrew_line" ]; do
+    case "$userland_homebrew_line" in
+      '→ '*) userland_homebrew_entry=${userland_homebrew_line#'→ '} ;;
+      '-> '*) userland_homebrew_entry=${userland_homebrew_line#'-> '} ;;
+      *) continue ;;
+    esac
+    case "$userland_homebrew_entry" in
+      *' needs to be installed.') userland_homebrew_entry=${userland_homebrew_entry%' needs to be installed.'} ;;
+      *' needs to be tapped.') userland_homebrew_entry=${userland_homebrew_entry%' needs to be tapped.'} ;;
+      *) continue ;;
+    esac
+    userland_homebrew_kind=${userland_homebrew_entry%% *}
+    userland_homebrew_name=${userland_homebrew_entry#* }
+    case "$userland_homebrew_kind" in Tap | Formula | Cask | App) ;; *) continue ;; esac
+    userland_homebrew_plan_add "$userland_homebrew_kind" "$userland_homebrew_name"
+    userland_homebrew_missing_count=$((userland_homebrew_missing_count + 1))
+  done <"$userland_homebrew_plan_output"
+  rm -f "$userland_homebrew_plan_output"
+
+  if [ "$userland_homebrew_missing_count" -eq 0 ]; then
+    userland_log attention "Homebrew could not enumerate its missing applications"
+    return 2
+  fi
+}
+
 case "${1:-}" in
   plan)
     userland_is_macos || exit 0
     if ! userland_brew --version >/dev/null 2>&1; then
-      userland_log change "Homebrew and declared personal applications will be installed"
-    elif userland_homebrew_check >/dev/null 2>&1; then
-      userland_log current "declared Homebrew applications are installed"
+      userland_homebrew_plan_add Homebrew Homebrew
+      userland_homebrew_plan_brewfile
     else
-      userland_log change "Homebrew will install or adopt missing personal applications"
+      userland_homebrew_plan_missing
     fi
     ;;
   apply)
@@ -57,9 +138,8 @@ case "${1:-}" in
     if ! userland_brew --version >/dev/null 2>&1; then
       userland_install_homebrew
     fi
-    HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 userland_brew update
     HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 \
-      userland_brew bundle --file "$userland_brewfile"
+      userland_brew bundle --file "$userland_brewfile" --no-upgrade
     ;;
   doctor)
     userland_is_macos || exit 0

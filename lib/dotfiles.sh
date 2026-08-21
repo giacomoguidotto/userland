@@ -22,6 +22,7 @@ userland_preserve_unmanaged_children() {
   for userland_old_child in "$userland_old_directory"/* "$userland_old_directory"/.[!.]* "$userland_old_directory"/..?*; do
     [ -e "$userland_old_child" ] || continue
     userland_child_name=${userland_old_child##*/}
+    [ "$userland_child_name" != .git ] || continue
     [ -e "$userland_new_source/$userland_child_name" ] && continue
     cp -pR "$userland_old_child" "$userland_new_directory/$userland_child_name"
     userland_log preserved "$userland_new_directory/$userland_child_name"
@@ -91,7 +92,6 @@ userland_prepare_legacy_dotfiles() {
     "$USERLAND_HOME"/.claude/skills \
     "$USERLAND_HOME"/.claude/settings.json \
     "$USERLAND_HOME"/.codex/AGENTS.md \
-    "$USERLAND_HOME"/.config/opencode/AGENTS.md \
     "$USERLAND_HOME"/.config/*; do
     if [ -L "$userland_legacy_link" ]; then
       userland_migrate_legacy_link "$userland_legacy_link"
@@ -116,7 +116,6 @@ userland_legacy_checkout_has_links() {
     "$USERLAND_HOME"/.claude/skills \
     "$USERLAND_HOME"/.claude/settings.json \
     "$USERLAND_HOME"/.codex/AGENTS.md \
-    "$USERLAND_HOME"/.config/opencode/AGENTS.md \
     "$USERLAND_HOME"/.config/*; do
     find "$userland_legacy_root" -type l -print 2>/dev/null >>"$userland_legacy_link_file" || :
   done
@@ -198,7 +197,6 @@ userland_plan_legacy_dotfiles() {
     "$USERLAND_HOME"/.claude/skills \
     "$USERLAND_HOME"/.claude/settings.json \
     "$USERLAND_HOME"/.codex/AGENTS.md \
-    "$USERLAND_HOME"/.config/opencode/AGENTS.md \
     "$USERLAND_HOME"/.config/*; do
     if [ -L "$userland_legacy_link" ]; then
       userland_legacy_source=$(userland_link_target "$userland_legacy_link")

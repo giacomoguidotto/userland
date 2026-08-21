@@ -106,6 +106,8 @@ teardown() {
   [[ "$output" == *"doctor"*"Check this Mac"* ]]
   [[ "$output" == *"▗▖ ▗▖ ▗▄▄▖"*"▝▚▄▞▘▗▄▄▞▘"* ]]
   [[ "$output" == *$'\n '*"┌"* ]]
+  [[ "$output" == *$'\e[37m┌'* ]]
+  [[ "$output" != *$'\e[36m┌'* ]]
   [[ "$output" == *$'\n │'* ]]
   [[ "$output" == *$'\n '*"◆"*"Security"* ]]
   [[ "$output" == *"✓"*"FileVault is on"* ]]
@@ -152,6 +154,30 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
   [ "$status" -eq 0 ]
   [[ "$output" == *"[info] Apply this plan? yes"* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    USERLAND_ASSUME_YES= \
+    USERLAND_UI_TEST_CONFIRMATION= \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
+  [ "$status" -eq 3 ]
+  [[ "$output" == *$'?  Apply this plan? [y/N] › N\n │'* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    USERLAND_ASSUME_YES= \
+    USERLAND_UI_TEST_CONFIRMATION=yes \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'?  Apply this plan? [y/N] › Y\n │'* ]]
 
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
@@ -213,6 +239,7 @@ teardown() {
   [[ "$output" == *"Plan"* ]]
   [[ "$output" == *"Application additions"* ]]
   [[ "$output" == *"2 package upgrades"* ]]
+  [[ "$output" == *$'◇  Inspect packages\n │\n ◆  Plan'* ]]
   grep -q "native-one" "$USERLAND_STATE_DIR/last-run.log"
 }
 
@@ -400,7 +427,7 @@ EOF
   [[ "$output" == *"retired-agent: running to absent"* ]]
 }
 
-@test "public commands keep Homebrew inspection read-only and sync never cleans" {
+@test "Homebrew plans every missing application and sync avoids unplanned upgrades" {
   export USERLAND_UNAME=Darwin
   export USERLAND_BREW=$TEST_TMPDIR/bin/brew
   export BREW_CALLS=$TEST_TMPDIR/brew-calls
@@ -410,7 +437,17 @@ EOF
 #!/bin/sh
 printf '%s\n' "$*" >>"$BREW_CALLS"
 case "$*" in
-  --version) printf '%s\n' 'Homebrew 5.0.0' ;;
+  --version)
+    [ "${BREW_PRESENT:-1}" = 1 ] || exit 1
+    printf '%s\n' 'Homebrew 5.0.0'
+    ;;
+  *'bundle check'*--verbose*)
+    printf '%s\n' \
+      '→ Tap nikitabobko/tap needs to be tapped.' \
+      '→ Cask 1password needs to be installed.' \
+      '→ App Xcode needs to be installed.'
+    exit 1
+    ;;
 esac
 exit 0
 EOF
@@ -447,6 +484,16 @@ EOF
   [ "$status" -eq 0 ]
   grep -q 'bundle check.*--no-upgrade' "$BREW_CALLS"
   ! grep -q '^update$' "$BREW_CALLS"
+  [[ "$output" == *"nikitabobko/tap"*"add Homebrew tap"* ]]
+  [[ "$output" == *"1password"*"install or adopt Homebrew cask"* ]]
+  [[ "$output" == *"Xcode"*"install from Mac App Store"* ]]
+  [[ "$output" != *"Homebrew will install or adopt missing personal applications"* ]]
+
+  run env BREW_PRESENT=0 "$TEST_ROOT/bin/userland" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Homebrew"*"install from the pinned Homebrew installer"* ]]
+  [[ "$output" == *"helium-browser"*"install or adopt Homebrew cask"* ]]
+  [[ "$output" == *"Xcode"*"install from Mac App Store"* ]]
 
   : >"$BREW_CALLS"
   run "$TEST_ROOT/bin/userland" doctor
@@ -456,8 +503,8 @@ EOF
   : >"$BREW_CALLS"
   run "$TEST_ROOT/bin/userland" sync
   [ "$status" -eq 2 ]
-  grep -q '^update$' "$BREW_CALLS"
-  grep -Fq "bundle --file $TEST_ROOT/config/brewfile" "$BREW_CALLS"
+  ! grep -q '^update$' "$BREW_CALLS"
+  grep -Fq "bundle --file $TEST_ROOT/config/brewfile --no-upgrade" "$BREW_CALLS"
   ! grep -q 'cleanup' "$BREW_CALLS"
 }
 
@@ -479,8 +526,14 @@ EOF
   mkdir -p "$USERLAND_DATA_DIR/bootstrap.lock"
   printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$USERLAND_DATA_DIR/bootstrap.lock/owner"
 
-  run "$TEST_ROOT/bin/userland" sync
+  run env \
+    USERLAND_BOOTSTRAP_CREATED=1 \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    "$TEST_ROOT/bin/userland" sync
   [ "$status" -eq 0 ]
+  [[ "$output" == *$'◆  Preflight\n │\n ✓  Creating ~/.userland'* ]]
   [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/apply-started")" = "$USERLAND_BOOTSTRAP_TOKEN" ]
   [ -z "$(find "$USERLAND_BOOTSTRAP_CONTROL" -name '.apply-started.*' -print)" ]
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]

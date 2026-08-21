@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+bootstrap_started_at=$(date +%s)
+
 tag='@USERLAND_TAG@'
 commit='@USERLAND_COMMIT@'
 archive_sha256='@USERLAND_ARCHIVE_SHA256@'
@@ -274,6 +276,16 @@ backup_is_owned_by_transaction() {
   [ "$(cat "$backup_dir/.userland-bootstrap-owner" 2>/dev/null)" = "$transaction_id" ]
 }
 
+bootstrap_prepare_cancel_ui() {
+  [ -f "$repo_dir/lib/ui.sh" ] && [ ! -L "$repo_dir/lib/ui.sh" ] || return 1
+  USERLAND_HOME=$HOME
+  export USERLAND_HOME
+  # shellcheck source=../lib/ui.sh
+  . "$repo_dir/lib/ui.sh"
+  # shellcheck disable=SC2034 # Consumed by userland_ui_elapsed in the sourced module.
+  userland_ui_started_at=$bootstrap_started_at
+}
+
 # shellcheck disable=SC2329 # Invoked by the signal and exit trap.
 cleanup() {
   cleanup_status=$?
@@ -293,11 +305,32 @@ cleanup() {
 
   if ! apply_started && repo_is_owned_by_transaction; then
     if restore_release_command; then
-      printf 'userland: removing ~/.userland after cancellation\n' >&2
+      cleanup_cancel_ui=0
+      case "$cleanup_status" in
+        3 | 129 | 130 | 143)
+          if bootstrap_prepare_cancel_ui; then
+            userland_ui status info "Deleting ~/.userland"
+            cleanup_cancel_ui=1
+          fi
+          ;;
+      esac
+      if [ "$cleanup_cancel_ui" -eq 0 ]; then
+        printf 'userland: deleting ~/.userland\n' >&2
+      fi
       if rm -rf "$repo_dir"; then
-        printf 'userland: removed ~/.userland\n' >&2
+        repo_created=0
+        if [ "$cleanup_cancel_ui" -eq 1 ]; then
+          userland_ui summary cancelled "Cancelled. No changes were applied."
+        else
+          printf 'userland: deleted ~/.userland\n' >&2
+        fi
       else
-        printf 'userland: could not remove cancelled checkout at %s\n' "$repo_dir" >&2
+        cleanup_status=1
+        if [ "$cleanup_cancel_ui" -eq 1 ]; then
+          userland_ui summary error "Could not delete ~/.userland."
+        else
+          printf 'userland: could not delete cancelled checkout at %s\n' "$repo_dir" >&2
+        fi
       fi
     else
       printf 'userland: could not restore the recovery command; preserving %s\n' "$repo_dir" >&2
@@ -388,7 +421,6 @@ else
   mv "$checkout_work" "$repo_dir"
   checkout_work=
   repo_created=1
-  printf 'userland: created ~/.userland\n'
 fi
 
 MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
@@ -397,11 +429,13 @@ install_command_link "$repo_dir/bin/userland"
 run_sync() {
   if command -v caffeinate >/dev/null 2>&1; then
     USERLAND_ARCHIVE=1 \
+      USERLAND_BOOTSTRAP_CREATED="$repo_created" \
       USERLAND_BOOTSTRAP_CONTROL="$control_dir" \
       USERLAND_BOOTSTRAP_TOKEN="$transaction_id" \
       caffeinate -dims "$repo_dir/bin/userland" sync
   else
     USERLAND_ARCHIVE=1 \
+      USERLAND_BOOTSTRAP_CREATED="$repo_created" \
       USERLAND_BOOTSTRAP_CONTROL="$control_dir" \
       USERLAND_BOOTSTRAP_TOKEN="$transaction_id" \
       "$repo_dir/bin/userland" sync

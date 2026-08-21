@@ -14,7 +14,8 @@ fail() {
 tag=v1.2.3
 commit=0123456789abcdef0123456789abcdef01234567
 fixture="$work/fixture/userland-1.2.3"
-mkdir -p "$fixture/bin"
+mkdir -p "$fixture/bin" "$fixture/lib"
+cp "$repository_root/lib/ui.sh" "$fixture/lib/ui.sh"
 
 cat >"$fixture/bin/userland" <<'EOF'
 #!/bin/sh
@@ -22,6 +23,7 @@ entry_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 printf 'root=%s\n' "$entry_root" >"$TEST_OBSERVATION"
 printf 'link=%s\n' "$(readlink "$HOME/.local/bin/userland")" >>"$TEST_OBSERVATION"
 printf 'original-path=%s\n' "${USERLAND_ORIGINAL_PATH:-}" >>"$TEST_OBSERVATION"
+printf 'created=%s\n' "${USERLAND_BOOTSTRAP_CREATED:-0}" >>"$TEST_OBSERVATION"
 if [ "${TEST_MARK_APPLY_STARTED:-0}" = 1 ]; then
   [ -d "$USERLAND_BOOTSTRAP_CONTROL" ] || exit 81
   [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/owner")" = "$USERLAND_BOOTSTRAP_TOKEN" ] || exit 82
@@ -185,8 +187,11 @@ HOME="$attention_home" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >"$work/attention-output" 2>&1 || attention_status=$?
 [ "$attention_status" -eq 0 ] || fail "completed attention run returned $attention_status"
-grep -Fq 'userland: created ~/.userland' "$work/attention-output" ||
-  fail "first run did not report the canonical checkout creation"
+grep -Fq 'created=1' "$work/attention-observation" ||
+  fail "first run did not hand checkout creation to the Preflight UI"
+if grep -Fq 'userland: created ~/.userland' "$work/attention-output"; then
+  fail "first run printed checkout creation before the Preflight UI"
+fi
 if grep -Fq 'mise trusted' "$work/attention-output"; then
   fail "first run exposed mise trust logs"
 fi
@@ -414,14 +419,21 @@ HOME="$cancel_home" \
   TEST_SYNC_STATUS=3 \
   USERLAND_DATA_DIR="$cancel_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
+  USERLAND_UI_MODE=rich \
+  USERLAND_UNICODE=1 \
+  NO_COLOR=1 \
   sh "$work/bootstrap" >"$work/cancel-output" 2>&1 || cancel_status=$?
 [ "$cancel_status" -eq 3 ] || fail "cancelled run returned $cancel_status"
-grep -Fq 'userland: created ~/.userland' "$work/cancel-output" ||
-  fail "cancelled run did not report the canonical checkout creation"
-grep -Fq 'userland: removing ~/.userland after cancellation' "$work/cancel-output" ||
-  fail "cancelled run did not report the canonical checkout removal"
-grep -Fq 'userland: removed ~/.userland' "$work/cancel-output" ||
-  fail "cancelled run did not confirm the canonical checkout removal"
+grep -Fq '·  Deleting ~/.userland' "$work/cancel-output" ||
+  fail "cancelled run did not put checkout deletion in the UI"
+grep -Fq '└  Cancelled. No changes were applied.' "$work/cancel-output" ||
+  fail "cancelled run did not restore the final cancellation message"
+delete_line=$(grep -nF '·  Deleting ~/.userland' "$work/cancel-output" | cut -d: -f1)
+cancel_line=$(grep -nF '└  Cancelled. No changes were applied.' "$work/cancel-output" | cut -d: -f1)
+[ "$delete_line" -lt "$cancel_line" ] || fail "cancelled run closed before deleting the checkout"
+if grep -Fq 'userland: remov' "$work/cancel-output"; then
+  fail "cancelled run leaked raw checkout cleanup logs"
+fi
 [ "$(readlink "$cancel_home/.local/bin/userland")" = "$cancel_home/.local/share/userland/releases/$tag/bin/userland" ] ||
   fail "cancelled run did not restore the release command"
 [ ! -e "$cancel_home/.userland" ] || fail "cancelled run retained its provisional checkout"
@@ -440,8 +452,10 @@ HOME="$signal_home" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >"$work/signal-output" 2>&1 || signal_status=$?
 [ "$signal_status" -eq 130 ] || fail "interrupted run returned $signal_status"
-grep -Fq 'userland: removing ~/.userland after cancellation' "$work/signal-output" ||
-  fail "interrupted run did not report the canonical checkout removal"
+grep -Fq '[info] Deleting ~/.userland' "$work/signal-output" ||
+  fail "interrupted run did not put checkout deletion in the UI"
+grep -Fq '[cancelled] Cancelled. No changes were applied.' "$work/signal-output" ||
+  fail "interrupted run did not restore the final cancellation message"
 [ ! -e "$signal_home/.userland" ] || fail "interrupted run retained its provisional checkout"
 [ "$(readlink "$signal_home/.local/bin/userland")" = "$signal_home/.local/share/userland/releases/$tag/bin/userland" ] ||
   fail "interrupted run did not restore the release command"

@@ -48,6 +48,10 @@ teardown() {
   ln -s "$TEST_TMPDIR/workspace/cfg/home/agents/AGENT.md" "$USERLAND_HOME/.codex/AGENTS.md"
   ln -s "$USERLAND_ROOT/cfg/home/agents/opencode/AGENTS.md" "$USERLAND_HOME/.config/opencode/AGENTS.md"
 
+  run sh -c '. "$USERLAND_ROOT/lib/common.sh"; . "$USERLAND_ROOT/lib/dotfiles.sh"; . "$USERLAND_ROOT/lib/plan-ledger.sh"; userland_plan_begin; userland_plan_legacy_dotfiles; grep -c "$USERLAND_HOME/.config/opencode/AGENTS.md" "$USERLAND_PLAN_FILE"'
+  [ "$status" -eq 0 ]
+  [ "$output" -eq 1 ]
+
   run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_prepare_legacy_dotfiles'
   [ "$status" -eq 0 ]
   [ -d "$USERLAND_HOME/.agents/skills" ]
@@ -61,6 +65,23 @@ teardown() {
   [ ! -e "$USERLAND_HOME/.config/opencode/AGENTS.md" ]
   [ ! -L "$USERLAND_HOME/.config/opencode/AGENTS.md" ]
   [[ "$output" == *"removed retired agent instructions"* ]]
+}
+
+@test "legacy submodule metadata is not copied into the managed Neovim directory" {
+  release_root=$TEST_TMPDIR/release-root
+  old_nvim=$TEST_TMPDIR/workspace/cfg/xdg/nvim
+  mkdir -p "$old_nvim" "$release_root/lib" "$release_root/config/xdg/nvim"
+  cp "$TEST_ROOT/lib/common.sh" "$TEST_ROOT/lib/ui.sh" "$TEST_ROOT/lib/dotfiles.sh" "$release_root/lib/"
+  printf '%s\n' 'gitdir: ../../../.git/modules/cfg/xdg/nvim' >"$old_nvim/.git"
+  printf '%s\n' 'keep this local note' >"$old_nvim/local-note"
+  ln -s "$old_nvim" "$USERLAND_HOME/.config/nvim"
+
+  run env USERLAND_ROOT="$release_root" sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_prepare_legacy_dotfiles'
+
+  [ "$status" -eq 0 ]
+  [ -d "$USERLAND_HOME/.config/nvim" ]
+  [ ! -e "$USERLAND_HOME/.config/nvim/.git" ]
+  [ -f "$USERLAND_HOME/.config/nvim/local-note" ]
 }
 
 @test "v0.1.3 release links migrate without losing local files" {

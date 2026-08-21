@@ -22,6 +22,10 @@ export USERLAND_REPOSITORY_TTL_SECONDS
 
 # shellcheck source=ui.sh
 . "$USERLAND_ROOT/lib/ui.sh"
+if [ "${USERLAND_PLAN_COLLECTING:-0}" = 1 ] && [ -n "${USERLAND_PLAN_FILE:-}" ]; then
+  # shellcheck source=plan-ledger.sh
+  . "$USERLAND_ROOT/lib/plan-ledger.sh"
+fi
 
 userland_log() {
   userland_log_level=$1
@@ -37,12 +41,17 @@ userland_log() {
     plan | sync | doctor | consent | info) userland_log_state=info ;;
     *) userland_log_state=info ;;
   esac
+  if [ "${USERLAND_PLAN_COLLECTING:-0}" = 1 ] && command -v userland_plan_capture_log >/dev/null 2>&1; then
+    userland_plan_capture_log "$userland_log_state" "$*"
+    return $?
+  fi
   userland_ui status "$userland_log_state" "$*"
 }
 
 userland_die() {
   userland_error_message=$1
   userland_error_code=${2:-1}
+  USERLAND_PLAN_COLLECTING=0
   userland_log error "$userland_error_message" >&2
   exit "$userland_error_code"
 }
@@ -117,11 +126,36 @@ userland_run_adapters() {
         userland_adapter_code=$?
       fi
     else
+      case "$userland_adapter_name" in
+        homebrew-apps)
+          USERLAND_PLAN_AREA=apps USERLAND_PLAN_ACTION=install
+          ;;
+        android-sdk | browser-extensions | manual-apps)
+          USERLAND_PLAN_AREA=apps USERLAND_PLAN_ACTION=install
+          ;;
+        raycast)
+          USERLAND_PLAN_AREA=apps USERLAND_PLAN_ACTION=configure
+          ;;
+        personal-repos)
+          USERLAND_PLAN_AREA=fs USERLAND_PLAN_ACTION=clone
+          ;;
+        shell-cache | repository-snapshot)
+          USERLAND_PLAN_AREA=fs USERLAND_PLAN_ACTION=update
+          ;;
+        file-handlers | security-health)
+          USERLAND_PLAN_AREA=os USERLAND_PLAN_ACTION=set
+          if [ "$userland_adapter_name" = file-handlers ]; then
+            USERLAND_PLAN_ATTENTION_HANDLING=automatic
+          fi
+          ;;
+      esac
+      export USERLAND_PLAN_AREA USERLAND_PLAN_ACTION USERLAND_PLAN_ATTENTION_HANDLING
       if "$userland_adapter" "$userland_adapter_action"; then
         userland_adapter_code=0
       else
         userland_adapter_code=$?
       fi
+      unset USERLAND_PLAN_AREA USERLAND_PLAN_ACTION USERLAND_PLAN_ATTENTION_HANDLING
     fi
     if [ "$userland_adapter_code" -eq 0 ]; then
       :

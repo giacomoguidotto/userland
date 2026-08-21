@@ -118,20 +118,36 @@ userland_plan_legacy_dotfiles() {
     if [ -L "$userland_legacy_link" ]; then
       userland_legacy_source=$(userland_link_target "$userland_legacy_link")
       if userland_is_owned_legacy_source "$userland_legacy_source"; then
-        userland_log change "release legacy workspace link $userland_legacy_link"
+        if command -v userland_plan_add >/dev/null 2>&1; then
+          userland_plan_add cleanup release automatic userland \
+            "$userland_legacy_link" \
+            "release legacy workspace link" \
+            "legacy-link:$userland_legacy_source"
+        else
+          userland_log change "release legacy workspace link $userland_legacy_link"
+        fi
         userland_legacy_count=$((userland_legacy_count + 1))
       fi
     elif [ -d "$userland_legacy_link" ]; then
-      userland_nested_legacy_count=$(
-        find "$userland_legacy_link" -type l -print 2>/dev/null |
-          while IFS= read -r userland_nested_legacy_link; do
-            userland_nested_legacy_source=$(userland_link_target "$userland_nested_legacy_link")
-            userland_is_owned_legacy_source "$userland_nested_legacy_source" && printf '.\n'
-          done |
-          wc -l | tr -d ' '
-      )
+      userland_nested_legacy_file=$(mktemp "$USERLAND_CACHE_DIR/legacy-links.XXXXXX")
+      find "$userland_legacy_link" -type l -print 2>/dev/null >"$userland_nested_legacy_file"
+      userland_nested_legacy_count=0
+      while IFS= read -r userland_nested_legacy_link; do
+        userland_nested_legacy_source=$(userland_link_target "$userland_nested_legacy_link")
+        userland_is_owned_legacy_source "$userland_nested_legacy_source" || continue
+        if command -v userland_plan_add >/dev/null 2>&1; then
+          userland_plan_add cleanup release automatic userland \
+            "$userland_nested_legacy_link" \
+            "release legacy workspace link" \
+            "legacy-link:$userland_nested_legacy_source"
+        fi
+        userland_nested_legacy_count=$((userland_nested_legacy_count + 1))
+      done <"$userland_nested_legacy_file"
+      rm -f "$userland_nested_legacy_file"
       if [ "$userland_nested_legacy_count" -gt 0 ]; then
-        userland_log change "release $userland_nested_legacy_count legacy links under $userland_legacy_link"
+        if ! command -v userland_plan_add >/dev/null 2>&1; then
+          userland_log change "release $userland_nested_legacy_count legacy links under $userland_legacy_link"
+        fi
         userland_legacy_count=$((userland_legacy_count + userland_nested_legacy_count))
       fi
     fi

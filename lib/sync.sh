@@ -49,6 +49,7 @@ userland_sync() {
   # shellcheck source=plan.sh
   . "$USERLAND_ROOT/lib/plan.sh"
   userland_plan embedded
+  userland_plan_require_applicable
   userland_confirm_sync
 
   userland_ui section "Apply packages"

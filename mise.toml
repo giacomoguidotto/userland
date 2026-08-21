@@ -114,7 +114,7 @@ AppleShowAllFiles = true
 CreateDesktop = false
 FXPreferredViewStyle = "Nlsv"
 QuitMenuItem = true
-NewWindowTarget = "Home"
+NewWindowTarget = "PfHm"
 
 [bootstrap.macos.defaults.NSGlobalDomain]
 InitialKeyRepeat = 20

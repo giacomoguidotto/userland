@@ -26,6 +26,7 @@ case "$*" in
   *doctor*--json*) printf '%s\n' '{"healthy":true}' ;;
   *bootstrap*plan*--json*) printf '%s\n' '{"resources":[],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":0}}' ;;
   *bootstrap*dotfiles*status*--json*) printf '%s\n' '{"files":[],"edits":[]}' ;;
+  *bootstrap*macos*defaults*status*--json*) printf '%s\n' '{"macos_defaults":{"entries":[],"available":true}}' ;;
 esac
 exit 0
 EOF
@@ -98,7 +99,7 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_log attention "Manual approval remains"'
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"! Manual approval remains"* ]]
+  [[ "$output" == *"!  Manual approval remains"* ]]
   [[ "$output" != *$'\e['* ]]
 }
 
@@ -128,7 +129,7 @@ teardown() {
     NO_COLOR=1 \
     sh -c 'unset USERLAND_UNICODE; . "$USERLAND_ROOT/lib/common.sh"; userland_log healthy "Portable output"'
   [ "$status" -eq 0 ]
-  [[ "$output" == *"ok Portable output"* ]]
+  [[ "$output" == *"ok  Portable output"* ]]
   [[ "$output" != *"✓"* ]]
 
   run env \
@@ -141,7 +142,7 @@ teardown() {
   [[ "$output" == *"[error] Apply this plan? requires an interactive terminal"* ]]
 }
 
-@test "rich tasks keep successful native logs out of scrollback and render the report once" {
+@test "rich tasks keep successful native logs out of scrollback and render the typed plan once" {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
     USERLAND_HOME="$USERLAND_HOME" \
@@ -150,18 +151,18 @@ teardown() {
     USERLAND_UI_MODE=rich \
     USERLAND_UNICODE=1 \
     NO_COLOR=1 \
-    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui report begin; userland_ui section "Software"; userland_ui task inspect "Inspect packages" /usr/bin/printf "native-one\nnative-two\n"; userland_log change "2 package upgrades"; userland_log current "40 packages are current"; userland_ui report render'
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; . "$USERLAND_ROOT/lib/plan-ledger.sh"; userland_ui command plan "Preview"; userland_plan_begin; userland_ui task inspect "Inspect packages" /usr/bin/printf "native-one\nnative-two\n"; userland_plan_add apps upgrade automatic declared "2 package upgrades" "available" "test:packages"; userland_plan_render'
 
   [ "$status" -eq 0 ]
   [[ "$output" != *"native-one"* ]]
-  [[ "$output" != *"40 packages are current"* ]]
+  [[ "$output" == *"┌"*"◇"*"◆"* ]]
   [[ "$output" == *"Plan"* ]]
-  [[ "$output" == *"Software"* ]]
+  [[ "$output" == *"Application additions"* ]]
   [[ "$output" == *"2 package upgrades"* ]]
   grep -q "native-one" "$USERLAND_STATE_DIR/last-run.log"
 }
 
-@test "rich plans stay bounded and keep every hidden item in details" {
+@test "rich plans stay bounded and keep exact cleanup targets in the private log" {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
     USERLAND_HOME="$USERLAND_HOME" \
@@ -170,12 +171,37 @@ teardown() {
     USERLAND_UI_MODE=rich \
     USERLAND_UNICODE=1 \
     NO_COLOR=1 \
-    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command plan "Preview"; userland_ui report begin; userland_ui section "Personal state"; for item in 1 2 3 4 5 6; do userland_log manual "Manual item $item"; done; userland_ui report render'
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; . "$USERLAND_ROOT/lib/plan-ledger.sh"; userland_ui command plan "Preview"; userland_plan_begin; for item in 1 2 3 4 5 6; do userland_plan_add apps install automatic declared "App $item" "Homebrew" "test:app:$item"; done; for item in 1 2 3 4 5 6; do userland_plan_add cleanup release automatic userland "~/.stale-$item" "legacy link" "legacy-link:test:$item"; done; userland_plan_render'
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"2 more in details"* ]]
-  [[ "$output" != *"Manual item 6"* ]]
-  grep -q "Manual item 6" "$USERLAND_STATE_DIR/last-run.log"
+  [[ "$output" == *"2 more automatic changes"* ]]
+  [[ "$output" != *"App 6"* ]]
+  [[ "$output" == *"Release 6 legacy shell or SSH links"* ]]
+  [[ "$output" != *"~/.stale-6"* ]]
+  grep -q "App 6" "$USERLAND_STATE_DIR/last-run.log"
+  grep -q "~/.stale-6" "$USERLAND_STATE_DIR/last-run.log"
+}
+
+@test "the typed plan keeps OS, filesystem, apps, and cleanup in fixed order" {
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_UI_MODE=plain \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; . "$USERLAND_ROOT/lib/plan-ledger.sh"; userland_plan_begin; userland_plan_add cleanup remove automatic declared "old-service" "declared absent" "mise:service:old-service"; userland_plan_add apps install attended external "DaVinci Resolve" "manual install" ""; userland_plan_add fs link automatic declared "~/.zshrc" "managed link" "dotfile:zshrc"; userland_plan_add os set automatic declared "Finder · NewWindowTarget" "Recents to Home" "macos-default:finder"; userland_plan_render'
+
+  [ "$status" -eq 0 ]
+  os_line=$(printf '%s\n' "$output" | grep -n '== OS changes' | cut -d: -f1)
+  fs_line=$(printf '%s\n' "$output" | grep -n '== Filesystem changes' | cut -d: -f1)
+  apps_line=$(printf '%s\n' "$output" | grep -n '== Application additions' | cut -d: -f1)
+  cleanup_line=$(printf '%s\n' "$output" | grep -n '== Cleanup' | cut -d: -f1)
+  [ "$os_line" -lt "$fs_line" ]
+  [ "$fs_line" -lt "$apps_line" ]
+  [ "$apps_line" -lt "$cleanup_line" ]
+  [[ "$output" == *"Finder · NewWindowTarget"* ]]
+  [[ "$output" == *"DaVinci Resolve"* ]]
+  [[ "$output" == *"old-service"* ]]
 }
 
 @test "rich task failures show a bounded excerpt and preserve the command status" {
@@ -262,6 +288,35 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"unreadable plan"* ]]
   [[ "$output" == *"no approval was requested"* ]]
+}
+
+@test "plan classifies exact mise and macOS resources by effect" {
+  cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MISE_CALLS"
+case "$*" in
+  *bootstrap*plan*--json*)
+    printf '%s\n' '{"resources":[{"id":{"kind":"package","name":"brew:ripgrep"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"file","name":"~/.config/example"},"current":"old","desired":"managed","action":"update"},{"id":{"kind":"service","name":"retired-agent"},"current":"running","desired":"absent","action":"remove"}],"summary":{"create":1,"update":1,"remove":1,"unchanged":0,"unknown":0}}'
+    ;;
+  *bootstrap*dotfiles*status*--json*)
+    printf '%s\n' '{"files":[{"state":"differs","source":"~/userland/config/home/zshrc","target":"~/.zshrc","mode":"symlink"}],"edits":[]}'
+    ;;
+  *bootstrap*macos*defaults*status*--json*)
+    printf '%s\n' '{"macos_defaults":{"entries":[{"value":true,"key":"AppleShowAllFiles","current":"false","domain":"com.apple.finder","state":"differs"}],"available":true}}'
+    ;;
+esac
+exit 0
+EOF
+  chmod +x "$TEST_TMPDIR/bin/mise"
+  export USERLAND_UNAME=Darwin
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" plan
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Finder · AppleShowAllFiles: false to true"* ]]
+  [[ "$output" == *"~/.config/example: old to managed"* ]]
+  [[ "$output" == *"ripgrep: missing to installed"* ]]
+  [[ "$output" == *"retired-agent: running to absent"* ]]
 }
 
 @test "public commands keep Homebrew inspection read-only and sync never cleans" {

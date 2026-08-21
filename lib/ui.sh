@@ -8,7 +8,7 @@ USERLAND_UI_LOADED=1
 : "${USERLAND_UI_MODE:=auto}"
 case "$USERLAND_UI_MODE" in auto | rich | plain) ;; *) USERLAND_UI_MODE=plain ;; esac
 userland_ui_escape=$(printf '\033')
-userland_ui_tab=$(printf '\t')
+userland_ui_backslash=$(printf '\\')
 
 userland_ui_prepare_stream() {
   case "$USERLAND_UI_MODE" in
@@ -28,7 +28,6 @@ userland_ui_prepare_stream() {
       userland_ui_color=1
     fi
   fi
-
   if [ "$userland_ui_color" -eq 1 ]; then
     userland_ui_reset="${userland_ui_escape}[0m"
     userland_ui_bold="${userland_ui_escape}[1m"
@@ -56,8 +55,12 @@ userland_ui_prepare_stream() {
       *) userland_ui_unicode=0 ;;
     esac
   fi
-
   if [ "$userland_ui_active_mode" = rich ] && [ "$userland_ui_unicode" != 0 ]; then
+    userland_ui_rail='│'
+    userland_ui_open='┌'
+    userland_ui_close='└'
+    userland_ui_done='◇'
+    userland_ui_section='◆'
     userland_ui_ok_symbol='✓'
     userland_ui_change_symbol='+'
     userland_ui_attention_symbol='!'
@@ -65,6 +68,11 @@ userland_ui_prepare_stream() {
     userland_ui_info_symbol='·'
     userland_ui_cancel_symbol='–'
   else
+    userland_ui_rail='|'
+    userland_ui_open='+'
+    userland_ui_close='`'
+    userland_ui_done='o'
+    userland_ui_section='*'
     userland_ui_ok_symbol='ok'
     userland_ui_change_symbol='+'
     userland_ui_attention_symbol='!'
@@ -93,9 +101,7 @@ userland_ui_redact() {
 }
 
 userland_ui_ensure_run_log() {
-  if [ -n "${USERLAND_UI_RUN_LOG:-}" ]; then
-    return 0
-  fi
+  [ -z "${USERLAND_UI_RUN_LOG:-}" ] || return 0
   mkdir -p "$USERLAND_CACHE_DIR" "$USERLAND_STATE_DIR"
   USERLAND_UI_RUN_LOG=$USERLAND_STATE_DIR/last-run.log
   : >"$USERLAND_UI_RUN_LOG"
@@ -103,14 +109,24 @@ userland_ui_ensure_run_log() {
   export USERLAND_UI_RUN_LOG
 }
 
+userland_ui_clear_active() {
+  if [ "${userland_ui_active_row:-0}" = 1 ]; then
+    printf '\r%s[2K' "$userland_ui_escape"
+    userland_ui_active_row=0
+  fi
+}
+
 userland_ui_cleanup() {
+  userland_ui_clear_active
+  if [ -n "${userland_ui_child_pid:-}" ]; then
+    kill "$userland_ui_child_pid" 2>/dev/null || :
+  fi
   for userland_ui_cleanup_file in \
-    "${USERLAND_UI_REPORT_FILE:-}" \
     "${userland_ui_task_log:-}" \
     "${userland_ui_task_status:-}" \
-    "${USERLAND_PLAN_RESULT:-}"; do
-    [ -n "$userland_ui_cleanup_file" ] && [ -f "$userland_ui_cleanup_file" ] &&
-      rm -f "$userland_ui_cleanup_file"
+    "${USERLAND_PLAN_RESULT:-}" \
+    "${USERLAND_PLAN_FILE:-}"; do
+    [ -n "$userland_ui_cleanup_file" ] && [ -f "$userland_ui_cleanup_file" ] && rm -f "$userland_ui_cleanup_file"
   done
   return 0
 }
@@ -129,142 +145,6 @@ userland_ui_signal() {
   exit "$userland_ui_signal_code"
 }
 
-userland_ui_report_record() {
-  userland_ui_record_state=$1
-  userland_ui_record_message=$2
-  case "$userland_ui_record_state" in
-    ok | info) return 0 ;;
-  esac
-  userland_ui_ensure_run_log
-  printf '%s\t%s\t%s\n' \
-    "$userland_ui_record_state" \
-    "${USERLAND_UI_REPORT_SECTION:-Plan}" \
-    "$userland_ui_record_message" >>"$USERLAND_UI_REPORT_FILE"
-  printf '[%s] %s: %s\n' \
-    "$userland_ui_record_state" \
-    "${USERLAND_UI_REPORT_SECTION:-Plan}" \
-    "$userland_ui_record_message" >>"$USERLAND_UI_RUN_LOG"
-}
-
-userland_ui_report_begin() {
-  [ "$userland_ui_active_mode" = rich ] || return 0
-  mkdir -p "$USERLAND_CACHE_DIR"
-  USERLAND_UI_REPORT_FILE=$(mktemp "$USERLAND_CACHE_DIR/report.XXXXXX")
-  chmod 600 "$USERLAND_UI_REPORT_FILE"
-  USERLAND_UI_REPORT_ACTIVE=1
-  USERLAND_UI_REPORT_SECTION=Plan
-  export USERLAND_UI_REPORT_FILE USERLAND_UI_REPORT_ACTIVE USERLAND_UI_REPORT_SECTION
-}
-
-userland_ui_report_render() {
-  [ "${USERLAND_UI_REPORT_ACTIVE:-0}" = 1 ] || return 0
-  userland_ui_report_file=$USERLAND_UI_REPORT_FILE
-  USERLAND_UI_REPORT_ACTIVE=0
-  export USERLAND_UI_REPORT_ACTIVE
-
-  userland_ui_report_render_file=$(mktemp "$USERLAND_CACHE_DIR/report-render.XXXXXX")
-  chmod 600 "$userland_ui_report_render_file"
-  awk -F '\t' '
-    {
-      if (!seen_section[$2]++) sections[++section_count] = $2
-      state[NR] = $1
-      section[NR] = $2
-      message[NR] = $3
-      section_total[$2]++
-    }
-    END {
-      limit = 4
-      for (s = 1; s <= section_count; s++) {
-        name = sections[s]
-        shown = 0
-        for (priority = 1; priority <= 2; priority++) {
-          for (i = 1; i <= NR && shown < limit; i++) {
-            if (section[i] != name) continue
-            risky = state[i] == "error" || state[i] == "warning" || \
-              state[i] == "manual" || state[i] == "attention"
-            if ((priority == 1 && risky) || (priority == 2 && !risky)) {
-              print state[i] "\t" section[i] "\t" message[i]
-              shown++
-            }
-          }
-        }
-        if (section_total[name] > shown) {
-          print "more\t" name "\t" section_total[name] - shown " more in details"
-        }
-      }
-    }
-  ' "$userland_ui_report_file" >"$userland_ui_report_render_file"
-
-  userland_ui_report_counts=$(awk -F '\t' '
-    $1 == "change" || $1 == "changed" { changes++ }
-    $1 == "manual" || $1 == "attention" { manual++ }
-    $1 == "warning" || $1 == "error" { warnings++ }
-    END { printf "%d %d %d %d", changes + 0, manual + 0, warnings + 0, NR + 0 }
-  ' "$userland_ui_report_file")
-  set -- $userland_ui_report_counts
-  userland_ui_report_changes=$1
-  userland_ui_report_manual=$2
-  userland_ui_report_warnings=$3
-  userland_ui_report_total=$4
-
-  printf '\n%sPlan%s\n' "$userland_ui_bold" "$userland_ui_reset"
-  userland_ui_report_group=
-  USERLAND_UI_NESTED=1
-  while IFS="$userland_ui_tab" read -r userland_ui_report_state userland_ui_report_section userland_ui_report_message; do
-    [ -n "$userland_ui_report_state" ] || continue
-    if [ "$userland_ui_report_section" != "$userland_ui_report_group" ]; then
-      printf '\n  %s%s%s\n' "$userland_ui_bold" "$userland_ui_report_section" "$userland_ui_reset"
-      userland_ui_report_group=$userland_ui_report_section
-    fi
-    case "$userland_ui_report_state" in
-      change | changed)
-        userland_ui_status change "$userland_ui_report_message"
-        ;;
-      manual | attention)
-        userland_ui_status manual "$userland_ui_report_message"
-        ;;
-      warning)
-        userland_ui_status warning "$userland_ui_report_message"
-        ;;
-      error)
-        userland_ui_status error "$userland_ui_report_message"
-        ;;
-      more) userland_ui_status info "$userland_ui_report_message" ;;
-    esac
-  done <"$userland_ui_report_render_file"
-  unset USERLAND_UI_NESTED
-
-  if [ "$userland_ui_report_total" -eq 0 ]; then
-    printf '\n'
-    userland_ui_status ok "No changes found"
-  else
-    userland_ui_report_summary=
-    if [ "$userland_ui_report_changes" -gt 0 ]; then
-      userland_ui_report_summary="$userland_ui_report_changes change groups"
-    fi
-    if [ "$userland_ui_report_manual" -gt 0 ]; then
-      [ -z "$userland_ui_report_summary" ] || userland_ui_report_summary="$userland_ui_report_summary · "
-      userland_ui_report_summary="$userland_ui_report_summary$userland_ui_report_manual manual"
-    fi
-    if [ "$userland_ui_report_warnings" -gt 0 ]; then
-      [ -z "$userland_ui_report_summary" ] || userland_ui_report_summary="$userland_ui_report_summary · "
-      userland_ui_report_summary="$userland_ui_report_summary$userland_ui_report_warnings warnings"
-    fi
-    printf '\n  %s%s%s\n' "$userland_ui_dim" "$userland_ui_report_summary" "$userland_ui_reset"
-  fi
-  userland_ui_status info "No declared state has been applied"
-  if [ -n "${USERLAND_UI_RUN_LOG:-}" ]; then
-    userland_ui_status info "Details: $USERLAND_UI_RUN_LOG"
-  fi
-
-  rm -f "$userland_ui_report_file"
-  rm -f "$userland_ui_report_render_file"
-  if [ -n "${userland_ui_task_log:-}" ] && [ -f "$userland_ui_task_log" ]; then
-    rm -f "$userland_ui_task_log"
-  fi
-  unset USERLAND_UI_REPORT_FILE USERLAND_UI_REPORT_ACTIVE USERLAND_UI_REPORT_SECTION
-}
-
 userland_ui_task_excerpt() {
   tail -n 6 "$1" | LC_ALL=C tr -cd '\11\12\40-\176' | awk '
     {
@@ -275,83 +155,112 @@ userland_ui_task_excerpt() {
   '
 }
 
+userland_ui_spinner_frame() {
+  case $((userland_ui_spinner_tick % 4)) in
+    0) userland_ui_spinner_glyph='◒' ;;
+    1) userland_ui_spinner_glyph='◐' ;;
+    2) userland_ui_spinner_glyph='◓' ;;
+    3) userland_ui_spinner_glyph='◑' ;;
+  esac
+  if [ "$userland_ui_unicode" = 0 ]; then
+    case $((userland_ui_spinner_tick % 4)) in
+      0) userland_ui_spinner_glyph='-' ;;
+      1) userland_ui_spinner_glyph=$userland_ui_backslash ;;
+      2) userland_ui_spinner_glyph='|' ;;
+      3) userland_ui_spinner_glyph='/' ;;
+    esac
+  fi
+}
+
+userland_ui_spin() {
+  userland_ui_spinner_label=$1
+  userland_ui_spinner_tick=0
+  while kill -0 "$userland_ui_child_pid" 2>/dev/null; do
+    userland_ui_spinner_frame
+    printf '\r%s[2K%s%s%s  %s…' \
+      "$userland_ui_escape" \
+      "$userland_ui_cyan" \
+      "$userland_ui_spinner_glyph" \
+      "$userland_ui_reset" \
+      "$userland_ui_spinner_label"
+    userland_ui_active_row=1
+    userland_ui_spinner_tick=$((userland_ui_spinner_tick + 1))
+    sleep 0.12
+  done
+}
+
 userland_ui_task() {
   userland_ui_task_kind=$1
   userland_ui_task_label=$2
   shift 2
-  case "$userland_ui_task_kind" in inspect | apply | check) ;; *) return 64 ;; esac
+  case "$userland_ui_task_kind" in inspect | collect | apply | check) ;; *) return 64 ;; esac
   [ "$#" -gt 0 ] || return 64
 
   userland_ui_ensure_run_log
-  if [ -n "${userland_ui_task_log:-}" ] && [ -f "$userland_ui_task_log" ]; then
-    rm -f "$userland_ui_task_log"
-  fi
   userland_ui_task_log=$(mktemp "$USERLAND_CACHE_DIR/task.XXXXXX")
   userland_ui_task_status=$userland_ui_task_log.status
   : >"$userland_ui_task_status"
   chmod 600 "$userland_ui_task_log" "$userland_ui_task_status"
 
   if [ "$userland_ui_active_mode" = rich ]; then
-    printf '\r%s[2K  %s%s%s %s... ' \
-      "$userland_ui_escape" \
-      "$userland_ui_dim" \
-      "$userland_ui_info_symbol" \
-      "$userland_ui_reset" \
-      "$userland_ui_task_label"
     (
       set +e
       if [ "$userland_ui_task_kind" = inspect ]; then
-        USERLAND_UI_REPORT_ACTIVE=0
-        export USERLAND_UI_REPORT_ACTIVE
+        USERLAND_PLAN_COLLECTING=0
+        export USERLAND_PLAN_COLLECTING
       fi
       "$@"
       userland_ui_child_code=$?
       printf '%s\n' "$userland_ui_child_code" >"$userland_ui_task_status"
       exit 0
-    ) 2>&1 | tee "$userland_ui_task_log" >/dev/null
-    printf '\r%s[2K' "$userland_ui_escape"
+    ) >"$userland_ui_task_log" 2>&1 &
+    userland_ui_child_pid=$!
+    userland_ui_spin "$userland_ui_task_label"
+    wait "$userland_ui_child_pid" 2>/dev/null || :
+    unset userland_ui_child_pid
+    userland_ui_clear_active
   else
     userland_ui_status info "$userland_ui_task_label"
-    if [ "$userland_ui_task_kind" = inspect ]; then
-      USERLAND_UI_REPORT_ACTIVE=0 "$@"
-    else
+    (
+      set +e
+      if [ "$userland_ui_task_kind" = inspect ]; then
+        USERLAND_PLAN_COLLECTING=0
+        export USERLAND_PLAN_COLLECTING
+      fi
       "$@"
-    fi
-    userland_ui_task_code=$?
-    rm -f "$userland_ui_task_log" "$userland_ui_task_status"
-    unset userland_ui_task_log userland_ui_task_status
-    return "$userland_ui_task_code"
+      userland_ui_child_code=$?
+      printf '%s\n' "$userland_ui_child_code" >"$userland_ui_task_status"
+      exit 0
+    ) 2>&1 | tee "$userland_ui_task_log"
   fi
 
   {
     printf '\n## %s\n' "$userland_ui_task_label"
     cat "$userland_ui_task_log"
   } >>"$USERLAND_UI_RUN_LOG"
-
   userland_ui_task_code=1
   IFS= read -r userland_ui_task_code <"$userland_ui_task_status" || userland_ui_task_code=1
   rm -f "$userland_ui_task_status"
 
   if [ "$userland_ui_task_code" -eq 0 ]; then
-    if [ "$userland_ui_task_kind" != inspect ] || [ "${USERLAND_UI_REPORT_ACTIVE:-0}" != 1 ]; then
-      userland_ui_status ok "$userland_ui_task_label"
+    if [ "$userland_ui_active_mode" = rich ]; then
+      printf '%s%s%s  %s\n' "$userland_ui_green" "$userland_ui_done" "$userland_ui_reset" "$userland_ui_task_label"
     fi
+    rm -f "$userland_ui_task_log"
+    unset userland_ui_task_log userland_ui_task_status
     return 0
   fi
+
   if { [ "$userland_ui_task_kind" = check ] && { [ "$userland_ui_task_code" -eq 1 ] || [ "$userland_ui_task_code" -eq 2 ]; }; } ||
     { [ "$userland_ui_task_kind" = apply ] && [ "$userland_ui_task_code" -eq 2 ]; }; then
     userland_ui_status attention "$userland_ui_task_label"
-    userland_ui_task_excerpt "$userland_ui_task_log"
-    userland_ui_status info "Log: $USERLAND_UI_RUN_LOG"
-    return "$userland_ui_task_code"
+  else
+    userland_ui_status error "$userland_ui_task_label failed (exit $userland_ui_task_code)"
   fi
-
-  userland_ui_saved_report=${USERLAND_UI_REPORT_ACTIVE:-0}
-  USERLAND_UI_REPORT_ACTIVE=0
-  userland_ui_status error "$userland_ui_task_label failed (exit $userland_ui_task_code)"
   userland_ui_task_excerpt "$userland_ui_task_log"
   userland_ui_status info "Log: $USERLAND_UI_RUN_LOG"
-  USERLAND_UI_REPORT_ACTIVE=$userland_ui_saved_report
+  rm -f "$userland_ui_task_log"
+  unset userland_ui_task_log userland_ui_task_status
   return "$userland_ui_task_code"
 }
 
@@ -360,15 +269,9 @@ userland_ui_status() {
   userland_ui_state=$1
   shift
   userland_ui_redact "$*"
-
-  if [ "${USERLAND_UI_REPORT_ACTIVE:-0}" = 1 ] && [ "$userland_ui_active_mode" = rich ]; then
-    userland_ui_report_record "$userland_ui_state" "$userland_ui_text"
-    return 0
-  fi
   if [ "${USERLAND_UI_HIDE_OK:-0}" = 1 ] && [ "$userland_ui_active_mode" = rich ]; then
     case "$userland_ui_state" in ok | info) return 0 ;; esac
   fi
-
   case "$userland_ui_state" in
     ok | changed)
       userland_ui_symbol=$userland_ui_ok_symbol
@@ -402,14 +305,8 @@ userland_ui_status() {
       ;;
     *) return 64 ;;
   esac
-
   if [ "$userland_ui_active_mode" = rich ]; then
-    if [ "${USERLAND_UI_NESTED:-0}" = 1 ]; then
-      userland_ui_status_indent='    '
-    else
-      userland_ui_status_indent='  '
-    fi
-    printf '%s%s%s%s %s\n' "$userland_ui_status_indent" "$userland_ui_tint" "$userland_ui_symbol" "$userland_ui_reset" "$userland_ui_text"
+    printf '%s%s%s  %s\n' "$userland_ui_tint" "$userland_ui_symbol" "$userland_ui_reset" "$userland_ui_text"
   else
     printf '[%s] %s\n' "$userland_ui_plain_state" "$userland_ui_text"
   fi
@@ -457,9 +354,8 @@ userland_ui_confirm() {
     userland_ui_status error "$userland_ui_text requires an interactive terminal"
     return 1
   fi
-
   if [ "$userland_ui_active_mode" = rich ]; then
-    printf '%s?%s %s %s[y/N]%s %s›%s ' "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_reset" >/dev/tty
+    printf '%s?%s  %s %s[y/N]%s %s›%s ' "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_reset" >/dev/tty
   else
     printf '%s [y/N] ' "$userland_ui_text" >/dev/tty
   fi
@@ -490,8 +386,9 @@ userland_ui() {
       trap 'userland_ui_signal 130' INT
       trap 'userland_ui_signal 143' TERM
       if [ "$userland_ui_active_mode" = rich ]; then
-        printf '%suserland%s %s·%s %s%s%s\n' "$userland_ui_bold" "$userland_ui_reset" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_command" "$userland_ui_reset"
-        printf '%s%s%s\n' "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"
+        printf '%s%s%s  %suserland %s%s\n' "$userland_ui_cyan" "$userland_ui_open" "$userland_ui_reset" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
+        printf '%s  %s%s%s\n' "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"
+        printf '%s\n' "$userland_ui_rail"
       else
         printf 'userland %s: %s\n' "$userland_ui_command" "$userland_ui_description"
       fi
@@ -499,13 +396,8 @@ userland_ui() {
     section)
       [ "$#" -eq 1 ] || return 64
       userland_ui_redact "$1"
-      if [ "${USERLAND_UI_REPORT_ACTIVE:-0}" = 1 ] && [ "$userland_ui_active_mode" = rich ]; then
-        USERLAND_UI_REPORT_SECTION=$userland_ui_text
-        export USERLAND_UI_REPORT_SECTION
-        return 0
-      fi
       if [ "$userland_ui_active_mode" = rich ]; then
-        printf '\n%s%s%s\n' "$userland_ui_bold" "$userland_ui_text" "$userland_ui_reset"
+        printf '%s\n%s%s%s  %s\n%s\n' "$userland_ui_rail" "$userland_ui_cyan" "$userland_ui_section" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_rail"
       else
         printf '== %s\n' "$userland_ui_text"
       fi
@@ -518,14 +410,6 @@ userland_ui() {
       [ "$#" -ge 3 ] || return 64
       userland_ui_task "$@"
       ;;
-    report)
-      [ "$#" -eq 1 ] || return 64
-      case "$1" in
-        begin) userland_ui_report_begin ;;
-        render) userland_ui_report_render ;;
-        *) return 64 ;;
-      esac
-      ;;
     summary)
       [ "$#" -ge 2 ] || return 64
       userland_ui_summary_state=$1
@@ -534,9 +418,14 @@ userland_ui() {
       userland_ui_redact "$*"
       userland_ui_elapsed
       if [ "$userland_ui_active_mode" = rich ]; then
-        printf '\n'
-        userland_ui_status "$userland_ui_summary_state" "$userland_ui_text"
-        printf '    %s%s%s\n' "$userland_ui_dim" "$userland_ui_elapsed_text" "$userland_ui_reset"
+        case "$userland_ui_summary_state" in
+          ok) userland_ui_summary_tint=$userland_ui_green ;;
+          attention) userland_ui_summary_tint=$userland_ui_yellow ;;
+          error) userland_ui_summary_tint=$userland_ui_red ;;
+          *) userland_ui_summary_tint=$userland_ui_dim ;;
+        esac
+        printf '%s%s%s  %s\n' "$userland_ui_summary_tint" "$userland_ui_close" "$userland_ui_reset" "$userland_ui_text"
+        printf '   %s%s%s\n' "$userland_ui_dim" "$userland_ui_elapsed_text" "$userland_ui_reset"
       else
         userland_ui_status "$userland_ui_summary_state" "$userland_ui_text ($userland_ui_elapsed_text)"
       fi

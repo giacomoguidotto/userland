@@ -6,8 +6,8 @@
 . "$USERLAND_ROOT/lib/repository.sh"
 # shellcheck source=dotfiles.sh
 . "$USERLAND_ROOT/lib/dotfiles.sh"
-
-: "${userland_ui_task_log:=}"
+# shellcheck source=plan-ledger.sh
+. "$USERLAND_ROOT/lib/plan-ledger.sh"
 
 userland_plan_mise_resources() {
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap plan --json >"$USERLAND_PLAN_RESULT"
@@ -17,43 +17,155 @@ userland_plan_mise_dotfiles() {
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles status --json >"$USERLAND_PLAN_RESULT"
 }
 
+userland_plan_macos_defaults() {
+  "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap macos defaults status --json >"$USERLAND_PLAN_RESULT"
+}
+
+userland_plan_plist_count() {
+  userland_plan_count_path=$1
+  userland_plan_count_file=$2
+  userland_plan_count=$(/usr/bin/plutil -extract "$userland_plan_count_path" raw -o - "$userland_plan_count_file" 2>/dev/null) || return 1
+  case "$userland_plan_count" in *[!0-9]* | '') return 1 ;; esac
+  printf '%s\n' "$userland_plan_count"
+}
+
 userland_plan_import_mise() {
   userland_plan_json=$1
-  userland_plan_create=$(/usr/bin/plutil -extract summary.create raw -o - "$userland_plan_json" 2>/dev/null) || return 1
-  userland_plan_update=$(/usr/bin/plutil -extract summary.update raw -o - "$userland_plan_json" 2>/dev/null) || return 1
-  userland_plan_remove=$(/usr/bin/plutil -extract summary.remove raw -o - "$userland_plan_json" 2>/dev/null) || return 1
-  userland_plan_unknown=$(/usr/bin/plutil -extract summary.unknown raw -o - "$userland_plan_json" 2>/dev/null) || return 1
-  case "$userland_plan_create $userland_plan_update $userland_plan_remove $userland_plan_unknown" in
-    *[!0-9\ ]*) return 1 ;;
-  esac
+  userland_plan_resource_count=$(userland_plan_plist_count resources "$userland_plan_json") || return 1
+  userland_plan_resource_index=0
+  while [ "$userland_plan_resource_index" -lt "$userland_plan_resource_count" ]; do
+    userland_plan_resource="resources.$userland_plan_resource_index"
+    userland_plan_resource_action=$(/usr/bin/plutil -extract "$userland_plan_resource.action" raw -o - "$userland_plan_json" 2>/dev/null) || return 1
+    userland_plan_resource_kind=$(/usr/bin/plutil -extract "$userland_plan_resource.id.kind" raw -o - "$userland_plan_json" 2>/dev/null) || return 1
+    userland_plan_resource_name=$(/usr/bin/plutil -extract "$userland_plan_resource.id.name" raw -o - "$userland_plan_json" 2>/dev/null) || return 1
+    userland_plan_resource_current=$(/usr/bin/plutil -extract "$userland_plan_resource.current" raw -o - "$userland_plan_json" 2>/dev/null) || return 1
+    userland_plan_resource_desired=$(/usr/bin/plutil -extract "$userland_plan_resource.desired" raw -o - "$userland_plan_json" 2>/dev/null) || return 1
 
-  [ "$userland_plan_create" -eq 0 ] || userland_log change "$userland_plan_create managed resources to create"
-  [ "$userland_plan_update" -eq 0 ] || userland_log change "$userland_plan_update managed resources to update"
-  [ "$userland_plan_remove" -eq 0 ] || userland_log warning "$userland_plan_remove managed resources to remove"
-  [ "$userland_plan_unknown" -eq 0 ] || userland_log warning "$userland_plan_unknown resources need manual review"
+    case "$userland_plan_resource_action" in
+      unchanged) ;;
+      remove)
+        userland_plan_add cleanup remove automatic declared \
+          "$userland_plan_resource_name" \
+          "$userland_plan_resource_current to absent" \
+          "mise:$userland_plan_resource_kind:$userland_plan_resource_name" || return 1
+        ;;
+      create | update)
+        case "$userland_plan_resource_kind" in
+          package)
+            userland_plan_package_name=${userland_plan_resource_name#brew:}
+            if [ "$userland_plan_resource_action" = create ]; then
+              userland_plan_package_action=install
+            else
+              userland_plan_package_action=upgrade
+            fi
+            userland_plan_add apps "$userland_plan_package_action" automatic declared \
+              "$userland_plan_package_name" \
+              "$userland_plan_resource_current to $userland_plan_resource_desired" \
+              "mise:$userland_plan_resource_kind:$userland_plan_resource_name" || return 1
+            ;;
+          file | directory)
+            userland_plan_add fs "$userland_plan_resource_action" automatic declared \
+              "$userland_plan_resource_name" \
+              "$userland_plan_resource_current to $userland_plan_resource_desired" \
+              "mise:$userland_plan_resource_kind:$userland_plan_resource_name" || return 1
+            ;;
+          *)
+            userland_plan_add os set automatic declared \
+              "$userland_plan_resource_name" \
+              "$userland_plan_resource_current to $userland_plan_resource_desired" \
+              "mise:$userland_plan_resource_kind:$userland_plan_resource_name" || return 1
+            ;;
+        esac
+        ;;
+      *)
+        userland_plan_add os review blocked declared \
+          "$userland_plan_resource_name" \
+          "mise reported unknown action: $userland_plan_resource_action" \
+          "mise:$userland_plan_resource_kind:$userland_plan_resource_name" || return 1
+        ;;
+    esac
+    userland_plan_resource_index=$((userland_plan_resource_index + 1))
+  done
 }
 
 userland_plan_import_dotfiles() {
   userland_dotfiles_json=$1
-  userland_dotfile_count=$(/usr/bin/plutil -extract files raw -o - "$userland_dotfiles_json" 2>/dev/null) || return 1
-  case "$userland_dotfile_count" in *[!0-9]* | '') return 1 ;; esac
+  userland_dotfile_count=$(userland_plan_plist_count files "$userland_dotfiles_json") || return 1
   userland_dotfile_index=0
-  userland_dotfile_drift=0
-  userland_dotfile_risk=0
   while [ "$userland_dotfile_index" -lt "$userland_dotfile_count" ]; do
-    userland_dotfile_state=$(/usr/bin/plutil -extract "files.$userland_dotfile_index.state" raw -o - "$userland_dotfiles_json" 2>/dev/null) || return 1
+    userland_dotfile="files.$userland_dotfile_index"
+    userland_dotfile_state=$(/usr/bin/plutil -extract "$userland_dotfile.state" raw -o - "$userland_dotfiles_json" 2>/dev/null) || return 1
+    userland_dotfile_target=$(/usr/bin/plutil -extract "$userland_dotfile.target" raw -o - "$userland_dotfiles_json" 2>/dev/null) || return 1
     case "$userland_dotfile_state" in
       applied) ;;
       source_missing)
-        userland_dotfile_drift=$((userland_dotfile_drift + 1))
-        userland_dotfile_risk=$((userland_dotfile_risk + 1))
+        userland_dotfile_source=$(/usr/bin/plutil -extract "$userland_dotfile.source" raw -o - "$userland_dotfiles_json" 2>/dev/null) || return 1
+        userland_plan_add fs review blocked declared \
+          "$userland_dotfile_target" \
+          "managed source is missing: $userland_dotfile_source" \
+          "dotfile:$userland_dotfile_target" || return 1
         ;;
-      *) userland_dotfile_drift=$((userland_dotfile_drift + 1)) ;;
+      missing | differs)
+        userland_dotfile_source=$(/usr/bin/plutil -extract "$userland_dotfile.source" raw -o - "$userland_dotfiles_json" 2>/dev/null) || return 1
+        userland_plan_add fs link automatic declared \
+          "$userland_dotfile_target" \
+          "from $userland_dotfile_source" \
+          "dotfile:$userland_dotfile_target" || return 1
+        ;;
+      *)
+        userland_plan_add fs review blocked declared \
+          "$userland_dotfile_target" \
+          "unknown managed-path state: $userland_dotfile_state" \
+          "dotfile:$userland_dotfile_target" || return 1
+        ;;
     esac
     userland_dotfile_index=$((userland_dotfile_index + 1))
   done
-  [ "$userland_dotfile_drift" -eq 0 ] || userland_log change "$userland_dotfile_drift managed paths need reconciliation"
-  [ "$userland_dotfile_risk" -eq 0 ] || userland_log warning "$userland_dotfile_risk managed sources are missing; review details before applying"
+}
+
+userland_plan_macos_domain_name() {
+  case "$1" in
+    NSGlobalDomain) printf 'Global' ;;
+    com.apple.finder) printf 'Finder' ;;
+    com.apple.dock) printf 'Dock' ;;
+    com.apple.spaces) printf 'Spaces' ;;
+    com.apple.AppleMultitouchTrackpad) printf 'Trackpad' ;;
+    com.apple.HIToolbox) printf 'Keyboard' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+userland_plan_import_macos_defaults() {
+  userland_defaults_json=$1
+  userland_defaults_available=$(/usr/bin/plutil -extract macos_defaults.available raw -o - "$userland_defaults_json" 2>/dev/null) || return 1
+  [ "$userland_defaults_available" = true ] || return 0
+  userland_default_count=$(userland_plan_plist_count macos_defaults.entries "$userland_defaults_json") || return 1
+  userland_default_index=0
+  while [ "$userland_default_index" -lt "$userland_default_count" ]; do
+    userland_default="macos_defaults.entries.$userland_default_index"
+    userland_default_state=$(/usr/bin/plutil -extract "$userland_default.state" raw -o - "$userland_defaults_json" 2>/dev/null) || return 1
+    case "$userland_default_state" in
+      set) ;;
+      differs | missing | unset)
+        userland_default_domain=$(/usr/bin/plutil -extract "$userland_default.domain" raw -o - "$userland_defaults_json" 2>/dev/null) || return 1
+        userland_default_key=$(/usr/bin/plutil -extract "$userland_default.key" raw -o - "$userland_defaults_json" 2>/dev/null) || return 1
+        userland_default_current=$(/usr/bin/plutil -extract "$userland_default.current" raw -o - "$userland_defaults_json" 2>/dev/null) || return 1
+        userland_default_value=$(/usr/bin/plutil -extract "$userland_default.value" raw -o - "$userland_defaults_json" 2>/dev/null) || return 1
+        userland_default_domain_name=$(userland_plan_macos_domain_name "$userland_default_domain")
+        userland_plan_add os set automatic declared \
+          "$userland_default_domain_name · $userland_default_key" \
+          "$userland_default_current to $userland_default_value" \
+          "macos-default:$userland_default_domain:$userland_default_key" || return 1
+        ;;
+      *)
+        userland_plan_add os review blocked declared \
+          "macOS defaults" \
+          "unknown defaults state: $userland_default_state" \
+          "macos-defaults-status" || return 1
+        ;;
+    esac
+    userland_default_index=$((userland_default_index + 1))
+  done
 }
 
 userland_plan() {
@@ -64,43 +176,34 @@ userland_plan() {
     userland_ui command plan "Preview declared state without applying it."
   fi
   userland_mkdirs
-  userland_ui report begin
-  userland_ui task inspect "Refresh repository index" userland_refresh_repository_snapshot
+  userland_plan_begin
+  userland_ui task inspect "Refreshing repository index" userland_refresh_repository_snapshot
 
-  userland_log info "A fresh Mac may take 30-90 minutes. Package managers report download sizes when available."
-  userland_log info "No automatic reboot. Some changes may need an app relaunch or logout."
-  userland_log info "Configuration is Git-backed. Package and application upgrades have no automatic rollback."
-
-  userland_ui section "Software"
   USERLAND_PLAN_RESULT=$(mktemp "$USERLAND_CACHE_DIR/plan.XXXXXX")
   chmod 600 "$USERLAND_PLAN_RESULT"
   export USERLAND_PLAN_RESULT
-  userland_ui task inspect "Inspect packages and system resources" \
-    userland_plan_mise_resources
+
+  userland_ui task inspect "Inspecting applications and resources" userland_plan_mise_resources
   userland_plan_import_mise "$USERLAND_PLAN_RESULT" ||
     userland_die "mise returned an unreadable plan; no approval was requested"
 
-  userland_log change "Check installed rolling packages and apply available upgrades"
-
-  userland_ui section "Machine state"
-  # Packages are planned above. Dotfiles are reported from their status graph
-  # because sync never force-overwrites unmanaged conflicts.
-  userland_ui task inspect "Inspect managed paths" \
-    userland_plan_mise_dotfiles
+  userland_ui task inspect "Inspecting managed files" userland_plan_mise_dotfiles
   userland_plan_import_dotfiles "$USERLAND_PLAN_RESULT" ||
     userland_die "mise returned unreadable managed-path status; no approval was requested"
+
+  if userland_is_macos; then
+    userland_ui task inspect "Inspecting macOS settings" userland_plan_macos_defaults
+    userland_plan_import_macos_defaults "$USERLAND_PLAN_RESULT" ||
+      userland_die "mise returned unreadable macOS-defaults status; no approval was requested"
+  fi
   rm -f "$USERLAND_PLAN_RESULT"
   unset USERLAND_PLAN_RESULT
 
-  userland_ui section "Legacy files"
   userland_plan_legacy_dotfiles
-
-  userland_ui section "Personal state"
-  userland_run_adapters plan
-
-  userland_ui report render
-  userland_log info "Fresh Mac: 30-90 minutes; no automatic reboot"
-  userland_log info "Rollback covers configuration, not package or application upgrades"
+  userland_ui task collect "Inspecting personal state" userland_run_adapters plan
+  # The adapter dispatcher runs in the task child. Its typed records are written
+  # to the shared ledger while native logs remain in the private run log.
+  userland_plan_render
 
   if [ "$userland_plan_mode" = standalone ]; then
     userland_ui summary ok "Plan complete. No changes were applied."

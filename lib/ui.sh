@@ -156,6 +156,10 @@ userland_ui_exit() {
 
 userland_ui_signal() {
   userland_ui_signal_code=$1
+  if [ "$userland_ui_signal_code" -eq 130 ]; then
+    userland_ui_clear_active
+    userland_ui_status cancelled "Cancelled."
+  fi
   userland_ui_cleanup
   trap - EXIT HUP INT TERM
   exit "$userland_ui_signal_code"
@@ -172,11 +176,17 @@ userland_ui_task_excerpt() {
 }
 
 userland_ui_spinner_frame() {
-  case $((userland_ui_spinner_tick % 4)) in
-    0) userland_ui_spinner_glyph='◒' ;;
-    1) userland_ui_spinner_glyph='◐' ;;
-    2) userland_ui_spinner_glyph='◓' ;;
-    3) userland_ui_spinner_glyph='◑' ;;
+  case $((userland_ui_spinner_tick % 10)) in
+    0) userland_ui_spinner_glyph='⠋' ;;
+    1) userland_ui_spinner_glyph='⠙' ;;
+    2) userland_ui_spinner_glyph='⠹' ;;
+    3) userland_ui_spinner_glyph='⠸' ;;
+    4) userland_ui_spinner_glyph='⠼' ;;
+    5) userland_ui_spinner_glyph='⠴' ;;
+    6) userland_ui_spinner_glyph='⠦' ;;
+    7) userland_ui_spinner_glyph='⠧' ;;
+    8) userland_ui_spinner_glyph='⠇' ;;
+    9) userland_ui_spinner_glyph='⠏' ;;
   esac
   if [ "$userland_ui_unicode" = 0 ]; then
     case $((userland_ui_spinner_tick % 4)) in
@@ -405,9 +415,14 @@ userland_ui() {
       trap 'userland_ui_signal 143' TERM
       if [ "$userland_ui_active_mode" = rich ]; then
         userland_ui_wordmark
-        printf '\n%s%s%s%s  %suserland %s%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_open" "$userland_ui_reset" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
+        if [ "$userland_ui_unicode" != 0 ]; then
+          userland_ui_title_rule='────────────────────────────────────────'
+        else
+          userland_ui_title_rule='----------------------------------------'
+        fi
+        printf '%s%s%s%s%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_open" "$userland_ui_title_rule" "$userland_ui_reset"
+        printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
         printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"
-        printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail"
       else
         printf 'userland %s: %s\n' "$userland_ui_command" "$userland_ui_description"
       fi

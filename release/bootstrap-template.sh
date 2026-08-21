@@ -293,7 +293,10 @@ cleanup() {
 
   if ! apply_started && repo_is_owned_by_transaction; then
     if restore_release_command; then
-      if ! rm -rf "$repo_dir"; then
+      printf 'userland: removing ~/.userland after cancellation\n' >&2
+      if rm -rf "$repo_dir"; then
+        printf 'userland: removed ~/.userland\n' >&2
+      else
         printf 'userland: could not remove cancelled checkout at %s\n' "$repo_dir" >&2
       fi
     else
@@ -359,7 +362,7 @@ fi
 install_current_release_link
 cleanup_stale_current_links
 install_command_link "$release_dir/bin/userland"
-"$release_dir/bin/mise" trust --yes "$release_dir/mise.toml"
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/mise.toml" >/dev/null
 
 if [ -L "$repo_dir" ]; then
   die "$repo_dir must not be a symlink"
@@ -385,9 +388,10 @@ else
   mv "$checkout_work" "$repo_dir"
   checkout_work=
   repo_created=1
+  printf 'userland: created ~/.userland\n'
 fi
 
-"$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml"
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
 install_command_link "$repo_dir/bin/userland"
 
 run_sync() {
@@ -463,7 +467,7 @@ if [ ! -d "$repo_dir/.git" ]; then
 fi
 
 validate_checkout "$repo_dir"
-"$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml"
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
 install_command_link "$repo_dir/bin/userland"
 
 if [ "$sync_status" -eq 2 ]; then

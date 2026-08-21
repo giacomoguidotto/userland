@@ -41,6 +41,7 @@ EOF
 cat >"$fixture/bin/mise" <<'EOF'
 #!/bin/sh
 [ -z "${TEST_TRUST_LOG:-}" ] || printf '%s\n' "$*" >>"$TEST_TRUST_LOG"
+[ "${MISE_QUIET:-0}" = 1 ] || printf 'mise trusted %s\n' "$*"
 exit 0
 EOF
 chmod +x "$fixture/bin/userland" "$fixture/bin/mise"
@@ -182,8 +183,13 @@ HOME="$attention_home" \
   TEST_SYNC_STATUS=2 \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || attention_status=$?
+  sh "$work/bootstrap" >"$work/attention-output" 2>&1 || attention_status=$?
 [ "$attention_status" -eq 0 ] || fail "completed attention run returned $attention_status"
+grep -Fq 'userland: created ~/.userland' "$work/attention-output" ||
+  fail "first run did not report the canonical checkout creation"
+if grep -Fq 'mise trusted' "$work/attention-output"; then
+  fail "first run exposed mise trust logs"
+fi
 attention_root=$(CDPATH='' cd -- "$attention_home/.userland" && pwd)
 grep -Fq "root=$attention_root" "$work/attention-observation" ||
   fail "sync did not run from the canonical userland path"
@@ -408,8 +414,14 @@ HOME="$cancel_home" \
   TEST_SYNC_STATUS=3 \
   USERLAND_DATA_DIR="$cancel_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || cancel_status=$?
+  sh "$work/bootstrap" >"$work/cancel-output" 2>&1 || cancel_status=$?
 [ "$cancel_status" -eq 3 ] || fail "cancelled run returned $cancel_status"
+grep -Fq 'userland: created ~/.userland' "$work/cancel-output" ||
+  fail "cancelled run did not report the canonical checkout creation"
+grep -Fq 'userland: removing ~/.userland after cancellation' "$work/cancel-output" ||
+  fail "cancelled run did not report the canonical checkout removal"
+grep -Fq 'userland: removed ~/.userland' "$work/cancel-output" ||
+  fail "cancelled run did not confirm the canonical checkout removal"
 [ "$(readlink "$cancel_home/.local/bin/userland")" = "$cancel_home/.local/share/userland/releases/$tag/bin/userland" ] ||
   fail "cancelled run did not restore the release command"
 [ ! -e "$cancel_home/.userland" ] || fail "cancelled run retained its provisional checkout"
@@ -426,8 +438,10 @@ HOME="$signal_home" \
   TEST_SYNC_STATUS=130 \
   USERLAND_DATA_DIR="$signal_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || signal_status=$?
+  sh "$work/bootstrap" >"$work/signal-output" 2>&1 || signal_status=$?
 [ "$signal_status" -eq 130 ] || fail "interrupted run returned $signal_status"
+grep -Fq 'userland: removing ~/.userland after cancellation' "$work/signal-output" ||
+  fail "interrupted run did not report the canonical checkout removal"
 [ ! -e "$signal_home/.userland" ] || fail "interrupted run retained its provisional checkout"
 [ "$(readlink "$signal_home/.local/bin/userland")" = "$signal_home/.local/share/userland/releases/$tag/bin/userland" ] ||
   fail "interrupted run did not restore the release command"

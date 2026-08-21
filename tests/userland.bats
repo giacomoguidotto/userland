@@ -103,11 +103,11 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command doctor "Check this Mac"; userland_ui section "Security"; userland_log healthy "FileVault is on"'
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"userland"*"doctor"* ]]
+  [[ "$output" == *"doctor"*"Check this Mac"* ]]
   [[ "$output" == *"▗▖ ▗▖ ▗▄▄▖"*"▝▚▄▞▘▗▄▄▞▘"* ]]
-  [[ "$output" == *$'\n ┌'* ]]
+  [[ "$output" == *$'\n '*"┌"* ]]
   [[ "$output" == *$'\n │'* ]]
-  [[ "$output" == *$'\n ◆  Security'* ]]
+  [[ "$output" == *$'\n '*"◆"*"Security"* ]]
   [[ "$output" == *"✓"*"FileVault is on"* ]]
   [[ "$output" == *$'\e['* ]]
 
@@ -124,6 +124,16 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"!  Manual approval remains"* ]]
   [[ "$output" != *$'\e['* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui_spinner_tick=0; userland_ui_spinner_frame; printf "%s\n" "$userland_ui_spinner_glyph"'
+  [ "$status" -eq 0 ]
+  [ "$output" = '⠋' ]
 }
 
 @test "the renderer rejects unknown events and confirmation stays default-deny" {
@@ -164,6 +174,17 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command plan "Portable title"'
   [ "$status" -eq 0 ]
   [[ "$output" == *"+-- USERLAND --+"* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command sync "Preview"; userland_ui_signal 130'
+  [ "$status" -eq 130 ]
+  [[ "$output" == *$'\n │  sync\n │  Preview\n'* ]]
+  [[ "$output" == *"Cancelled."* ]]
 
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
@@ -212,12 +233,12 @@ teardown() {
   [[ "$output" == *"App 6"* ]]
   [[ "$output" == *"~/.stale-1"* ]]
   [[ "$output" == *"~/.stale-6"* ]]
-  [[ "$output" == *$'\n ◆  Plan\n  │\n  ├─ OS changes'* ]]
-  [[ "$output" == *$'\n  ├─ OS changes'* ]]
-  [[ "$output" == *$'\n  │\n  ├─ Filesystem changes'* ]]
-  [[ "$output" == *$'\n  │\n  ├─ Application additions'* ]]
-  [[ "$output" == *$'\n  │\n  ├─ Cleanup'* ]]
-  [[ "$output" == *$'\n  │  -  ~/.stale-6'* ]]
+  [[ "$output" == *$'\n ◆  Plan\n │\n ├─ OS changes'* ]]
+  [[ "$output" == *$'\n ├─ OS changes'* ]]
+  [[ "$output" == *$'\n │\n ├─ Filesystem changes'* ]]
+  [[ "$output" == *$'\n │\n ├─ Application additions'* ]]
+  [[ "$output" == *$'\n │\n ├─ Cleanup'* ]]
+  [[ "$output" == *$'\n │  -  ~/.stale-6'* ]]
   [[ "$output" != *"└"* ]]
   [[ "$output" != *"│  ├"* ]]
   app_detail_column=$(printf '%s\n' "$output" | awk '/App 1/ { print index($0, "Homebrew"); exit }')

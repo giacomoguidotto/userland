@@ -52,7 +52,7 @@ userland_sync() {
   userland_require_mise
   userland_mkdirs
   userland_bootstrap_require_lock_access
-  userland_ui command sync "Update userland, apply declared state, then verify it."
+  userland_ui command sync "Bring this Mac in line with the state declared in giacomoguidotto/userland."
   userland_ui section "Preflight"
   userland_sync_preflight
 

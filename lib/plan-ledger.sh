@@ -143,7 +143,7 @@ userland_plan_render() {
   export USERLAND_PLAN_ACTIVE USERLAND_PLAN_COLLECTING
   if [ "$userland_ui_active_mode" = rich ]; then
     userland_plan_global_rail="$userland_ui_margin$userland_ui_rail"
-    userland_plan_rail="$userland_ui_margin $userland_ui_rail"
+    userland_plan_rail=$userland_plan_global_rail
     userland_plan_target_width=24
     while IFS="$userland_plan_tab" read -r userland_plan_width_row _ userland_plan_width_target _; do
       [ "$userland_plan_width_row" = item ] || continue
@@ -166,7 +166,7 @@ userland_plan_render() {
           [ "$userland_plan_section_index" -eq 0 ] || printf '%s\n' "$userland_plan_rail"
           userland_plan_section_index=$((userland_plan_section_index + 1))
           userland_plan_item_prefix="$userland_plan_rail  "
-          printf '%s %s├─ %s%s%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
+          printf '%s%s├─ %s%s%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_bold" "$userland_plan_b" "$userland_ui_reset"
           if [ "$userland_plan_current_count" -eq 0 ]; then
             if [ "$userland_plan_current_area" = cleanup ]; then
               printf '%s   %sNo stale userland-owned items%s\n' "$userland_plan_rail" "$userland_ui_dim" "$userland_ui_reset"

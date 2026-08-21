@@ -198,11 +198,16 @@ teardown() {
   [[ "$output" == *"App 6"* ]]
   [[ "$output" == *"~/.stale-1"* ]]
   [[ "$output" == *"~/.stale-6"* ]]
-  [[ "$output" == *$'\n├ OS changes'* ]]
-  [[ "$output" == *$'\n├ Cleanup'* ]]
-  [[ "$output" == *$'\n│  -  ~/.stale-6'* ]]
+  [[ "$output" == *$'\n ├─ OS changes'* ]]
+  [[ "$output" == *$'\n │\n ├─ Filesystem changes'* ]]
+  [[ "$output" == *$'\n │\n ├─ Application additions'* ]]
+  [[ "$output" == *$'\n │\n ├─ Cleanup'* ]]
+  [[ "$output" == *$'\n │  -  ~/.stale-6'* ]]
   [[ "$output" != *"└"* ]]
   [[ "$output" != *"│  ├"* ]]
+  app_detail_column=$(printf '%s\n' "$output" | awk '/App 1/ { print index($0, "Homebrew"); exit }')
+  cleanup_detail_column=$(printf '%s\n' "$output" | awk '/\.stale-1/ { print index($0, "legacy link"); exit }')
+  [ "$app_detail_column" -eq "$cleanup_detail_column" ]
   grep -q "App 6" "$USERLAND_STATE_DIR/last-run.log"
   grep -q "~/.stale-6" "$USERLAND_STATE_DIR/last-run.log"
 }

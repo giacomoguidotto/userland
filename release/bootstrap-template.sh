@@ -404,6 +404,12 @@ else
   mv "$extracted" "$release_dir"
 fi
 
+# Reject an unfinished stage from another release before publishing any new
+# current-release or command links. The pinned recovery command remains intact.
+if [ ! -L "$repo_dir" ] && [ -e "$repo_dir" ] && [ ! -d "$repo_dir/.git" ]; then
+  validate_materialized_checkout "$repo_dir"
+fi
+
 install_current_release_link
 cleanup_stale_current_links
 install_command_link "$release_dir/bin/userland"
@@ -473,6 +479,12 @@ case "$sync_status" in
   0 | 2) ;;
   *) exit "$sync_status" ;;
 esac
+
+# Exit 2 also represents a plan blocked before approval. Only promote a staged
+# checkout after sync crossed the apply checkpoint.
+if [ "$sync_status" -eq 2 ] && ! apply_started; then
+  exit 2
+fi
 
 if [ ! -d "$repo_dir/.git" ]; then
   command -v git >/dev/null 2>&1 || die "sync completed without installing Git"

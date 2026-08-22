@@ -33,7 +33,14 @@ fi
 case "$*" in
   *doctor*--json*) printf '%s\n' '{"healthy":true}' ;;
   *bootstrap*plan*--json*) printf '%s\n' '{"resources":[],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":0}}' ;;
-  *bootstrap*dotfiles*status*--json*) printf '%s\n' '{"files":[],"edits":[]}' ;;
+  *bootstrap*dotfiles*status*--json*)
+    if [ "${TEST_DOTFILES_PENDING:-0}" = 1 ] && [ ! -e "$TEST_TMPDIR/dotfiles-applied" ]; then
+      printf '%s\n' '{"files":[{"state":"differs","source":"~/.userland/config/home/zshrc","target":"~/.zshrc","mode":"symlink"}],"edits":[]}'
+    else
+      printf '%s\n' '{"files":[],"edits":[]}'
+    fi
+    ;;
+  *bootstrap*dotfiles*apply*) : >"$TEST_TMPDIR/dotfiles-applied" ;;
   *bootstrap*macos*defaults*status*--json*) printf '%s\n' '{"macos_defaults":{"entries":[],"available":true}}' ;;
 esac
 exit 0
@@ -431,6 +438,36 @@ EOF
   grep -q 'bootstrap dotfiles status --json' "$MISE_CALLS"
 }
 
+@test "a blocked refreshed sync leaves legacy links untouched" {
+  legacy_source=$TEST_TMPDIR/workspace/cfg/home/zshrc
+  mkdir -p "${legacy_source%/*}"
+  printf '%s\n' '# legacy zshrc' >"$legacy_source"
+  ln -s "$legacy_source" "$USERLAND_HOME/.zshrc"
+
+  cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MISE_CALLS"
+case "$*" in
+  *bootstrap*plan*--json*)
+    printf '%s\n' '{"resources":[{"id":{"kind":"package","name":"brew:bat"},"current":"installed","desired":"installed","action":"future-action"}],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":1}}'
+    ;;
+  *bootstrap*dotfiles*status*--json*) printf '%s\n' '{"files":[],"edits":[]}' ;;
+  *bootstrap*macos*defaults*status*--json*) printf '%s\n' '{"macos_defaults":{"entries":[],"available":false}}' ;;
+esac
+exit 0
+EOF
+  chmod +x "$TEST_TMPDIR/bin/mise"
+
+  run env USERLAND_REFRESHED=1 USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" sync
+
+  [ "$status" -eq 2 ]
+  [ -L "$USERLAND_HOME/.zshrc" ]
+  [ "$(readlink "$USERLAND_HOME/.zshrc")" = "$legacy_source" ]
+  [[ "$output" != *"released legacy workspace ownership"* ]]
+  ! grep -q 'bootstrap packages apply' "$MISE_CALLS"
+  ! grep -q 'bootstrap dotfiles apply' "$MISE_CALLS"
+}
+
 @test "plan refuses unreadable machine-state JSON before consent" {
   printf '%s\n' '#!/bin/sh' \
     'case "$*" in' \
@@ -465,7 +502,7 @@ EOF
 printf '%s\n' "$*" >>"$MISE_CALLS"
 case "$*" in
   *bootstrap*plan*--json*)
-    printf '%s\n' '{"resources":[{"id":{"kind":"package","name":"brew:eza"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"package","name":"brew:git"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"package","name":"brew:unknown-tool"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"file","name":"~/.config/example"},"current":"old","desired":"managed","action":"update"},{"id":{"kind":"service","name":"retired-agent"},"current":"running","desired":"absent","action":"remove"}],"summary":{"create":3,"update":1,"remove":1,"unchanged":0,"unknown":0}}'
+    printf '%s\n' '{"resources":[{"id":{"kind":"package","name":"brew:bat"},"current":"installed","desired":"installed","action":"noop"},{"id":{"kind":"package","name":"brew:eza"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"package","name":"brew:git"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"package","name":"brew:unknown-tool"},"current":"missing","desired":"installed","action":"create"},{"id":{"kind":"file","name":"~/.config/example"},"current":"old","desired":"managed","action":"update"},{"id":{"kind":"service","name":"retired-agent"},"current":"running","desired":"absent","action":"remove"}],"summary":{"create":3,"update":1,"remove":1,"unchanged":0,"noop":1,"unknown":0}}'
     ;;
   *bootstrap*dotfiles*status*--json*)
     printf '%s\n' '{"files":[{"state":"differs","source":"~/userland/config/home/zshrc","target":"~/.zshrc","mode":"symlink"}],"edits":[]}'
@@ -488,6 +525,8 @@ EOF
   [[ "$output" == *"git: migrate from Nix to Homebrew"* ]]
   [[ "$output" == *"unknown-tool: migrate to Homebrew"* ]]
   [[ "$output" == *"retired-agent: running to absent"* ]]
+  [[ "$output" != *"brew:bat"* ]]
+  [[ "$output" != *"unknown action: noop"* ]]
 }
 
 @test "Homebrew plans every missing application and sync avoids unplanned upgrades" {
@@ -584,6 +623,7 @@ EOF
   export USERLAND_BOOTSTRAP_CONTROL=$TEST_TMPDIR/bootstrap-control
   export USERLAND_BOOTSTRAP_TOKEN=bootstrap-test-token
   export TEST_CHECK_BOOTSTRAP_CHECKPOINT=1
+  export TEST_DOTFILES_PENDING=1
   mkdir -m 700 "$USERLAND_BOOTSTRAP_CONTROL"
   printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$USERLAND_BOOTSTRAP_CONTROL/owner"
   mkdir -p "$USERLAND_DATA_DIR/bootstrap.lock"
@@ -602,4 +642,13 @@ EOF
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]
   grep -q 'bootstrap packages apply --yes' "$MISE_CALLS"
   grep -q 'bootstrap packages upgrade --yes' "$MISE_CALLS"
+  grep -q 'bootstrap --yes --only tools' "$MISE_CALLS"
+  grep -q 'bootstrap macos defaults apply --yes' "$MISE_CALLS"
+  grep -q 'bootstrap dotfiles apply --yes' "$MISE_CALLS"
+  ! grep -q 'bootstrap --yes --skip packages' "$MISE_CALLS"
+  tools_line=$(grep -n 'bootstrap --yes --only tools' "$MISE_CALLS" | cut -d: -f1)
+  macos_line=$(grep -n 'bootstrap macos defaults apply --yes' "$MISE_CALLS" | cut -d: -f1)
+  dotfiles_line=$(grep -n 'bootstrap dotfiles apply --yes' "$MISE_CALLS" | cut -d: -f1)
+  [ "$tools_line" -lt "$macos_line" ]
+  [ "$macos_line" -lt "$dotfiles_line" ]
 }

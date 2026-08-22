@@ -123,7 +123,7 @@ userland_plan_import_mise() {
     userland_plan_resource_desired=$(/usr/bin/plutil -extract "$userland_plan_resource.desired" raw -o - "$userland_plan_json" 2>/dev/null) || return 1
 
     case "$userland_plan_resource_action" in
-      unchanged) ;;
+      noop | unchanged) ;;
       remove)
         userland_plan_add cleanup remove automatic declared \
           "$userland_plan_resource_name" \

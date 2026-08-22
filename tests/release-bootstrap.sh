@@ -209,6 +209,23 @@ grep -Fq "original-path=$attention_original_path" "$work/attention-observation" 
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$tag" ] ||
   fail "attention run did not retain the pinned mise release"
 
+blocked_home="$work/blocked-home"
+prepare_home "$blocked_home"
+blocked_status=0
+HOME="$blocked_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/blocked-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=2 \
+  USERLAND_DATA_DIR="$blocked_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >"$work/blocked-output" 2>&1 || blocked_status=$?
+[ "$blocked_status" -eq 2 ] || fail "pre-apply blocked run returned $blocked_status"
+[ ! -e "$blocked_home/.userland" ] || fail "pre-apply blocked run retained its provisional checkout"
+[ "$(readlink "$blocked_home/.local/bin/userland")" = "$blocked_home/.local/share/userland/releases/$tag/bin/userland" ] ||
+  fail "pre-apply blocked run published the repository command"
+
 rerun_status=0
 HOME="$attention_home" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
@@ -507,6 +524,10 @@ HOME="$retained_home" \
 [ "$cross_release_status" -ne 0 ] || fail "new release accepted an unfinished older stage"
 grep -Fq "https://userland.guidotto.dev/$tag" "$work/cross-release-output" ||
   fail "unfinished older stage did not provide its pinned recovery command"
+[ "$(readlink "$retained_home/.local/share/userland/current")" = "$retained_home/.local/share/userland/releases/$tag" ] ||
+  fail "cross-release refusal moved the current release pointer"
+[ "$(readlink "$retained_home/.local/bin/userland")" = "$retained_home/.userland/bin/userland" ] ||
+  fail "cross-release refusal moved the command away from the retained stage"
 
 promotion_home="$work/promotion-home"
 prepare_home "$promotion_home"

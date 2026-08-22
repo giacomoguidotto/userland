@@ -57,6 +57,10 @@ userland_sync() {
   if [ "${USERLAND_BOOTSTRAP_CREATED:-0}" = 1 ]; then
     userland_log changed "Creating ~/.userland"
   fi
+  userland_dotfiles_recover ||
+    userland_die "managed-file recovery needs attention before sync can continue"
+  userland_dotfiles_prune_recovery ||
+    userland_die "managed-file recovery cleanup failed"
   userland_sync_preflight
 
   # Sync updates its own clean main checkout first. The plan and consent below
@@ -69,12 +73,6 @@ userland_sync() {
     elif [ "$userland_refresh_code" -ne 0 ]; then
       return "$userland_refresh_code"
     fi
-  fi
-
-  # A fast-forward can move managed source paths. Repair those links before
-  # any replanning or package work so an interrupted layout upgrade is safe.
-  if [ "${USERLAND_REFRESHED:-}" = 1 ]; then
-    userland_prepare_legacy_dotfiles
   fi
 
   # Show one combined read-only plan before package or declared-state changes.
@@ -98,11 +96,11 @@ userland_sync() {
     "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages upgrade --yes --jobs "${USERLAND_JOBS:-4}"
   unset USERLAND_UI_PROGRESS
 
-  userland_prepare_legacy_dotfiles
-
   userland_ui section "Apply machine state"
-  userland_ui task apply "Apply tools, files, repositories, and macOS preferences" \
-    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap --yes --skip packages --jobs "${USERLAND_JOBS:-4}"
+  userland_ui task apply "Install pinned development tools" \
+    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap --yes --only tools --jobs "${USERLAND_JOBS:-4}"
+  userland_ui task apply "Apply macOS preferences" \
+    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap macos defaults apply --yes
 
   userland_ui section "Apply personal state"
   USERLAND_UI_HIDE_OK=1
@@ -110,11 +108,16 @@ userland_sync() {
   userland_run_adapters apply
   unset USERLAND_UI_HIDE_OK
 
+  userland_ui section "Apply managed files"
+  userland_ui task apply "Apply managed files transactionally" userland_dotfiles_apply
+
   userland_ui section "Verify"
   # shellcheck source=doctor.sh
   . "$USERLAND_ROOT/lib/doctor.sh"
   if userland_doctor embedded; then
-    if ! userland_trash_legacy_checkout; then
+    if [ -e "$USERLAND_DATA_DIR/repo" ] && userland_dotfiles_recovery_window_open; then
+      userland_log current "Keeping the legacy checkout for the 24-hour recovery window"
+    elif ! userland_trash_legacy_checkout; then
       userland_ui summary attention "Sync complete, but a legacy checkout needs review."
       return 2
     fi

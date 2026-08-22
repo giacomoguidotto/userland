@@ -20,6 +20,110 @@ teardown() {
   rm -rf "$TEST_TMPDIR"
 }
 
+write_transaction_mise() {
+  cat >"$TEST_TMPDIR/mise" <<'EOF'
+#!/bin/sh
+case "$*" in
+  *bootstrap*dotfiles*status*--json*)
+    if [ -d "$USERLAND_HOME/.config/gh" ] && [ ! -L "$USERLAND_HOME/.config/gh" ] &&
+      [ -L "$USERLAND_HOME/.config/gh/config.yml" ]; then
+      state=applied
+    else
+      state=differs
+    fi
+    printf '%s\n' "{\"files\":[{\"state\":\"$state\",\"source\":\"~/.userland/config/xdg/gh\",\"target\":\"~/.config/gh\",\"mode\":\"symlink-each\"}],\"edits\":[]}"
+    ;;
+  *bootstrap*dotfiles*apply*)
+    ln -s "$USERLAND_ROOT/config/xdg/gh/config.yml" "$USERLAND_HOME/.config/gh/config.yml"
+    [ "${TEST_DOTFILES_FAIL:-0}" = 0 ] || exit 7
+    ;;
+esac
+exit 0
+EOF
+  chmod +x "$TEST_TMPDIR/mise"
+  export USERLAND_MISE=$TEST_TMPDIR/mise
+}
+
+@test "a partial managed-file cutover restores the complete legacy target" {
+  write_transaction_mise
+  export TEST_DOTFILES_FAIL=1
+  legacy_target=$(readlink "$USERLAND_HOME/.config/gh")
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_dotfiles_apply'
+
+  [ "$status" -eq 7 ]
+  [ -L "$USERLAND_HOME/.config/gh" ]
+  [ "$(readlink "$USERLAND_HOME/.config/gh")" = "$legacy_target" ]
+  grep -q 'hosts stay local' "$USERLAND_HOME/.config/gh/hosts.yml"
+  [ ! -e "$USERLAND_STATE_DIR/recovery/active" ]
+  recovery_state=$(find "$USERLAND_STATE_DIR/recovery" -name state -type f -exec cat {} \;)
+  [ "$recovery_state" = rolled-back ]
+}
+
+@test "a successful managed-file cutover commits a 24-hour recovery snapshot" {
+  write_transaction_mise
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_dotfiles_apply'
+
+  [ "$status" -eq 0 ]
+  [ -d "$USERLAND_HOME/.config/gh" ]
+  [ ! -L "$USERLAND_HOME/.config/gh" ]
+  [ -L "$USERLAND_HOME/.config/gh/config.yml" ]
+  grep -q 'hosts stay local' "$USERLAND_HOME/.config/gh/hosts.yml"
+  [ ! -e "$USERLAND_STATE_DIR/recovery/active" ]
+  recovery_state=$(find "$USERLAND_STATE_DIR/recovery" -name state -type f -exec cat {} \;)
+  [ "$recovery_state" = committed ]
+}
+
+@test "the next sync recovers an interrupted managed-file cutover" {
+  write_transaction_mise
+  status_file=$TEST_TMPDIR/dotfiles-status.json
+  "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles status --json >"$status_file"
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_dotfiles_begin "$1"; userland_prepare_legacy_dotfiles' sh "$status_file"
+  [ "$status" -eq 0 ]
+  [ -f "$USERLAND_STATE_DIR/recovery/active" ]
+  [ -d "$USERLAND_HOME/.config/gh" ]
+  [ ! -L "$USERLAND_HOME/.config/gh" ]
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_dotfiles_recover'
+
+  [ "$status" -eq 0 ]
+  [ -L "$USERLAND_HOME/.config/gh" ]
+  grep -q 'hosts stay local' "$USERLAND_HOME/.config/gh/hosts.yml"
+  [ ! -e "$USERLAND_STATE_DIR/recovery/active" ]
+  recovery_state=$(find "$USERLAND_STATE_DIR/recovery" -name state -type f -exec cat {} \;)
+  [ "$recovery_state" = rolled-back ]
+}
+
+@test "recovery pruning removes only committed snapshots older than 24 hours" {
+  recovery_root=$USERLAND_STATE_DIR/recovery
+  mkdir -p \
+    "$recovery_root/cutover-old" \
+    "$recovery_root/cutover-new" \
+    "$recovery_root/cutover-active" \
+    "$recovery_root/manual-repair"
+  now=$(date +%s)
+  old=$((now - 86401))
+  for transaction in cutover-old cutover-new cutover-active; do
+    printf '%s\n' dotfiles-v1 >"$recovery_root/$transaction/.userland-recovery"
+  done
+  printf '%s\n' committed >"$recovery_root/cutover-old/state"
+  printf '%s\n' "$old" >"$recovery_root/cutover-old/created-at"
+  printf '%s\n' committed >"$recovery_root/cutover-new/state"
+  printf '%s\n' "$now" >"$recovery_root/cutover-new/created-at"
+  printf '%s\n' applying >"$recovery_root/cutover-active/state"
+  printf '%s\n' "$old" >"$recovery_root/cutover-active/created-at"
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_dotfiles_prune_recovery'
+
+  [ "$status" -eq 0 ]
+  [ ! -e "$recovery_root/cutover-old" ]
+  [ -d "$recovery_root/cutover-new" ]
+  [ -d "$recovery_root/cutover-active" ]
+  [ -d "$recovery_root/manual-repair" ]
+}
+
 @test "legacy directory migration preserves only unmanaged children" {
   run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_prepare_legacy_dotfiles'
   [ "$status" -eq 0 ]

@@ -3,6 +3,285 @@
 # shellcheck source=common.sh
 . "$USERLAND_ROOT/lib/common.sh"
 
+userland_dotfiles_write_state() {
+  userland_dotfiles_state_dir=$1
+  userland_dotfiles_state_value=$2
+  userland_dotfiles_state_tmp=$userland_dotfiles_state_dir/.state.$$
+  printf '%s\n' "$userland_dotfiles_state_value" >"$userland_dotfiles_state_tmp"
+  chmod 600 "$userland_dotfiles_state_tmp"
+  mv "$userland_dotfiles_state_tmp" "$userland_dotfiles_state_dir/state"
+}
+
+userland_dotfiles_clear_active() {
+  userland_dotfiles_clear_id=$1
+  userland_dotfiles_active=$USERLAND_STATE_DIR/recovery/active
+  [ -f "$userland_dotfiles_active" ] || return 0
+  [ "$(cat "$userland_dotfiles_active" 2>/dev/null)" = "$userland_dotfiles_clear_id" ] || return 0
+  rm -f "$userland_dotfiles_active"
+}
+
+userland_dotfiles_expand_target() {
+  case "$1" in
+    \~/*) userland_dotfiles_target=$USERLAND_HOME/${1#\~/} ;;
+    /*) userland_dotfiles_target=$1 ;;
+    *) return 1 ;;
+  esac
+  case "$userland_dotfiles_target" in
+    "$USERLAND_HOME"/*) ;;
+    *) return 1 ;;
+  esac
+}
+
+userland_dotfiles_array_count() {
+  userland_dotfiles_array_path=$1
+  userland_dotfiles_array_file=$2
+  userland_dotfiles_array_size=$(/usr/bin/plutil -extract "$userland_dotfiles_array_path" raw -o - "$userland_dotfiles_array_file" 2>/dev/null) || return 1
+  case "$userland_dotfiles_array_size" in '' | *[!0-9]*) return 1 ;; esac
+  printf '%s\n' "$userland_dotfiles_array_size"
+}
+
+userland_dotfiles_status_is_applied() {
+  userland_dotfiles_status=$1
+  userland_dotfiles_file_count=$(userland_dotfiles_array_count files "$userland_dotfiles_status") || return 1
+  userland_dotfiles_file_index=0
+  while [ "$userland_dotfiles_file_index" -lt "$userland_dotfiles_file_count" ]; do
+    userland_dotfiles_file_state=$(/usr/bin/plutil -extract "files.$userland_dotfiles_file_index.state" raw -o - "$userland_dotfiles_status" 2>/dev/null) || return 1
+    [ "$userland_dotfiles_file_state" = applied ] || return 1
+    userland_dotfiles_file_index=$((userland_dotfiles_file_index + 1))
+  done
+
+  userland_dotfiles_edit_count=$(userland_dotfiles_array_count edits "$userland_dotfiles_status") || return 1
+  userland_dotfiles_edit_index=0
+  while [ "$userland_dotfiles_edit_index" -lt "$userland_dotfiles_edit_count" ]; do
+    userland_dotfiles_edit_state=$(/usr/bin/plutil -extract "edits.$userland_dotfiles_edit_index.state" raw -o - "$userland_dotfiles_status" 2>/dev/null) || return 1
+    case "$userland_dotfiles_edit_state" in applied | present) ;; *) return 1 ;; esac
+    userland_dotfiles_edit_index=$((userland_dotfiles_edit_index + 1))
+  done
+}
+
+userland_dotfiles_snapshot_target() {
+  userland_dotfiles_snapshot_dir=$1
+  userland_dotfiles_snapshot_path=$2
+  userland_dotfiles_snapshot_manifest=$userland_dotfiles_snapshot_dir/manifest
+  case "$userland_dotfiles_snapshot_path" in *"$(printf '\t')"* | *"
+"*) return 1 ;; esac
+  if awk -F '\t' -v path="$userland_dotfiles_snapshot_path" '$2 == path { found = 1 } END { exit !found }' "$userland_dotfiles_snapshot_manifest"; then
+    return 0
+  fi
+
+  userland_dotfiles_snapshot_index=$(($(wc -l <"$userland_dotfiles_snapshot_manifest" | tr -d ' ') + 1))
+  if [ -e "$userland_dotfiles_snapshot_path" ] || [ -L "$userland_dotfiles_snapshot_path" ]; then
+    cp -pR "$userland_dotfiles_snapshot_path" "$userland_dotfiles_snapshot_dir/before/$userland_dotfiles_snapshot_index" || return 1
+    userland_dotfiles_snapshot_presence=present
+  else
+    userland_dotfiles_snapshot_presence=absent
+  fi
+  printf '%s\t%s\t%s\n' \
+    "$userland_dotfiles_snapshot_index" \
+    "$userland_dotfiles_snapshot_path" \
+    "$userland_dotfiles_snapshot_presence" >>"$userland_dotfiles_snapshot_manifest"
+}
+
+userland_dotfiles_begin() {
+  userland_dotfiles_status=$1
+  userland_dotfiles_recovery=$USERLAND_STATE_DIR/recovery
+  mkdir -p "$USERLAND_CACHE_DIR" "$userland_dotfiles_recovery"
+  chmod 700 "$userland_dotfiles_recovery"
+  [ ! -e "$userland_dotfiles_recovery/active" ] || return 1
+
+  userland_dotfiles_created_at=$(date +%s)
+  userland_dotfiles_transaction_id=cutover-$userland_dotfiles_created_at-$$
+  userland_dotfiles_transaction_dir=$userland_dotfiles_recovery/$userland_dotfiles_transaction_id
+  [ ! -e "$userland_dotfiles_transaction_dir" ] || return 1
+  mkdir -m 700 "$userland_dotfiles_transaction_dir" "$userland_dotfiles_transaction_dir/before"
+  printf '%s\n' dotfiles-v1 >"$userland_dotfiles_transaction_dir/.userland-recovery"
+  printf '%s\n' "$userland_dotfiles_created_at" >"$userland_dotfiles_transaction_dir/created-at"
+  : >"$userland_dotfiles_transaction_dir/manifest"
+  chmod 600 \
+    "$userland_dotfiles_transaction_dir/.userland-recovery" \
+    "$userland_dotfiles_transaction_dir/created-at" \
+    "$userland_dotfiles_transaction_dir/manifest"
+  cp "$userland_dotfiles_status" "$userland_dotfiles_transaction_dir/status-before.json"
+  chmod 600 "$userland_dotfiles_transaction_dir/status-before.json"
+  userland_dotfiles_write_state "$userland_dotfiles_transaction_dir" preparing
+
+  userland_dotfiles_target_count=$(userland_dotfiles_array_count files "$userland_dotfiles_status") || return 1
+  userland_dotfiles_target_index=0
+  while [ "$userland_dotfiles_target_index" -lt "$userland_dotfiles_target_count" ]; do
+    userland_dotfiles_declared_target=$(/usr/bin/plutil -extract "files.$userland_dotfiles_target_index.target" raw -o - "$userland_dotfiles_status" 2>/dev/null) || return 1
+    userland_dotfiles_expand_target "$userland_dotfiles_declared_target" || return 1
+    userland_dotfiles_snapshot_target "$userland_dotfiles_transaction_dir" "$userland_dotfiles_target" || return 1
+    userland_dotfiles_target_index=$((userland_dotfiles_target_index + 1))
+  done
+  for userland_dotfiles_retired_target in \
+    "$USERLAND_HOME/.codex/AGENTS.md" \
+    "$USERLAND_HOME/.config/opencode/AGENTS.md"; do
+    if [ -e "$userland_dotfiles_retired_target" ] || [ -L "$userland_dotfiles_retired_target" ]; then
+      userland_dotfiles_snapshot_target "$userland_dotfiles_transaction_dir" "$userland_dotfiles_retired_target" || return 1
+    fi
+  done
+
+  userland_dotfiles_active_tmp=$userland_dotfiles_recovery/.active.$$
+  printf '%s\n' "$userland_dotfiles_transaction_id" >"$userland_dotfiles_active_tmp"
+  chmod 600 "$userland_dotfiles_active_tmp"
+  mv "$userland_dotfiles_active_tmp" "$userland_dotfiles_recovery/active"
+  userland_dotfiles_write_state "$userland_dotfiles_transaction_dir" applying
+}
+
+userland_dotfiles_rollback_dir() {
+  userland_dotfiles_rollback_dir=$1
+  [ -f "$userland_dotfiles_rollback_dir/.userland-recovery" ] &&
+    [ "$(cat "$userland_dotfiles_rollback_dir/.userland-recovery")" = dotfiles-v1 ] || return 1
+  userland_dotfiles_write_state "$userland_dotfiles_rollback_dir" rolling-back
+  userland_dotfiles_rollback_run=$userland_dotfiles_rollback_dir/after-$(date +%s)-$$
+  mkdir -m 700 "$userland_dotfiles_rollback_run" || return 1
+  userland_dotfiles_rollback_manifest=$userland_dotfiles_rollback_dir/manifest.reverse.$$
+  awk '{ row[NR] = $0 } END { for (i = NR; i > 0; i--) print row[i] }' \
+    "$userland_dotfiles_rollback_dir/manifest" >"$userland_dotfiles_rollback_manifest"
+  userland_dotfiles_rollback_failed=0
+  while IFS="$(printf '\t')" read -r userland_dotfiles_rollback_index userland_dotfiles_rollback_path userland_dotfiles_rollback_presence; do
+    case "$userland_dotfiles_rollback_path" in
+      "$USERLAND_HOME"/*) ;;
+      *)
+        userland_dotfiles_rollback_failed=1
+        break
+        ;;
+    esac
+    if [ -e "$userland_dotfiles_rollback_path" ] || [ -L "$userland_dotfiles_rollback_path" ]; then
+      mv "$userland_dotfiles_rollback_path" "$userland_dotfiles_rollback_run/$userland_dotfiles_rollback_index" || {
+        userland_dotfiles_rollback_failed=1
+        break
+      }
+    fi
+    if [ "$userland_dotfiles_rollback_presence" = present ]; then
+      mkdir -p "${userland_dotfiles_rollback_path%/*}" || {
+        userland_dotfiles_rollback_failed=1
+        break
+      }
+      cp -pR \
+        "$userland_dotfiles_rollback_dir/before/$userland_dotfiles_rollback_index" \
+        "$userland_dotfiles_rollback_path" || {
+        userland_dotfiles_rollback_failed=1
+        break
+      }
+    fi
+  done <"$userland_dotfiles_rollback_manifest"
+  rm -f "$userland_dotfiles_rollback_manifest"
+
+  if [ "$userland_dotfiles_rollback_failed" -ne 0 ]; then
+    userland_dotfiles_write_state "$userland_dotfiles_rollback_dir" rollback-failed
+    userland_log error "Managed-file rollback needs recovery at $userland_dotfiles_rollback_dir"
+    return 1
+  fi
+  userland_dotfiles_write_state "$userland_dotfiles_rollback_dir" rolled-back
+  userland_dotfiles_clear_active "${userland_dotfiles_rollback_dir##*/}"
+  userland_log changed "Restored the managed-file state from before this sync"
+}
+
+userland_dotfiles_recover() {
+  userland_dotfiles_recovery=$USERLAND_STATE_DIR/recovery
+  userland_dotfiles_active=$userland_dotfiles_recovery/active
+  [ -f "$userland_dotfiles_active" ] || return 0
+  userland_dotfiles_recovery_id=$(cat "$userland_dotfiles_active" 2>/dev/null) || return 1
+  case "$userland_dotfiles_recovery_id" in '' | *[!A-Za-z0-9._-]*) return 1 ;; esac
+  userland_dotfiles_recovery_dir=$userland_dotfiles_recovery/$userland_dotfiles_recovery_id
+  [ -d "$userland_dotfiles_recovery_dir" ] && [ ! -L "$userland_dotfiles_recovery_dir" ] || return 1
+  userland_dotfiles_recovery_state=$(cat "$userland_dotfiles_recovery_dir/state" 2>/dev/null) || return 1
+  case "$userland_dotfiles_recovery_state" in
+    committed | rolled-back)
+      userland_dotfiles_clear_active "$userland_dotfiles_recovery_id"
+      ;;
+    preparing | applying | rolling-back | rollback-failed)
+      userland_dotfiles_rollback_dir "$userland_dotfiles_recovery_dir"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+userland_dotfiles_prune_recovery() {
+  userland_dotfiles_recovery=$USERLAND_STATE_DIR/recovery
+  [ -d "$userland_dotfiles_recovery" ] || return 0
+  userland_dotfiles_now=$(date +%s)
+  for userland_dotfiles_candidate in "$userland_dotfiles_recovery"/cutover-*; do
+    [ -d "$userland_dotfiles_candidate" ] && [ ! -L "$userland_dotfiles_candidate" ] || continue
+    [ -f "$userland_dotfiles_candidate/.userland-recovery" ] &&
+      [ "$(cat "$userland_dotfiles_candidate/.userland-recovery" 2>/dev/null)" = dotfiles-v1 ] || continue
+    [ "$(cat "$userland_dotfiles_candidate/state" 2>/dev/null)" = committed ] || continue
+    userland_dotfiles_created_at=$(cat "$userland_dotfiles_candidate/created-at" 2>/dev/null) || continue
+    case "$userland_dotfiles_created_at" in '' | *[!0-9]*) continue ;; esac
+    [ "$((userland_dotfiles_now - userland_dotfiles_created_at))" -ge 86400 ] || continue
+    rm -rf "$userland_dotfiles_candidate"
+  done
+}
+
+userland_dotfiles_recovery_window_open() {
+  userland_dotfiles_recovery=$USERLAND_STATE_DIR/recovery
+  [ -d "$userland_dotfiles_recovery" ] || return 1
+  userland_dotfiles_now=$(date +%s)
+  for userland_dotfiles_candidate in "$userland_dotfiles_recovery"/cutover-*; do
+    [ -d "$userland_dotfiles_candidate" ] && [ ! -L "$userland_dotfiles_candidate" ] || continue
+    [ "$(cat "$userland_dotfiles_candidate/state" 2>/dev/null)" = committed ] || continue
+    userland_dotfiles_created_at=$(cat "$userland_dotfiles_candidate/created-at" 2>/dev/null) || continue
+    case "$userland_dotfiles_created_at" in '' | *[!0-9]*) continue ;; esac
+    [ "$((userland_dotfiles_now - userland_dotfiles_created_at))" -lt 86400 ] && return 0
+  done
+  return 1
+}
+
+userland_dotfiles_abort() {
+  userland_dotfiles_abort_code=$1
+  userland_dotfiles_rollback_dir "$userland_dotfiles_transaction_dir" || :
+  trap - HUP INT TERM
+  exit "$userland_dotfiles_abort_code"
+}
+
+userland_dotfiles_apply() {
+  userland_dotfiles_recover || return 1
+  userland_dotfiles_prune_recovery || return 1
+  mkdir -p "$USERLAND_CACHE_DIR"
+  userland_dotfiles_status=$(mktemp "$USERLAND_CACHE_DIR/dotfiles-status.XXXXXX")
+  if ! "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles status --json >"$userland_dotfiles_status"; then
+    rm -f "$userland_dotfiles_status"
+    return 1
+  fi
+  if userland_dotfiles_status_is_applied "$userland_dotfiles_status"; then
+    rm -f "$userland_dotfiles_status"
+    return 0
+  fi
+  if ! userland_dotfiles_begin "$userland_dotfiles_status"; then
+    rm -f "$userland_dotfiles_status"
+    return 1
+  fi
+  rm -f "$userland_dotfiles_status"
+
+  trap 'userland_dotfiles_abort 129' HUP
+  trap 'userland_dotfiles_abort 130' INT
+  trap 'userland_dotfiles_abort 143' TERM
+  userland_dotfiles_apply_code=0
+  userland_prepare_legacy_dotfiles || userland_dotfiles_apply_code=$?
+  if [ "$userland_dotfiles_apply_code" -eq 0 ]; then
+    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles apply --yes || userland_dotfiles_apply_code=$?
+  fi
+  if [ "$userland_dotfiles_apply_code" -eq 0 ]; then
+    userland_dotfiles_verify=$(mktemp "$USERLAND_CACHE_DIR/dotfiles-verify.XXXXXX")
+    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles status --json >"$userland_dotfiles_verify" || userland_dotfiles_apply_code=$?
+    if [ "$userland_dotfiles_apply_code" -eq 0 ] && ! userland_dotfiles_status_is_applied "$userland_dotfiles_verify"; then
+      userland_dotfiles_apply_code=1
+    fi
+    rm -f "$userland_dotfiles_verify"
+  fi
+  if [ "$userland_dotfiles_apply_code" -ne 0 ]; then
+    userland_dotfiles_rollback_dir "$userland_dotfiles_transaction_dir" || return 1
+    trap - HUP INT TERM
+    return "$userland_dotfiles_apply_code"
+  fi
+
+  userland_dotfiles_write_state "$userland_dotfiles_transaction_dir" committed
+  userland_dotfiles_clear_active "$userland_dotfiles_transaction_id"
+  trap - HUP INT TERM
+  return 0
+}
+
 userland_link_target() {
   /usr/bin/stat -f '%Y' "$1" 2>/dev/null || /usr/bin/stat -c '%N' "$1" 2>/dev/null
 }

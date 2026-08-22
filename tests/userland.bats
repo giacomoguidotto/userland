@@ -16,6 +16,10 @@ setup() {
   export USERLAND_TESTING=1
   export USERLAND_ASSUME_YES=1
   export MISE_CALLS=$TEST_TMPDIR/mise-calls
+  export TEST_USERLAND_RELEASE_TAG=v9.9.9
+  export TEST_USERLAND_RELEASE_COMMIT
+  TEST_USERLAND_RELEASE_COMMIT=$(git -C "$TEST_ROOT" rev-parse HEAD)
+  export USERLAND_CURL=$TEST_TMPDIR/bin/curl
   mkdir -p "$USERLAND_HOME" "$USERLAND_REPO_ROOTS/example/.git" "$TEST_TMPDIR/bin"
   : >"$USERLAND_REPOSITORIES"
 
@@ -46,6 +50,17 @@ esac
 exit 0
 EOF
   chmod +x "$TEST_TMPDIR/bin/mise"
+  cat >"$TEST_TMPDIR/bin/curl" <<'EOF'
+#!/bin/sh
+[ "${TEST_USERLAND_RELEASE_UNAVAILABLE:-0}" = 0 ] || exit 22
+printf '%s\n' \
+  '#!/bin/sh' \
+  'set -eu' \
+  '' \
+  "tag='$TEST_USERLAND_RELEASE_TAG'" \
+  "commit='$TEST_USERLAND_RELEASE_COMMIT'"
+EOF
+  chmod +x "$TEST_TMPDIR/bin/curl"
   cat >"$TEST_TMPDIR/bin/failing-task" <<'EOF'
 #!/bin/sh
 printf '%s\n' first 'last failure'
@@ -671,6 +686,29 @@ EOF
   [[ "$output" == '{"schema_version":1,'* ]]
   [[ "$output" != *"$USERLAND_HOME"* ]]
   printf '%s' "$output" | grep -q '"name":"adapters","status":"attention"'
+  printf '%s' "$output" | grep -q '"name":"userland","status":"current","version":"v9.9.9"'
+}
+
+@test "doctor reports current, outdated, and unavailable Userland releases" {
+  run env \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    "$TEST_ROOT/bin/userland" doctor
+  [[ "$output" == *"◆  Userland"* ]]
+  [[ "$output" == *"✓  v9.9.9 is current"* ]]
+
+  run env \
+    TEST_USERLAND_RELEASE_COMMIT=0000000000000000000000000000000000000000 \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    "$TEST_ROOT/bin/userland" doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"!  Userland is outdated; run userland sync"* ]]
+
+  run env TEST_USERLAND_RELEASE_UNAVAILABLE=1 "$TEST_ROOT/bin/userland" doctor --json
+  printf '%s' "$output" | grep -q '"name":"userland","status":"unknown","version":null'
 }
 
 @test "sync uses the pinned interface and creates the shell cache" {

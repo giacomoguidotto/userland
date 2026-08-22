@@ -205,6 +205,9 @@ fi
 if grep -Fq 'git transfer progress' "$work/attention-output"; then
   fail "first run exposed Git transfer progress"
 fi
+if grep -Fq 'userland is ready' "$work/attention-output"; then
+  fail "first run printed a second completion message"
+fi
 attention_root=$(CDPATH='' cd -- "$attention_home/.userland" && pwd)
 grep -Fq "root=$attention_root" "$work/attention-observation" ||
   fail "sync did not run from the canonical userland path"
@@ -247,8 +250,11 @@ HOME="$attention_home" \
   TEST_TRUST_LOG="$work/rerun-trust" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || rerun_status=$?
+  sh "$work/bootstrap" >"$work/rerun-output" 2>&1 || rerun_status=$?
 [ "$rerun_status" -eq 0 ] || fail "safe rerun returned $rerun_status"
+if grep -Fq 'userland is ready' "$work/rerun-output"; then
+  fail "safe rerun printed a second completion message"
+fi
 grep -Fq "$attention_home/.userland/mise.toml" "$work/rerun-trust" ||
   fail "safe checkout was not trusted"
 [ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.userland/bin/userland" ] ||

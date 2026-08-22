@@ -693,7 +693,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *$'◆  Preflight\n │\n ✓  Creating ~/.userland'* ]]
   [[ "$output" == *$'✓  Cloning giacomoguidotto/userland into ~/.userland'* ]]
-  [[ "$output" == *$'└  Done. This Mac matches userland.\n    '* ]]
+  [[ "$output" == *$'✓  Userland matches the declaration\n │\n └  Done. This Mac matches userland. Run `userland doctor` to check the machine state\n    '* ]]
   [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/apply-started")" = "$USERLAND_BOOTSTRAP_TOKEN" ]
   [ -z "$(find "$USERLAND_BOOTSTRAP_CONTROL" -name '.apply-started.*' -print)" ]
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]

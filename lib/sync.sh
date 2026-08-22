@@ -129,7 +129,8 @@ userland_sync() {
       userland_ui summary attention "Sync complete, but a legacy checkout needs review."
       return 2
     fi
-    userland_ui summary ok "Done. This Mac matches userland."
+    userland_ui spacer
+    userland_ui summary ok 'Done. This Mac matches userland. Run `userland doctor` to check the machine state'
     return 0
   fi
   userland_ui summary attention "Done with steps that need attention."

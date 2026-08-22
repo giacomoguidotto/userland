@@ -563,7 +563,5 @@ install_command_link "$repo_dir/bin/userland"
 
 if [ "$sync_status" -eq 2 ]; then
   printf 'userland is installed. Manual steps remain; run: userland sync\n'
-else
-  printf 'userland is ready. Run: userland doctor\n'
 fi
 exit 0

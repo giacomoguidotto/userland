@@ -1,6 +1,6 @@
 notARepository: skip
 git:
-  pagers:
-    - pager: delta
+  diffRenderers:
+    - command: delta
 gui:
   sidePanelWidth: 0.25

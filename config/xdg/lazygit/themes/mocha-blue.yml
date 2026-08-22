@@ -1,6 +1,6 @@
 git:
-  pagers:
-    - pager: delta --features=catppuccin-mocha
+  diffRenderers:
+    - command: delta --features=catppuccin-mocha
 gui:
   theme:
     activeBorderColor:

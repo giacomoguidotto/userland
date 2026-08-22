@@ -16,7 +16,7 @@ curl -fsSL https://userland.guidotto.dev | sh
 Pin an exact release:
 
 ```sh
-curl -fsSL https://userland.guidotto.dev/v0.1.23 | sh
+curl -fsSL https://userland.guidotto.dev/v0.1.24 | sh
 ```
 
 The installer verifies the release checksum and prepares `~/.userland` before showing the first plan. Cancelling removes a checkout created by that run. Once apply starts, the same path is retained and becomes the managed Git checkout.

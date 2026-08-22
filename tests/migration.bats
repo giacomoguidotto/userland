@@ -34,6 +34,12 @@ case "$*" in
     printf '%s\n' "{\"files\":[{\"state\":\"$state\",\"source\":\"~/.userland/config/xdg/gh\",\"target\":\"~/.config/gh\",\"mode\":\"symlink-each\"}],\"edits\":[]}"
     ;;
   *bootstrap*dotfiles*apply*)
+    if [ "${TEST_DOTFILES_REQUIRE_FORCE:-0}" = 1 ]; then
+      case "$*" in
+        *--force*) ;;
+        *) printf '%s\n' 'refusing to overwrite existing files' >&2; exit 9 ;;
+      esac
+    fi
     ln -s "$USERLAND_ROOT/config/xdg/gh/config.yml" "$USERLAND_HOME/.config/gh/config.yml"
     [ "${TEST_DOTFILES_FAIL:-0}" = 0 ] || exit 7
     ;;
@@ -42,6 +48,20 @@ exit 0
 EOF
   chmod +x "$TEST_TMPDIR/mise"
   export USERLAND_MISE=$TEST_TMPDIR/mise
+}
+
+@test "an approved managed-file cutover uses force inside the recovery transaction" {
+  write_transaction_mise
+  export TEST_DOTFILES_REQUIRE_FORCE=1
+
+  run sh -c '. "$USERLAND_ROOT/lib/dotfiles.sh"; userland_dotfiles_apply'
+
+  [ "$status" -eq 0 ]
+  [ -L "$USERLAND_HOME/.config/gh/config.yml" ]
+  [ -f "$USERLAND_HOME/.config/gh/hosts.yml" ]
+  [ ! -e "$USERLAND_STATE_DIR/recovery/active" ]
+  recovery_state=$(find "$USERLAND_STATE_DIR/recovery" -name state -type f -exec cat {} \;)
+  [ "$recovery_state" = committed ]
 }
 
 @test "a partial managed-file cutover restores the complete legacy target" {

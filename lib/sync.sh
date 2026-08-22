@@ -83,7 +83,8 @@ userland_sync() {
   fi
 
   # Show one combined read-only plan before package or declared-state changes.
-  # The same native operations run below without force semantics.
+  # Managed-file replacement uses force only inside its snapshot-backed
+  # transaction, after this exact directory-level change has been approved.
   # shellcheck source=plan.sh
   . "$USERLAND_ROOT/lib/plan.sh"
   userland_plan embedded

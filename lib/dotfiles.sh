@@ -260,7 +260,7 @@ userland_dotfiles_apply() {
   userland_dotfiles_apply_code=0
   userland_prepare_legacy_dotfiles || userland_dotfiles_apply_code=$?
   if [ "$userland_dotfiles_apply_code" -eq 0 ]; then
-    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles apply --yes || userland_dotfiles_apply_code=$?
+    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles apply --yes --force || userland_dotfiles_apply_code=$?
   fi
   if [ "$userland_dotfiles_apply_code" -eq 0 ]; then
     userland_dotfiles_verify=$(mktemp "$USERLAND_CACHE_DIR/dotfiles-verify.XXXXXX")

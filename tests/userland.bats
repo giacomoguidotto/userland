@@ -911,7 +911,7 @@ EOF
   grep -q 'bootstrap packages upgrade --yes' "$MISE_CALLS"
   grep -q 'bootstrap --yes --only tools' "$MISE_CALLS"
   grep -q 'bootstrap macos defaults apply --yes' "$MISE_CALLS"
-  grep -q 'bootstrap dotfiles apply --yes' "$MISE_CALLS"
+  grep -q 'bootstrap dotfiles apply --yes --force' "$MISE_CALLS"
   ! grep -q 'bootstrap --yes --skip packages' "$MISE_CALLS"
   tools_line=$(grep -n 'bootstrap --yes --only tools' "$MISE_CALLS" | cut -d: -f1)
   macos_line=$(grep -n 'bootstrap macos defaults apply --yes' "$MISE_CALLS" | cut -d: -f1)

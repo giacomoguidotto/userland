@@ -87,15 +87,70 @@ userland_ui_prepare_stream() {
   fi
 }
 
+userland_ui_version_is_valid() {
+  userland_ui_version_candidate=$1
+  userland_ui_version_numbers=${userland_ui_version_candidate#v}
+  userland_ui_version_major=${userland_ui_version_numbers%%.*}
+  userland_ui_version_rest=${userland_ui_version_numbers#*.}
+  userland_ui_version_minor=${userland_ui_version_rest%%.*}
+  userland_ui_version_patch=${userland_ui_version_rest#*.}
+  case "$userland_ui_version_major:$userland_ui_version_minor:$userland_ui_version_patch" in
+    *[!0-9:]* | :* | *: | *::* | *.*) return 1 ;;
+  esac
+  [ "$userland_ui_version_candidate" = "v$userland_ui_version_major.$userland_ui_version_minor.$userland_ui_version_patch" ]
+}
+
+userland_ui_resolve_version() {
+  userland_ui_version_text=
+  userland_ui_version_candidate=${USERLAND_VERSION:-}
+
+  if ! userland_ui_version_is_valid "$userland_ui_version_candidate"; then
+    userland_ui_version_candidate=
+  fi
+  if [ -z "$userland_ui_version_candidate" ] &&
+    [ -f "$USERLAND_ROOT/.userland-stage-version" ] &&
+    [ ! -L "$USERLAND_ROOT/.userland-stage-version" ]; then
+    userland_ui_version_candidate=$(sed -n '1p' "$USERLAND_ROOT/.userland-stage-version")
+    userland_ui_version_is_valid "$userland_ui_version_candidate" || userland_ui_version_candidate=
+  fi
+  if [ -z "$userland_ui_version_candidate" ] && command -v git >/dev/null 2>&1; then
+    userland_ui_version_candidate=$(git -C "$USERLAND_ROOT" describe --tags --exact-match HEAD 2>/dev/null || true)
+    userland_ui_version_is_valid "$userland_ui_version_candidate" || userland_ui_version_candidate=
+    if [ -z "$userland_ui_version_candidate" ]; then
+      for userland_ui_version_ref in $(git -C "$USERLAND_ROOT" for-each-ref \
+        --points-at HEAD \
+        --format='%(refname:strip=3)' \
+        refs/userland/bootstrap 2>/dev/null); do
+        if userland_ui_version_is_valid "$userland_ui_version_ref"; then
+          userland_ui_version_candidate=$userland_ui_version_ref
+          break
+        fi
+      done
+    fi
+  fi
+  if [ -z "$userland_ui_version_candidate" ]; then
+    case "$USERLAND_ROOT" in
+      "$USERLAND_DATA_DIR"/releases/v*)
+        userland_ui_version_candidate=${USERLAND_ROOT##*/}
+        userland_ui_version_is_valid "$userland_ui_version_candidate" || userland_ui_version_candidate=
+        ;;
+    esac
+  fi
+  userland_ui_version_text=$userland_ui_version_candidate
+}
+
 userland_ui_wordmark() {
+  userland_ui_resolve_version
   if [ "$userland_ui_unicode" != 0 ]; then
     printf '%s%s▗▖ ▗▖ ▗▄▄▖▗▄▄▄▖▗▄▄▖ ▗▖    ▗▄▖ ▗▖  ▗▖▗▄▄▄%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
     printf '%s%s▐▌ ▐▌▐▌   ▐▌   ▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌▐▌  █%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
     printf '%s%s▐▌ ▐▌ ▝▀▚▖▐▛▀▀▘▐▛▀▚▖▐▌   ▐▛▀▜▌▐▌ ▝▜▌▐▌  █%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
-    printf '%s%s▝▚▄▞▘▗▄▄▞▘▐▙▄▄▖▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▌  ▐▌▐▙▄▄▀%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
+    printf '%s%s▝▚▄▞▘▗▄▄▞▘▐▙▄▄▖▐▌ ▐▌▐▙▄▄▖▐▌ ▐▌▐▌  ▐▌▐▙▄▄▀%s' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
   else
-    printf '%s%s+-- USERLAND --+%s\n' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
+    printf '%s%s+-- USERLAND --+%s' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset"
   fi
+  [ -z "$userland_ui_version_text" ] || printf '  %s%s%s' "$userland_ui_dim" "$userland_ui_version_text" "$userland_ui_reset"
+  printf '\n'
 }
 
 userland_ui_redact() {
@@ -606,10 +661,17 @@ userland_ui() {
       if [ "$userland_ui_active_mode" = rich ]; then
         userland_ui_wordmark
         if [ "$userland_ui_unicode" != 0 ]; then
-          userland_ui_title_rule='────────────────────────────────────────'
+          userland_ui_title_rule_character='─'
         else
-          userland_ui_title_rule='----------------------------------------'
+          userland_ui_title_rule_character='-'
         fi
+        userland_ui_title_rule_width=40
+        [ -z "$userland_ui_version_text" ] || userland_ui_title_rule_width=$((userland_ui_title_rule_width + 2 + ${#userland_ui_version_text}))
+        userland_ui_title_rule=
+        while [ "$userland_ui_title_rule_width" -gt 0 ]; do
+          userland_ui_title_rule=$userland_ui_title_rule$userland_ui_title_rule_character
+          userland_ui_title_rule_width=$((userland_ui_title_rule_width - 1))
+        done
         printf '%s%s%s\n' "$userland_ui_margin" "$userland_ui_open" "$userland_ui_title_rule"
         printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_bold" "$userland_ui_command" "$userland_ui_reset"
         printf '%s%s  %s%s%s\n' "$userland_ui_margin" "$userland_ui_rail" "$userland_ui_dim" "$userland_ui_description" "$userland_ui_reset"

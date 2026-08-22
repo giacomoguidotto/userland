@@ -484,6 +484,7 @@ install_command_link "$repo_dir/bin/userland"
 run_sync() {
   if command -v caffeinate >/dev/null 2>&1; then
     USERLAND_ARCHIVE=1 \
+      USERLAND_VERSION="$tag" \
       USERLAND_BOOTSTRAP_CREATED="$repo_created" \
       USERLAND_BOOTSTRAP_REPOSITORY_PREPARED="$repository_prepared" \
       USERLAND_BOOTSTRAP_CONTROL="$control_dir" \
@@ -491,6 +492,7 @@ run_sync() {
       caffeinate -dims "$repo_dir/bin/userland" sync
   else
     USERLAND_ARCHIVE=1 \
+      USERLAND_VERSION="$tag" \
       USERLAND_BOOTSTRAP_CREATED="$repo_created" \
       USERLAND_BOOTSTRAP_REPOSITORY_PREPARED="$repository_prepared" \
       USERLAND_BOOTSTRAP_CONTROL="$control_dir" \

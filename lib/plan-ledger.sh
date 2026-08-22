@@ -248,3 +248,9 @@ userland_plan_require_applicable() {
   fi
   return 0
 }
+
+userland_plan_is_empty() {
+  [ -n "${USERLAND_PLAN_FILE:-}" ] &&
+    [ -f "$USERLAND_PLAN_FILE" ] &&
+    [ ! -s "$USERLAND_PLAN_FILE" ]
+}

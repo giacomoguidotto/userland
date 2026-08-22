@@ -52,6 +52,19 @@ userland_sync() {
   userland_require_mise
   userland_mkdirs
   userland_bootstrap_require_lock_access
+
+  # Refresh a clean main checkout before rendering anything. If the checkout
+  # advances, the new process owns the only visible TUI for this run.
+  if [ -z "${USERLAND_ARCHIVE:-}" ] && [ -z "${USERLAND_REFRESHED:-}" ]; then
+    userland_refresh_code=0
+    userland_repository_refresh_checkout || userland_refresh_code=$?
+    if [ "$userland_refresh_code" -eq 10 ]; then
+      USERLAND_REFRESHED=1 exec "$USERLAND_ROOT/bin/userland" sync
+    elif [ "$userland_refresh_code" -ne 0 ]; then
+      return "$userland_refresh_code"
+    fi
+  fi
+
   userland_ui command sync "Bring this Mac in line with the state declared in giacomoguidotto/userland."
   userland_ui section "Preflight"
   if [ "${USERLAND_BOOTSTRAP_CREATED:-0}" = 1 ]; then
@@ -65,17 +78,8 @@ userland_sync() {
   userland_dotfiles_prune_recovery ||
     userland_die "managed-file recovery cleanup failed"
   userland_sync_preflight
-
-  # Sync updates its own clean main checkout first. The plan and consent below
-  # therefore describe exactly the version that will be applied.
-  if [ -z "${USERLAND_ARCHIVE:-}" ] && [ -z "${USERLAND_REFRESHED:-}" ]; then
-    userland_refresh_code=0
-    userland_repository_refresh_checkout || userland_refresh_code=$?
-    if [ "$userland_refresh_code" -eq 10 ]; then
-      USERLAND_REFRESHED=1 exec "$USERLAND_ROOT/bin/userland" sync
-    elif [ "$userland_refresh_code" -ne 0 ]; then
-      return "$userland_refresh_code"
-    fi
+  if [ -n "${USERLAND_REPOSITORY_REFRESH_NOTICE:-}" ]; then
+    userland_log warning "$USERLAND_REPOSITORY_REFRESH_NOTICE"
   fi
 
   # Show one combined read-only plan before package or declared-state changes.
@@ -84,6 +88,10 @@ userland_sync() {
   . "$USERLAND_ROOT/lib/plan.sh"
   userland_plan embedded
   userland_plan_require_applicable
+  if userland_plan_is_empty; then
+    userland_ui summary ok 'Done. This Mac matches userland. Run `userland doctor` to check the machine state'
+    return 0
+  fi
   userland_confirm_sync
   userland_bootstrap_mark_apply_started
 

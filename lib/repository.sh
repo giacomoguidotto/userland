@@ -67,45 +67,81 @@ userland_refresh_repository_snapshot() {
 }
 
 userland_repository_refresh_checkout() {
-  [ -d "$USERLAND_ROOT/.git" ] || return 0
+  USERLAND_REPOSITORY_REFRESH_NOTICE=
+  export USERLAND_REPOSITORY_REFRESH_NOTICE
+  [ -e "$USERLAND_ROOT/.git" ] || return 0
   command -v git >/dev/null 2>&1 || {
-    userland_log warning "Git is unavailable; skipped the userland checkout refresh"
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Git is unavailable; skipped the userland checkout refresh"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
     return 0
   }
 
-  if [ -n "$(git -C "$USERLAND_ROOT" status --porcelain)" ]; then
-    userland_log warning "userland has local changes; skipped checkout refresh"
+  userland_refresh_log=$USERLAND_CACHE_DIR/repository-refresh.log
+  : >"$userland_refresh_log"
+  chmod 600 "$userland_refresh_log"
+
+  if ! userland_checkout_status=$(git -C "$USERLAND_ROOT" status --porcelain 2>>"$userland_refresh_log"); then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Could not inspect the userland checkout; continuing with the local version"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
+    return 0
+  fi
+  if [ -n "$userland_checkout_status" ]; then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="userland has local changes; skipped checkout refresh"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
     return 0
   fi
 
-  userland_branch=$(git -C "$USERLAND_ROOT" branch --show-current)
+  if ! userland_branch=$(git -C "$USERLAND_ROOT" branch --show-current 2>>"$userland_refresh_log"); then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Could not inspect the userland branch; continuing with the local version"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
+    return 0
+  fi
   if [ "$userland_branch" != "main" ]; then
-    userland_log current "checkout is on $userland_branch; automatic refresh is limited to main"
+    USERLAND_REPOSITORY_REFRESH_NOTICE="checkout is on $userland_branch; automatic refresh is limited to main"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
     return 0
   fi
 
-  if ! git -C "$USERLAND_ROOT" fetch --quiet origin main; then
-    userland_log warning "could not reach origin; continuing with the local checkout"
+  if ! git -C "$USERLAND_ROOT" fetch --quiet --tags origin main >>"$userland_refresh_log" 2>&1; then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Could not reach origin; continuing with the local checkout"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
     return 0
   fi
 
-  userland_head=$(git -C "$USERLAND_ROOT" rev-parse HEAD)
-  userland_remote_head=$(git -C "$USERLAND_ROOT" rev-parse origin/main)
+  if ! userland_head=$(git -C "$USERLAND_ROOT" rev-parse HEAD 2>>"$userland_refresh_log") ||
+    ! userland_remote_head=$(git -C "$USERLAND_ROOT" rev-parse origin/main 2>>"$userland_refresh_log"); then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Could not compare the userland checkout; continuing with the local version"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
+    return 0
+  fi
   if [ "$userland_head" = "$userland_remote_head" ]; then
-    git -C "$USERLAND_ROOT" submodule sync --quiet --recursive
-    git -C "$USERLAND_ROOT" submodule update --quiet --init --recursive
-    userland_log current "userland checkout is current"
+    if ! git -C "$USERLAND_ROOT" submodule sync --quiet --recursive >>"$userland_refresh_log" 2>&1 ||
+      ! git -C "$USERLAND_ROOT" submodule update --quiet --init --recursive >>"$userland_refresh_log" 2>&1; then
+      USERLAND_REPOSITORY_REFRESH_NOTICE="Could not refresh userland submodules; continuing with their local versions"
+      export USERLAND_REPOSITORY_REFRESH_NOTICE
+      return 0
+    fi
+    rm -f "$userland_refresh_log"
     return 0
   fi
 
-  if ! git -C "$USERLAND_ROOT" merge-base --is-ancestor HEAD origin/main; then
-    userland_log warning "local and remote main diverged; refused to update"
+  if ! git -C "$USERLAND_ROOT" merge-base --is-ancestor HEAD origin/main >>"$userland_refresh_log" 2>&1; then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="local and remote main diverged; refused to update"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
     return 0
   fi
 
-  git -C "$USERLAND_ROOT" merge --ff-only --quiet origin/main
-  git -C "$USERLAND_ROOT" submodule sync --quiet --recursive
-  git -C "$USERLAND_ROOT" submodule update --quiet --init --recursive
-  userland_log changed "advanced userland to origin/main"
+  if ! git -C "$USERLAND_ROOT" merge --ff-only --quiet origin/main >>"$userland_refresh_log" 2>&1; then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Could not fast-forward userland; continuing with the local version"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
+    return 0
+  fi
+  if ! git -C "$USERLAND_ROOT" submodule sync --quiet --recursive >>"$userland_refresh_log" 2>&1 ||
+    ! git -C "$USERLAND_ROOT" submodule update --quiet --init --recursive >>"$userland_refresh_log" 2>&1; then
+    USERLAND_REPOSITORY_REFRESH_NOTICE="Updated userland, but its submodules need attention"
+    export USERLAND_REPOSITORY_REFRESH_NOTICE
+  else
+    rm -f "$userland_refresh_log"
+  fi
   return 10
 }

@@ -119,6 +119,7 @@ teardown() {
     USERLAND_HOME="$USERLAND_HOME" \
     USERLAND_UI_MODE=rich \
     USERLAND_UNICODE=1 \
+    USERLAND_VERSION=v1.2.3 \
     TERM=xterm-256color \
     NO_COLOR= \
     CLICOLOR_FORCE=1 \
@@ -127,6 +128,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == *"doctor"*"Check this Mac"* ]]
   [[ "$output" == *"▗▖ ▗▖ ▗▄▄▖"*"▝▚▄▞▘▗▄▄▞▘"* ]]
+  [[ "$output" == *$'▐▙▄▄▀\e[0m  \e[2mv1.2.3\e[0m\n ┌────────────────────────────────────────────────\n │'* ]]
   [[ "$output" == *$'\n '*"┌"* ]]
   [[ "$output" == *$'\e[0m\n ┌'* ]]
   [[ "$output" != *$'\e[37m┌'* ]]
@@ -522,6 +524,69 @@ EOF
   [[ "$output" != *"released legacy workspace ownership"* ]]
   ! grep -q 'bootstrap packages apply' "$MISE_CALLS"
   ! grep -q 'bootstrap dotfiles apply' "$MISE_CALLS"
+}
+
+@test "sync refreshes itself before rendering and hides successful Git output" {
+  refresh_root=$TEST_TMPDIR/self-update-root
+  mkdir -p "$refresh_root/bin" "$refresh_root/.git"
+  cp "$TEST_ROOT/bin/userland" "$refresh_root/bin/userland"
+  ln -s "$TEST_ROOT/lib" "$refresh_root/lib"
+  ln -s "$TEST_ROOT/config" "$refresh_root/config"
+  ln -s "$TEST_ROOT/mise.toml" "$refresh_root/mise.toml"
+  mkdir -p "$USERLAND_HOME/.local/bin"
+  export TEST_GIT_CALLS=$TEST_TMPDIR/self-update-git-calls
+  cat >"$USERLAND_HOME/.local/bin/git" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$TEST_GIT_CALLS"
+case "$*" in
+  *' status --porcelain') ;;
+  *' branch --show-current') printf '%s\n' main ;;
+  *' fetch --quiet --tags origin main') printf '%s\n' 'git transfer progress' >&2 ;;
+  *' rev-parse HEAD') printf '%s\n' 1111111111111111111111111111111111111111 ;;
+  *' rev-parse origin/main') printf '%s\n' 2222222222222222222222222222222222222222 ;;
+  *' merge-base --is-ancestor HEAD origin/main') ;;
+  *' merge --ff-only --quiet origin/main') ;;
+  *' submodule sync --quiet --recursive') ;;
+  *' submodule update --quiet --init --recursive') ;;
+esac
+exit 0
+EOF
+  chmod +x "$USERLAND_HOME/.local/bin/git"
+
+  run env \
+    USERLAND_ARCHIVE= \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    USERLAND_ASSUME_YES= \
+    USERLAND_UI_TEST_CONFIRMATION= \
+    NO_COLOR=1 \
+    "$refresh_root/bin/userland" sync
+
+  [ "$status" -eq 3 ]
+  grep -Fq 'fetch --quiet --tags origin main' "$TEST_GIT_CALLS"
+  [ "$(printf '%s\n' "$output" | grep -Fc '▗▖ ▗▖ ▗▄▄▖')" -eq 1 ]
+  [[ "$output" != *"git transfer progress"* ]]
+  [[ "$output" != *"advanced userland to origin/main"* ]]
+}
+
+@test "sync exits without approval or apply work when the plan is empty" {
+  mkdir -p "$USERLAND_CACHE_DIR/zsh"
+  printf '%s\n' '# generated cache' >"$USERLAND_CACHE_DIR/zsh/init.zsh"
+
+  run env \
+    USERLAND_REFRESHED=1 \
+    USERLAND_UI_MODE=plain \
+    USERLAND_ASSUME_YES= \
+    USERLAND_UI_TEST_CONFIRMATION= \
+    "$TEST_ROOT/bin/userland" sync
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0 automatic; 0 attended; 0 cleanup; 0 blocked"* ]]
+  [[ "$output" == *'Done. This Mac matches userland. Run `userland doctor` to check the machine state'* ]]
+  [[ "$output" != *"Apply this plan?"* ]]
+  [[ "$output" != *"Apply packages"* ]]
+  ! grep -q 'bootstrap packages apply' "$MISE_CALLS"
+  ! grep -q 'bootstrap packages upgrade' "$MISE_CALLS"
 }
 
 @test "plan refuses unreadable machine-state JSON before consent" {

@@ -485,10 +485,11 @@ EOF
 
 @test "plan refreshes repository discovery and remains read-only" {
   export USERLAND_UNAME=Darwin
-  run "$TEST_ROOT/bin/userland" plan
+  run env USERLAND_UI_MODE=rich USERLAND_UNICODE=1 NO_COLOR=1 "$TEST_ROOT/bin/userland" plan
   [ "$status" -eq 0 ]
   [ -f "$USERLAND_CACHE_DIR/repositories.tsv" ]
   grep -F "$USERLAND_REPO_ROOTS/example" "$USERLAND_CACHE_DIR/repositories.tsv"
+  [[ "$output" == *$'│  Preview declared state without applying it.\n │\n'* ]]
   [[ "$output" == *"encrypted configuration import"* ]]
   ! grep -q -- '--force-dotfiles' "$MISE_CALLS"
   grep -q 'bootstrap plan --json' "$MISE_CALLS"

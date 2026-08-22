@@ -256,6 +256,10 @@ userland_plan() {
   userland_require_mise
   if [ "$userland_plan_mode" = standalone ]; then
     userland_ui command plan "Preview declared state without applying it."
+    # shellcheck disable=SC2154 # Initialized by the command event above.
+    if [ "$userland_ui_active_mode" = rich ]; then
+      userland_ui spacer
+    fi
   fi
   userland_mkdirs
   userland_plan_begin

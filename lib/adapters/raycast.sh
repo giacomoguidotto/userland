@@ -68,15 +68,13 @@ case "${1:-}" in
 
     userland_log manual "opening Raycast configuration import; enter its export passphrase in Raycast"
     open -a "$userland_raycast_app" "$userland_raycast_export"
-    printf 'After Raycast reports a successful import, type IMPORTED: ' >/dev/tty
-    IFS= read -r userland_raycast_confirmation </dev/tty
-    [ "$userland_raycast_confirmation" = IMPORTED ] || {
-      userland_log manual "Raycast import was not acknowledged; no receipt was recorded"
+    userland_ui acknowledge "Press Enter after Raycast reports a successful import." || {
+      userland_log manual "Raycast import was not confirmed; no receipt was recorded"
       exit 2
     }
     userland_mkdirs
     userland_sha256 "$userland_raycast_export" >"$userland_raycast_receipt"
-    userland_log changed "recorded your acknowledgement of the Raycast import"
+    userland_log changed "recorded the confirmed Raycast import"
     ;;
   doctor)
     userland_is_macos || exit 0

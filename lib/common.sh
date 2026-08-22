@@ -113,6 +113,10 @@ userland_run_adapters() {
       security-health) userland_adapter_label='Security health' ;;
     esac
     if [ "$userland_adapter_action" = apply ]; then
+      if [ "$userland_adapter_name" = homebrew-apps ]; then
+        USERLAND_UI_PROGRESS=homebrew-install
+        export USERLAND_UI_PROGRESS
+      fi
       if case "$userland_adapter_name" in
         android-sdk | raycast) "$userland_adapter" "$userland_adapter_action" ;;
         *) userland_ui task apply "$userland_adapter_label" "$userland_adapter" "$userland_adapter_action" ;;
@@ -120,6 +124,9 @@ userland_run_adapters() {
         userland_adapter_code=0
       else
         userland_adapter_code=$?
+      fi
+      if [ "$userland_adapter_name" = homebrew-apps ]; then
+        unset USERLAND_UI_PROGRESS
       fi
     elif [ "$userland_adapter_action" = doctor ]; then
       if userland_ui task check "$userland_adapter_label" "$userland_adapter" "$userland_adapter_action"; then
@@ -166,6 +173,9 @@ userland_run_adapters() {
         userland_adapter_attention=1
       else
         userland_adapter_failures=$((userland_adapter_failures + 1))
+        if [ "$userland_adapter_action" = apply ]; then
+          return "$userland_adapter_code"
+        fi
       fi
     fi
   done

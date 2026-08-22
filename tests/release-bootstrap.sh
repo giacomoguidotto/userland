@@ -24,6 +24,7 @@ printf 'root=%s\n' "$entry_root" >"$TEST_OBSERVATION"
 printf 'link=%s\n' "$(readlink "$HOME/.local/bin/userland")" >>"$TEST_OBSERVATION"
 printf 'original-path=%s\n' "${USERLAND_ORIGINAL_PATH:-}" >>"$TEST_OBSERVATION"
 printf 'created=%s\n' "${USERLAND_BOOTSTRAP_CREATED:-0}" >>"$TEST_OBSERVATION"
+printf 'repository-prepared=%s\n' "${USERLAND_BOOTSTRAP_REPOSITORY_PREPARED:-0}" >>"$TEST_OBSERVATION"
 if [ "${TEST_MARK_APPLY_STARTED:-0}" = 1 ]; then
   [ -d "$USERLAND_BOOTSTRAP_CONTROL" ] || exit 81
   [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/owner")" = "$USERLAND_BOOTSTRAP_TOKEN" ] || exit 82
@@ -86,6 +87,13 @@ EOF
 while [ "${1:-}" = -c ]; do
   shift 2
 done
+if [ -n "${TEST_GIT_CALLS:-}" ]; then
+  printf '%s\n' "$*" >>"$TEST_GIT_CALLS"
+fi
+case " $* " in
+  *' --quiet '*) ;;
+  *' clone '* | *' submodule update '*) printf '%s\n' 'git transfer progress' >&2 ;;
+esac
 if [ "$1" = clone ]; then
   for destination do :; done
   if [ "${TEST_GIT_CLONE_FAIL:-0}" = 1 ]; then
@@ -195,6 +203,9 @@ fi
 if grep -Fq 'mise trusted' "$work/attention-output"; then
   fail "first run exposed mise trust logs"
 fi
+if grep -Fq 'git transfer progress' "$work/attention-output"; then
+  fail "first run exposed Git transfer progress"
+fi
 attention_root=$(CDPATH='' cd -- "$attention_home/.userland" && pwd)
 grep -Fq "root=$attention_root" "$work/attention-observation" ||
   fail "sync did not run from the canonical userland path"
@@ -273,11 +284,16 @@ HOME="$attention_home" \
   TEST_REPO_COMMAND="$work/repo-userland" \
   TEST_SYNC_STATUS=0 \
   TEST_MARK_APPLY_STARTED=1 \
+  TEST_GIT_CALLS="$work/upgrade-git-calls" \
   TEST_TRUST_LOG="$work/upgrade-trust" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || upgrade_status=$?
 [ "$upgrade_status" -eq 0 ] || fail "upgrade run returned $upgrade_status"
+grep -Fq 'repository-prepared=1' "$work/upgrade-observation" ||
+  fail "upgrade did not hand repository preparation to the Preflight UI"
+grep -Eq 'submodule update .*--quiet|submodule update --quiet' "$work/upgrade-git-calls" ||
+  fail "upgrade submodule update was not quiet"
 [ "$(cat "$attention_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
   fail "upgrade run did not fast-forward the canonical checkout"
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$upgrade_tag" ] ||

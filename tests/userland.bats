@@ -206,6 +206,18 @@ teardown() {
     USERLAND_ROOT="$TEST_ROOT" \
     USERLAND_HOME="$USERLAND_HOME" \
     USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    USERLAND_TESTING=1 \
+    USERLAND_UI_TEST_ACKNOWLEDGEMENT=1 \
+    NO_COLOR=1 \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command sync "Preview"; userland_ui acknowledge "Press Enter after Raycast reports a successful import."'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'?  Press Enter after Raycast reports a successful import. › \n │'* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_UI_MODE=rich \
     USERLAND_UNICODE= \
     LC_ALL=C \
     NO_COLOR=1 \
@@ -291,6 +303,33 @@ teardown() {
 
   [ "$status" -eq 0 ]
   [ "$output" = '1m 5s · 1/2 · ffmpeg · download' ]
+}
+
+@test "Homebrew application spinners expose direct progress and the current package" {
+  plan_file=$TEST_TMPDIR/homebrew-plan
+  task_log=$TEST_TMPDIR/homebrew-task
+  mkdir -p "$USERLAND_CACHE_DIR"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    apps install automatic declared nikitabobko/tap Homebrew brewfile:Tap:nikitabobko/tap \
+    apps install automatic declared ghostty Homebrew brewfile:Cask:ghostty \
+    apps install automatic declared zed Homebrew brewfile:Cask:zed >"$plan_file"
+  printf '%s\n' \
+    'Fetching ghostty, zed' \
+    'Tapping nikitabobko/tap' \
+    'Installing ghostty' >"$task_log"
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_PLAN_FILE="$plan_file" \
+    USERLAND_UI_PROGRESS=homebrew-install \
+    TASK_LOG="$task_log" \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui_task_log=$TASK_LOG; userland_ui_progress_prepare; userland_ui_spinner_started_at=$(($(date +%s) - 23)); userland_ui_progress_refresh; printf "%s\n" "$userland_ui_spinner_detail"'
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '23s · 2/3 · ghostty' ]
 }
 
 @test "cleanup preserves output from an interrupted task in the private run log" {
@@ -550,6 +589,7 @@ case "$*" in
       '→ App Xcode needs to be installed.'
     exit 1
     ;;
+  *'bundle --file'*) [ "${BREW_APPLY_FAIL:-0}" = 0 ] || exit 9 ;;
 esac
 exit 0
 EOF
@@ -608,6 +648,14 @@ EOF
   ! grep -q '^update$' "$BREW_CALLS"
   grep -Fq "bundle --file $TEST_ROOT/config/brewfile --no-upgrade" "$BREW_CALLS"
   ! grep -q 'cleanup' "$BREW_CALLS"
+  grep -Fq 'tap "nikitabobko/tap", trusted: true' "$TEST_ROOT/config/brewfile"
+
+  : >"$BREW_CALLS"
+  run env BREW_APPLY_FAIL=1 USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" sync
+  [ "$status" -eq 9 ]
+  [[ "$output" == *"Homebrew applications failed (exit 9)"* ]]
+  [[ "$output" == *"Stopped at the failed step. Fix it, then rerun sync."* ]]
+  [[ "$output" != *"Raycast configuration import"* ]]
 }
 
 @test "doctor json has a stable schema and no home paths" {
@@ -631,12 +679,15 @@ EOF
 
   run env \
     USERLAND_BOOTSTRAP_CREATED=1 \
+    USERLAND_BOOTSTRAP_REPOSITORY_PREPARED=1 \
     USERLAND_UI_MODE=rich \
     USERLAND_UNICODE=1 \
     NO_COLOR=1 \
     "$TEST_ROOT/bin/userland" sync
   [ "$status" -eq 0 ]
   [[ "$output" == *$'◆  Preflight\n │\n ✓  Creating ~/.userland'* ]]
+  [[ "$output" == *$'✓  Cloning giacomoguidotto/userland into ~/.userland'* ]]
+  [[ "$output" == *$'└  Done. This Mac matches userland.\n    '* ]]
   [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/apply-started")" = "$USERLAND_BOOTSTRAP_TOKEN" ]
   [ -z "$(find "$USERLAND_BOOTSTRAP_CONTROL" -name '.apply-started.*' -print)" ]
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]

@@ -198,7 +198,7 @@ prepare_checkout() {
     checkout_git "$checkout_path" merge --ff-only --quiet "$commit"
   fi
   checkout_git "$checkout_path" submodule sync --quiet --recursive
-  checkout_git "$checkout_path" submodule update --init --recursive
+  checkout_git "$checkout_path" submodule update --quiet --init --recursive
   validate_checkout "$checkout_path"
 }
 
@@ -244,6 +244,7 @@ repo_created=0
 lock_dir=
 lock_acquired=0
 promotion_published=0
+repository_prepared=0
 
 restore_release_command() {
   rollback_link="$bin_dir/.userland.rollback.$$"
@@ -419,6 +420,9 @@ if [ -L "$repo_dir" ]; then
   die "$repo_dir must not be a symlink"
 elif [ -d "$repo_dir/.git" ]; then
   prepare_checkout "$repo_dir"
+  if [ "$previous_head" != "$commit" ]; then
+    repository_prepared=1
+  fi
 elif [ -e "$repo_dir" ]; then
   validate_materialized_checkout "$repo_dir"
 else
@@ -448,12 +452,14 @@ run_sync() {
   if command -v caffeinate >/dev/null 2>&1; then
     USERLAND_ARCHIVE=1 \
       USERLAND_BOOTSTRAP_CREATED="$repo_created" \
+      USERLAND_BOOTSTRAP_REPOSITORY_PREPARED="$repository_prepared" \
       USERLAND_BOOTSTRAP_CONTROL="$control_dir" \
       USERLAND_BOOTSTRAP_TOKEN="$transaction_id" \
       caffeinate -dims "$repo_dir/bin/userland" sync
   else
     USERLAND_ARCHIVE=1 \
       USERLAND_BOOTSTRAP_CREATED="$repo_created" \
+      USERLAND_BOOTSTRAP_REPOSITORY_PREPARED="$repository_prepared" \
       USERLAND_BOOTSTRAP_CONTROL="$control_dir" \
       USERLAND_BOOTSTRAP_TOKEN="$transaction_id" \
       "$repo_dir/bin/userland" sync
@@ -489,14 +495,14 @@ fi
 if [ ! -d "$repo_dir/.git" ]; then
   command -v git >/dev/null 2>&1 || die "sync completed without installing Git"
   checkout_work=$(mktemp -d "$HOME/.userland.git.XXXXXX")
-  bootstrap_git clone --filter=blob:none --recurse-submodules "$repository" "$checkout_work/repo"
+  bootstrap_git clone --quiet --filter=blob:none --recurse-submodules "$repository" "$checkout_work/repo"
   cloned_commit=$(bootstrap_git -C "$checkout_work/repo" rev-parse "$tag^{commit}")
   [ "$cloned_commit" = "$commit" ] || die "$tag does not resolve to the released commit"
   bootstrap_git -C "$checkout_work/repo" merge-base --is-ancestor "$tag" origin/main ||
     die "$tag is not an ancestor of origin/main"
   bootstrap_git -C "$checkout_work/repo" checkout -B main "$tag"
   bootstrap_git -C "$checkout_work/repo" branch --set-upstream-to=origin/main main
-  bootstrap_git -C "$checkout_work/repo" submodule update --init --recursive
+  bootstrap_git -C "$checkout_work/repo" submodule update --quiet --init --recursive
   validate_checkout "$checkout_work/repo"
 
   backup_dir="$HOME/.userland.archive.$transaction_id"

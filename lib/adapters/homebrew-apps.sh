@@ -138,7 +138,7 @@ case "${1:-}" in
     if ! userland_brew --version >/dev/null 2>&1; then
       userland_install_homebrew
     fi
-    HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 \
+    HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_COLOR=1 \
       userland_brew bundle --file "$userland_brewfile" --no-upgrade
     ;;
   doctor)

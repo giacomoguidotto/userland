@@ -93,7 +93,7 @@ userland_repository_refresh_checkout() {
   userland_remote_head=$(git -C "$USERLAND_ROOT" rev-parse origin/main)
   if [ "$userland_head" = "$userland_remote_head" ]; then
     git -C "$USERLAND_ROOT" submodule sync --quiet --recursive
-    git -C "$USERLAND_ROOT" submodule update --init --recursive
+    git -C "$USERLAND_ROOT" submodule update --quiet --init --recursive
     userland_log current "userland checkout is current"
     return 0
   fi
@@ -105,7 +105,7 @@ userland_repository_refresh_checkout() {
 
   git -C "$USERLAND_ROOT" merge --ff-only --quiet origin/main
   git -C "$USERLAND_ROOT" submodule sync --quiet --recursive
-  git -C "$USERLAND_ROOT" submodule update --init --recursive
+  git -C "$USERLAND_ROOT" submodule update --quiet --init --recursive
   userland_log changed "advanced userland to origin/main"
   return 10
 }

@@ -226,16 +226,31 @@ userland_ui_progress_prepare() {
   userland_ui_progress_file=
   userland_ui_progress_total=0
   case "${USERLAND_UI_PROGRESS:-}" in
-    mise-install) userland_ui_progress_action=install ;;
-    mise-upgrade) userland_ui_progress_action=upgrade ;;
+    mise-install)
+      userland_ui_progress_kind=mise
+      userland_ui_progress_action=install
+      ;;
+    mise-upgrade)
+      userland_ui_progress_kind=mise
+      userland_ui_progress_action=upgrade
+      ;;
+    homebrew-install)
+      userland_ui_progress_kind=homebrew
+      userland_ui_progress_action=install
+      ;;
     *) return 0 ;;
   esac
   [ -n "${USERLAND_PLAN_FILE:-}" ] && [ -f "$USERLAND_PLAN_FILE" ] || return 0
 
   userland_ui_progress_file=$(mktemp "$USERLAND_CACHE_DIR/progress.XXXXXX")
-  awk -F '\t' -v action="$userland_ui_progress_action" '
-    $1 == "apps" && $2 == action && $7 ~ /^mise:package:/ { print $5 }
-  ' "$USERLAND_PLAN_FILE" | LC_ALL=C sort -u >"$userland_ui_progress_file"
+  if [ "$userland_ui_progress_kind" = mise ]; then
+    userland_ui_progress_source='^mise:package:'
+  else
+    userland_ui_progress_source='^brewfile:'
+  fi
+  awk -F '\t' -v action="$userland_ui_progress_action" -v source="$userland_ui_progress_source" '
+    $1 == "apps" && $2 == action && $7 ~ source && !seen[$5]++ { print $5 }
+  ' "$USERLAND_PLAN_FILE" >"$userland_ui_progress_file"
   userland_ui_progress_total=$(wc -l <"$userland_ui_progress_file" | tr -d ' ')
 }
 
@@ -246,7 +261,24 @@ userland_ui_progress_refresh() {
   [ "${userland_ui_progress_total:-0}" -gt 0 ] || return 0
   [ -n "${userland_ui_task_log:-}" ] && [ -f "$userland_ui_task_log" ] || return 0
 
-  userland_ui_progress_state=$(awk '
+  if [ "${userland_ui_progress_kind:-}" = homebrew ]; then
+    userland_ui_progress_state=$(awk '
+      NR == FNR { planned[$0] = 1; next }
+      /^(Tapping|Installing|Upgrading) / {
+        package = $0
+        sub(/^[^ ]+ /, "", package)
+        if (planned[package]) {
+          current = package
+          if (!seen[package]++) count++
+        }
+      }
+      END {
+        if (current == "") current = "-"
+        printf "%d\t%s\t-\n", count, current
+      }
+    ' "$userland_ui_progress_file" "$userland_ui_task_log")
+  else
+    userland_ui_progress_state=$(awk '
     NR == FNR { planned[$0] = 1; next }
     {
       package = ""
@@ -274,7 +306,8 @@ userland_ui_progress_refresh() {
       if (current_phase == "") current_phase = "-"
       printf "%d\t%s\t%s\n", count, current, current_phase
     }
-  ' "$userland_ui_progress_file" "$userland_ui_task_log")
+    ' "$userland_ui_progress_file" "$userland_ui_task_log")
+  fi
   userland_ui_progress_tab=$(printf '\t')
   userland_ui_progress_completed=${userland_ui_progress_state%%"$userland_ui_progress_tab"*}
   userland_ui_progress_rest=${userland_ui_progress_state#*"$userland_ui_progress_tab"}
@@ -520,6 +553,38 @@ userland_ui_confirm() {
   return "$userland_ui_confirmation_status"
 }
 
+userland_ui_acknowledge() {
+  userland_ui_redact "$*"
+  if [ "${USERLAND_TESTING:-0}" = 1 ] && [ "${USERLAND_UI_TEST_ACKNOWLEDGEMENT:-0}" = 1 ]; then
+    userland_ui_acknowledge_output=/dev/stdout
+  elif [ ! -t 0 ] || [ ! -r /dev/tty ]; then
+    userland_ui_status error "$userland_ui_text requires an interactive terminal"
+    return 1
+  else
+    userland_ui_acknowledge_output=/dev/tty
+  fi
+
+  if [ "$userland_ui_active_mode" = rich ]; then
+    printf '%s%s?%s  %s %s›%s ' \
+      "$userland_ui_margin" \
+      "$userland_ui_cyan" \
+      "$userland_ui_reset" \
+      "$userland_ui_text" \
+      "$userland_ui_cyan" \
+      "$userland_ui_reset" >"$userland_ui_acknowledge_output"
+  else
+    printf '%s ' "$userland_ui_text" >"$userland_ui_acknowledge_output"
+  fi
+  if [ "$userland_ui_acknowledge_output" = /dev/tty ]; then
+    IFS= read -r userland_ui_acknowledgement </dev/tty || return 1
+    : "$userland_ui_acknowledgement"
+  fi
+  printf '\n' >"$userland_ui_acknowledge_output"
+  if [ "$userland_ui_active_mode" = rich ]; then
+    printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail" >"$userland_ui_acknowledge_output"
+  fi
+}
+
 userland_ui() {
   userland_ui_prepare_stream
   userland_ui_event=${1:-}
@@ -601,6 +666,10 @@ userland_ui() {
     confirm)
       [ "$#" -ge 1 ] || return 64
       userland_ui_confirm "$@"
+      ;;
+    acknowledge)
+      [ "$#" -ge 1 ] || return 64
+      userland_ui_acknowledge "$@"
       ;;
     *) return 64 ;;
   esac

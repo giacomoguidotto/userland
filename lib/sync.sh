@@ -57,6 +57,9 @@ userland_sync() {
   if [ "${USERLAND_BOOTSTRAP_CREATED:-0}" = 1 ]; then
     userland_log changed "Creating ~/.userland"
   fi
+  if [ "${USERLAND_BOOTSTRAP_REPOSITORY_PREPARED:-0}" = 1 ]; then
+    userland_log changed "Cloning giacomoguidotto/userland into ~/.userland"
+  fi
   userland_dotfiles_recover ||
     userland_die "managed-file recovery needs attention before sync can continue"
   userland_dotfiles_prune_recovery ||
@@ -105,8 +108,13 @@ userland_sync() {
   userland_ui section "Apply personal state"
   USERLAND_UI_HIDE_OK=1
   export USERLAND_UI_HIDE_OK
-  userland_run_adapters apply
+  userland_adapters_code=0
+  userland_run_adapters apply || userland_adapters_code=$?
   unset USERLAND_UI_HIDE_OK
+  if [ "$userland_adapters_code" -ne 0 ]; then
+    userland_ui summary error "Stopped at the failed step. Fix it, then rerun sync."
+    return "$userland_adapters_code"
+  fi
 
   userland_ui section "Apply managed files"
   userland_ui task apply "Apply managed files transactionally" userland_dotfiles_apply
@@ -121,9 +129,9 @@ userland_sync() {
       userland_ui summary attention "Sync complete, but a legacy checkout needs review."
       return 2
     fi
-    userland_ui summary ok "Sync complete. This Mac matches userland."
+    userland_ui summary ok "Done. This Mac matches userland."
     return 0
   fi
-  userland_ui summary attention "Sync complete with steps that need attention."
+  userland_ui summary attention "Done with steps that need attention."
   return 2
 }

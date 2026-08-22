@@ -1,4 +1,4 @@
-tap "nikitabobko/tap"
+tap "nikitabobko/tap", trusted: true
 
 brew "mas"
 

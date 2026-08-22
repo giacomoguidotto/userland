@@ -35,6 +35,19 @@ if [ "${TEST_CHECK_BOOTSTRAP_CHECKPOINT:-0}" = 1 ]; then
   esac
 fi
 case "$*" in
+  *bootstrap*status*--missing*)
+    if [ "${TEST_MACHINE_STATE_DRIFT:-0}" = 1 ]; then
+      printf '%s\n' \
+        'dotfiles  ~/.agents/skills  symlink-each  differs (~/.agents/skills/ask-matt: exists but is not a symlink)' \
+        'tools     npm:@openai/codex@0.148.0  installed' \
+        'tools     npm:eas-cli@22.0.0  installed' \
+        'tools     npm:tree-sitter-cli@0.26.12  installed' \
+        'tools     pitchfork@2.22.0  installed' \
+        'tools     uv@0.12.5  installed' \
+        'tools     python@3.14.7  installed'
+      exit 1
+    fi
+    ;;
   *doctor*--json*) printf '%s\n' '{"healthy":true}' ;;
   *bootstrap*plan*--json*) printf '%s\n' '{"resources":[],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":0}}' ;;
   *bootstrap*dotfiles*status*--json*)
@@ -74,16 +87,45 @@ teardown() {
   rm -rf "$TEST_TMPDIR"
 }
 
-@test "the public interface exposes only plan, sync, and doctor" {
+@test "the public interface exposes plan, sync, doctor, and completions" {
   run "$TEST_ROOT/bin/userland" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"plan"* ]]
   [[ "$output" == *"sync"* ]]
   [[ "$output" == *"doctor"* ]]
+  [[ "$output" == *"completions"* ]]
   [[ "$output" != *"resume"* ]]
 
   run "$TEST_ROOT/bin/userland" update
   [ "$status" -eq 64 ]
+}
+
+@test "completion scripts cover Bash, Zsh, Fish, and Nushell" {
+  for shell in bash zsh fish nushell; do
+    run "$TEST_ROOT/bin/userland" completions "$shell"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"userland"* ]]
+    [[ "$output" == *"completions"* ]]
+  done
+
+  run "$TEST_ROOT/bin/userland" completions powershell
+  [ "$status" -eq 64 ]
+  [[ "$output" == *"supports bash, fish, nushell, or zsh"* ]]
+}
+
+@test "Zsh adds ul without replacing an existing alias or function" {
+  mkdir -p "$TEST_TMPDIR/zsh-home"
+  run env HOME="$TEST_TMPDIR/zsh-home" XDG_CACHE_HOME="$TEST_TMPDIR/zsh-cache" /bin/zsh -fic "source '$TEST_ROOT/config/home/zshrc'; alias ul"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'ul=userland' ]
+
+  run env HOME="$TEST_TMPDIR/zsh-home" XDG_CACHE_HOME="$TEST_TMPDIR/zsh-cache" /bin/zsh -fic "alias ul='printf existing'; source '$TEST_ROOT/config/home/zshrc'; alias ul"
+  [ "$status" -eq 0 ]
+  [ "$output" = "ul='printf existing'" ]
+
+  run env HOME="$TEST_TMPDIR/zsh-home" XDG_CACHE_HOME="$TEST_TMPDIR/zsh-cache" /bin/zsh -fic "ul() { printf existing; }; source '$TEST_ROOT/config/home/zshrc'; whence -w ul"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'ul: function' ]
 }
 
 @test "direct sync refuses a checkout owned by an active bootstrap" {
@@ -443,6 +485,21 @@ teardown() {
   [[ "$output" == *"Log:"*"last-run.log"* ]]
 }
 
+@test "doctor surfaces actionable machine drift instead of healthy inventory" {
+  run env \
+    TEST_MACHINE_STATE_DRIFT=1 \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    "$TEST_ROOT/bin/userland" doctor
+
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Machine state"* ]]
+  [[ "$output" == *"dotfiles"*"differs"* ]]
+  [[ "$output" != *"python@3.14.7"* ]]
+  grep -q 'python@3.14.7' "$USERLAND_STATE_DIR/last-run.log"
+}
+
 @test "plain tasks stream every native line without terminal controls" {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
@@ -456,6 +513,34 @@ teardown() {
   [[ "$output" == *"native-one"* ]]
   [[ "$output" == *"native-two"* ]]
   [[ "$output" != *$'\e['* ]]
+}
+
+@test "the shell cache refreshes when its recipe is stale" {
+  mkdir -p "$USERLAND_CACHE_DIR/zsh"
+  printf '%s\n' '# stale cache' >"$USERLAND_CACHE_DIR/zsh/init.zsh"
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_MISE="$TEST_TMPDIR/bin/mise" \
+    USERLAND_UI_MODE=plain \
+    sh "$TEST_ROOT/lib/adapters/shell-cache.sh" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"will be generated"* ]]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_MISE="$TEST_TMPDIR/bin/mise" \
+    USERLAND_UI_MODE=plain \
+    sh "$TEST_ROOT/lib/adapters/shell-cache.sh" apply
+  [ "$status" -eq 0 ]
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_MISE="$TEST_TMPDIR/bin/mise" \
+    USERLAND_UI_MODE=plain \
+    sh "$TEST_ROOT/lib/adapters/shell-cache.sh" doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"is current"* ]]
 }
 
 @test "the installed command resolves its managed symlink" {
@@ -571,8 +656,11 @@ EOF
 }
 
 @test "sync exits without approval or apply work when the plan is empty" {
-  mkdir -p "$USERLAND_CACHE_DIR/zsh"
-  printf '%s\n' '# generated cache' >"$USERLAND_CACHE_DIR/zsh/init.zsh"
+  USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_MISE="$TEST_TMPDIR/bin/mise" \
+    USERLAND_UI_MODE=plain \
+    sh "$TEST_ROOT/lib/adapters/shell-cache.sh" apply >/dev/null
+  : >"$MISE_CALLS"
 
   run env \
     USERLAND_REFRESHED=1 \
@@ -764,6 +852,20 @@ EOF
   [[ "$output" == *"◆  Userland"* ]]
   [[ "$output" == *"✓  v9.9.9 is current"* ]]
 
+  local ancestor_commit
+  ancestor_commit=$(git -C "$TEST_ROOT" rev-parse HEAD^)
+  run env \
+    TEST_USERLAND_RELEASE_COMMIT="$ancestor_commit" \
+    USERLAND_UI_MODE=rich \
+    USERLAND_UNICODE=1 \
+    NO_COLOR=1 \
+    "$TEST_ROOT/bin/userland" doctor
+  [[ "$output" == *"includes changes after v9.9.9"* ]]
+  [[ "$output" != *"Userland is outdated"* ]]
+
+  run env TEST_USERLAND_RELEASE_COMMIT="$ancestor_commit" "$TEST_ROOT/bin/userland" doctor --json
+  printf '%s' "$output" | grep -q '"name":"userland","status":"ahead","version":"v9.9.9"'
+
   run env \
     TEST_USERLAND_RELEASE_COMMIT=0000000000000000000000000000000000000000 \
     USERLAND_UI_MODE=rich \
@@ -801,6 +903,10 @@ EOF
   [ "$(cat "$USERLAND_BOOTSTRAP_CONTROL/apply-started")" = "$USERLAND_BOOTSTRAP_TOKEN" ]
   [ -z "$(find "$USERLAND_BOOTSTRAP_CONTROL" -name '.apply-started.*' -print)" ]
   [ -s "$USERLAND_CACHE_DIR/zsh/init.zsh" ]
+  grep -q '^# userland-shell-cache: [0-9a-f]\{64\}$' "$USERLAND_CACHE_DIR/zsh/init.zsh"
+  grep -q 'compinit -C' "$USERLAND_CACHE_DIR/zsh/init.zsh"
+  grep -q 'compdef _userland userland' "$USERLAND_CACHE_DIR/zsh/init.zsh"
+  ! grep -q '^complete ' "$USERLAND_CACHE_DIR/zsh/init.zsh"
   grep -q 'bootstrap packages apply --yes' "$MISE_CALLS"
   grep -q 'bootstrap packages upgrade --yes' "$MISE_CALLS"
   grep -q 'bootstrap --yes --only tools' "$MISE_CALLS"

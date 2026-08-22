@@ -62,6 +62,9 @@ alias v="nvim"
 alias x="exit"
 alias za="zellij a"
 alias zz="zellij"
+if (( ! ${+aliases[ul]} && ! ${+functions[ul]} )); then
+  alias ul=userland
+fi
 
 # navigation
 _fselect() { fd "$@" 2>/dev/null | fzf --height 40% --reverse --preview 'tree -C {} | head -100' --query "${@: -1}"; }

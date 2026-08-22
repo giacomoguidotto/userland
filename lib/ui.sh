@@ -232,13 +232,25 @@ userland_ui_signal() {
 }
 
 userland_ui_task_excerpt() {
-  tail -n 6 "$1" | LC_ALL=C tr -cd '\11\12\40-\176' | awk \
+  LC_ALL=C tr -cd '\11\12\40-\176' <"$1" | awk \
     -v margin="$userland_ui_margin" \
-    -v rail="$userland_ui_rail" '
+    -v rail="$userland_ui_rail" \
+    -v pattern="${USERLAND_UI_TASK_EXCERPT_PATTERN:-}" '
     {
       gsub(/\r/, "")
-      if (length($0) > 72) $0 = substr($0, 1, 69) "..."
-      print margin rail "  " $0
+      all[++all_count] = $0
+      if (pattern == "" || $0 ~ pattern) selected[++selected_count] = $0
+    }
+    END {
+      if (selected_count == 0) {
+        for (i = 1; i <= all_count; i++) selected[++selected_count] = all[i]
+      }
+      start = selected_count > 6 ? selected_count - 5 : 1
+      for (i = start; i <= selected_count; i++) {
+        line = selected[i]
+        if (length(line) > 72) line = substr(line, 1, 69) "..."
+        print margin rail "  " line
+      }
     }
   '
 }
@@ -559,6 +571,8 @@ userland_ui_usage() {
   printf '  plan      Preview what would change\n'
   printf '  sync      Update, apply, and verify declared state\n'
   printf '  doctor    Check drift and machine health\n\n'
+  printf '  completions <shell>\n'
+  printf '            Print Bash, Fish, Nushell, or Zsh completions\n\n'
   printf 'Automation\n  userland doctor --json\n'
 }
 

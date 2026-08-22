@@ -1,0 +1,25 @@
+def "nu-complete userland commands" [] {
+    [
+        { value: plan, description: "Preview what would change" }
+        { value: sync, description: "Update, apply, and verify declared state" }
+        { value: doctor, description: "Check drift and machine health" }
+        { value: completions, description: "Print shell completions" }
+        { value: help, description: "Show command help" }
+    ]
+}
+
+def "nu-complete userland shells" [] {
+    [bash fish nushell zsh]
+}
+
+export extern userland [
+    command?: string@"nu-complete userland commands"
+]
+
+export extern "userland doctor" [
+    --json
+]
+
+export extern "userland completions" [
+    shell: string@"nu-complete userland shells"
+]

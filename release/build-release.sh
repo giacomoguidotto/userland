@@ -39,7 +39,7 @@ esac
 
 release_tree=$work/tree/userland-$version
 mkdir -p "$release_tree/bin"
-git archive --format=tar "$commit" LICENSE bin config lib mise.lock mise.toml |
+git archive --format=tar "$commit" LICENSE bin completions config lib mise.lock mise.toml |
   tar -xf - -C "$release_tree"
 
 if [ -f .gitmodules ]; then

@@ -1,0 +1,20 @@
+_userland_completion() {
+  local current command choices
+  current=${COMP_WORDS[COMP_CWORD]}
+  command=${COMP_WORDS[1]:-}
+  choices=
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    choices='plan sync doctor completions help'
+  else
+    case "$command" in
+      doctor) choices='--json' ;;
+      completions) choices='bash fish nushell zsh' ;;
+    esac
+  fi
+  COMPREPLY=($(compgen -W "$choices" -- "$current"))
+}
+
+complete -F _userland_completion userland
+case $(alias ul 2>/dev/null) in
+  "alias ul='userland'" | 'alias ul=userland') complete -F _userland_completion ul ;;
+esac

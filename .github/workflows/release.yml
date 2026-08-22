@@ -77,6 +77,7 @@ jobs:
           cmp "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG.tar.gz"
           tar -tzf "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" > "$RUNNER_TEMP/archive-files"
           grep -Eq '^userland-[^/]+/(tests|release|\.github)/' "$RUNNER_TEMP/archive-files" && exit 1 || true
+          [[ "$(grep -Ec '^userland-[^/]+/completions/(bash|fish|nushell|zsh)$' "$RUNNER_TEMP/archive-files")" == 4 ]]
           grep -R '@USERLAND_' "$RUNNER_TEMP/release-first" && exit 1 || true
 
   release:

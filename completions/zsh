@@ -1,0 +1,27 @@
+#compdef userland
+
+_userland() {
+  local -a commands
+  commands=(
+    'plan:Preview what would change'
+    'sync:Update, apply, and verify declared state'
+    'doctor:Check drift and machine health'
+    'completions:Print shell completions'
+    'help:Show command help'
+  )
+
+  if (( CURRENT == 2 )); then
+    _describe 'command' commands
+    return
+  fi
+
+  case ${words[2]} in
+    doctor) _arguments '1:option:(--json)' ;;
+    completions) _arguments '1:shell:(bash fish nushell zsh)' ;;
+  esac
+}
+
+compdef _userland userland
+if (( ${+aliases[ul]} )) && [[ ${aliases[ul]} == userland ]]; then
+  compdef _userland ul
+fi

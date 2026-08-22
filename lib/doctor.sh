@@ -53,6 +53,10 @@ userland_doctor_version_probe() {
 
   if [ "$userland_doctor_local_commit" = "$userland_doctor_latest_commit" ]; then
     userland_doctor_version_state=current
+  elif command -v git >/dev/null 2>&1 &&
+    git -C "$USERLAND_ROOT" merge-base --is-ancestor \
+      "$userland_doctor_latest_commit" "$userland_doctor_local_commit" 2>/dev/null; then
+    userland_doctor_version_state=ahead
   else
     userland_doctor_version_state=outdated
   fi
@@ -77,7 +81,7 @@ userland_doctor_json() {
     userland_adapter_state=attention
   fi
 
-  if [ "$userland_doctor_version_state" = current ] &&
+  if { [ "$userland_doctor_version_state" = current ] || [ "$userland_doctor_version_state" = ahead ]; } &&
     [ "$userland_mise_state" = present ] &&
     [ "$userland_bootstrap_state" = healthy ] &&
     [ "$userland_adapter_state" = healthy ]; then
@@ -117,6 +121,9 @@ userland_doctor_human() {
     current)
       userland_log healthy "$userland_doctor_latest_version is current"
       ;;
+    ahead)
+      userland_log healthy "Userland includes changes after $userland_doctor_latest_version"
+      ;;
     outdated)
       userland_log attention "Userland is outdated; run userland sync"
       userland_doctor_code=1
@@ -133,8 +140,11 @@ userland_doctor_human() {
   userland_ui task check "Toolchain" "$USERLAND_MISE" doctor || userland_doctor_code=1
 
   userland_ui section "Machine state"
+  USERLAND_UI_TASK_EXCERPT_PATTERN='(^|[[:space:]])(differs|missing|unknown|unavailable|failed|error)([[:space:](]|$)'
+  export USERLAND_UI_TASK_EXCERPT_PATTERN
   userland_ui task check "Machine state" \
     "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap status --missing || userland_doctor_code=1
+  unset USERLAND_UI_TASK_EXCERPT_PATTERN
 
   userland_ui section "Personal state"
   USERLAND_UI_HIDE_OK=1

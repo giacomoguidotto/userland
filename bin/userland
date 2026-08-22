@@ -82,6 +82,11 @@ case "$userland_command" in
     . "$USERLAND_ROOT/lib/doctor.sh"
     userland_doctor
     ;;
+  completions)
+    # shellcheck source=../lib/completions.sh
+    . "$USERLAND_ROOT/lib/completions.sh"
+    userland_completions "$@"
+    ;;
   help | -h | --help)
     usage
     ;;

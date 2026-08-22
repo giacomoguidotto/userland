@@ -16,7 +16,7 @@ curl -fsSL https://userland.guidotto.dev | sh
 Pin an exact release:
 
 ```sh
-curl -fsSL https://userland.guidotto.dev/v0.1.27 | sh
+curl -fsSL https://userland.guidotto.dev/v0.1.28 | sh
 ```
 
 The installer verifies the release checksum and prepares `~/.userland` before showing the first plan. Cancelling removes a checkout created by that run. Once apply starts, the same path is retained and becomes the managed Git checkout.
@@ -28,6 +28,7 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | `userland plan` | Show what would change without changing the machine. |
 | `userland sync` | Apply declared state, guide attended steps, then run the doctor. Safe to rerun after an interruption. |
 | `userland doctor` | Report drift and machine health without changing anything. Use `--json` for structured output. |
+| `userland completions <shell>` | Print completions for Bash, Fish, Nushell, or Zsh. Zsh is wired in automatically by sync. |
 
 ## Repository map
 
@@ -35,6 +36,7 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | --- | --- |
 | `bin/` | The public `userland` command. |
 | `config/` | Personal machine state, including dotfiles, applications, repositories, and agent assets. |
+| `completions/` | Static shell completion definitions. |
 | `lib/` | Command implementation and external-system adapters. |
 | `release/` | Checksum-verified release and bootstrap delivery. |
 | `tests/` | Behavior checks at the command, migration, release, and HTTP interfaces. |

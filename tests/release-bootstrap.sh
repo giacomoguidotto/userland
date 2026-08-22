@@ -91,8 +91,7 @@ if [ -n "${TEST_GIT_CALLS:-}" ]; then
   printf '%s\n' "$*" >>"$TEST_GIT_CALLS"
 fi
 case " $* " in
-  *' --quiet '*) ;;
-  *' clone '* | *' submodule update '*) printf '%s\n' 'git transfer progress' >&2 ;;
+  *' clone '* | *' fetch '* | *' submodule update '*) printf '%s\n' 'git transfer progress' >&2 ;;
 esac
 if [ "$1" = clone ]; then
   for destination do :; done
@@ -288,8 +287,11 @@ HOME="$attention_home" \
   TEST_TRUST_LOG="$work/upgrade-trust" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || upgrade_status=$?
+  sh "$work/upgrade-bootstrap" >"$work/upgrade-output" 2>&1 || upgrade_status=$?
 [ "$upgrade_status" -eq 0 ] || fail "upgrade run returned $upgrade_status"
+if grep -Fq 'git transfer progress' "$work/upgrade-output"; then
+  fail "upgrade exposed Git transfer progress"
+fi
 grep -Fq 'repository-prepared=1' "$work/upgrade-observation" ||
   fail "upgrade did not hand repository preparation to the Preflight UI"
 grep -Eq 'submodule update .*--quiet|submodule update --quiet' "$work/upgrade-git-calls" ||
@@ -328,9 +330,11 @@ HOME="$interrupted_upgrade_home" \
   TEST_SYNC_STATUS=0 \
   USERLAND_DATA_DIR="$interrupted_upgrade_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/upgrade-bootstrap" >/dev/null 2>&1 || interrupted_upgrade_status=$?
+  sh "$work/upgrade-bootstrap" >"$work/interrupted-upgrade-output" 2>&1 || interrupted_upgrade_status=$?
 [ "$interrupted_upgrade_status" -eq 13 ] ||
   fail "interrupted checkout upgrade returned $interrupted_upgrade_status"
+grep -Fq 'git transfer progress' "$work/interrupted-upgrade-output" ||
+  fail "interrupted checkout upgrade hid its Git failure diagnostics"
 [ "$(cat "$interrupted_upgrade_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
   fail "interrupted checkout upgrade rewound the verified commit"
 

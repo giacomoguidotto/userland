@@ -421,6 +421,8 @@ teardown() {
   [ "$status" -eq 7 ]
   [[ "$output" == *"Install packages failed"* ]]
   [[ "$output" == *"last failure"* ]]
+  [[ "$output" == *$'\n │  last failure'* ]]
+  [[ "$output" != *$'\n    | last failure'* ]]
   [[ "$output" == *"Log:"*"last-run.log"* ]]
 }
 
@@ -635,6 +637,8 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Homebrew"*"install from the pinned Homebrew installer"* ]]
   [[ "$output" == *"helium-browser"*"install or adopt Homebrew cask"* ]]
+  [[ "$output" == *"bazecor"*"install or replace with the current Homebrew cask"* ]]
+  [[ "$output" == *"yubico-authenticator"*"install or replace with the current Homebrew cask"* ]]
   [[ "$output" == *"Xcode"*"install from Mac App Store"* ]]
 
   : >"$BREW_CALLS"
@@ -649,6 +653,8 @@ EOF
   grep -Fq "bundle --file $TEST_ROOT/config/brewfile --no-upgrade" "$BREW_CALLS"
   ! grep -q 'cleanup' "$BREW_CALLS"
   grep -Fq 'tap "nikitabobko/tap", trusted: true' "$TEST_ROOT/config/brewfile"
+  grep -Fq 'cask "bazecor", args: { force: true }' "$TEST_ROOT/config/brewfile"
+  grep -Fq 'cask "yubico-authenticator", args: { force: true }' "$TEST_ROOT/config/brewfile"
 
   : >"$BREW_CALLS"
   run env BREW_APPLY_FAIL=1 USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" sync

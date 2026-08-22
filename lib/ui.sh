@@ -177,11 +177,13 @@ userland_ui_signal() {
 }
 
 userland_ui_task_excerpt() {
-  tail -n 6 "$1" | LC_ALL=C tr -cd '\11\12\40-\176' | awk '
+  tail -n 6 "$1" | LC_ALL=C tr -cd '\11\12\40-\176' | awk \
+    -v margin="$userland_ui_margin" \
+    -v rail="$userland_ui_rail" '
     {
       gsub(/\r/, "")
       if (length($0) > 72) $0 = substr($0, 1, 69) "..."
-      print "    | " $0
+      print margin rail "  " $0
     }
   '
 }

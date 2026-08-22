@@ -47,7 +47,13 @@ userland_homebrew_plan_add() {
   case "$userland_homebrew_kind" in
     Tap) userland_homebrew_detail='add Homebrew tap' ;;
     Formula) userland_homebrew_detail='install with Homebrew' ;;
-    Cask) userland_homebrew_detail='install or adopt Homebrew cask' ;;
+    Cask)
+      if grep -Fq "cask \"$userland_homebrew_name\", args: { force: true }" "$userland_brewfile"; then
+        userland_homebrew_detail='install or replace with the current Homebrew cask'
+      else
+        userland_homebrew_detail='install or adopt Homebrew cask'
+      fi
+      ;;
     App) userland_homebrew_detail='install from Mac App Store' ;;
     Homebrew) userland_homebrew_detail='install from the pinned Homebrew installer' ;;
     *) return 64 ;;

@@ -5,7 +5,7 @@ brew "mas"
 cask "1password", args: { adopt: true }
 cask "android-commandlinetools", args: { adopt: true }
 cask "aerospace", args: { adopt: true }
-cask "bazecor", args: { adopt: true }
+cask "bazecor", args: { force: true }
 cask "betterdisplay", args: { adopt: true }
 cask "chatgpt", args: { adopt: true }
 cask "font-blex-mono-nerd-font", args: { adopt: true }
@@ -24,7 +24,7 @@ cask "spotify", args: { adopt: true }
 cask "t3-code", args: { adopt: true }
 cask "typefully", args: { adopt: true }
 cask "wispr-flow", args: { adopt: true }
-cask "yubico-authenticator", args: { adopt: true }
+cask "yubico-authenticator", args: { force: true }
 cask "zed", args: { adopt: true }
 
 # The App Store may ask for an Apple Account, Touch ID, or a new license.

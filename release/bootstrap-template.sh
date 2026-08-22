@@ -202,6 +202,39 @@ prepare_checkout() {
   validate_checkout "$checkout_path"
 }
 
+run_repository_transaction() {
+  repository_transaction_log=$control_dir/repository.log
+  rm -f "$repository_transaction_log"
+  set +e
+  (
+    set -e
+    "$@"
+  ) >"$repository_transaction_log" 2>&1
+  repository_transaction_status=$?
+  set -e
+
+  if [ "$repository_transaction_status" -eq 0 ]; then
+    rm -f "$repository_transaction_log"
+    return 0
+  fi
+
+  cat "$repository_transaction_log" >&2
+  rm -f "$repository_transaction_log"
+  return "$repository_transaction_status"
+}
+
+materialize_git_checkout() {
+  bootstrap_git clone --quiet --filter=blob:none --recurse-submodules "$repository" "$checkout_work/repo"
+  cloned_commit=$(bootstrap_git -C "$checkout_work/repo" rev-parse "$tag^{commit}")
+  [ "$cloned_commit" = "$commit" ] || die "$tag does not resolve to the released commit"
+  bootstrap_git -C "$checkout_work/repo" merge-base --is-ancestor "$tag" origin/main ||
+    die "$tag is not an ancestor of origin/main"
+  bootstrap_git -C "$checkout_work/repo" checkout -B main "$tag"
+  bootstrap_git -C "$checkout_work/repo" branch --set-upstream-to=origin/main main
+  bootstrap_git -C "$checkout_work/repo" submodule update --quiet --init --recursive
+  validate_checkout "$checkout_work/repo"
+}
+
 validate_materialized_checkout() {
   materialized_path=$1
   [ -d "$materialized_path" ] && [ ! -L "$materialized_path" ] ||
@@ -419,8 +452,10 @@ MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/mise.toml" >/dev/
 if [ -L "$repo_dir" ]; then
   die "$repo_dir must not be a symlink"
 elif [ -d "$repo_dir/.git" ]; then
-  prepare_checkout "$repo_dir"
-  if [ "$previous_head" != "$commit" ]; then
+  repository_previous_head=$(checkout_git "$repo_dir" rev-parse 'HEAD^{commit}' 2>/dev/null) ||
+    die "could not resolve the checkout commit"
+  run_repository_transaction prepare_checkout "$repo_dir"
+  if [ "$repository_previous_head" != "$commit" ]; then
     repository_prepared=1
   fi
 elif [ -e "$repo_dir" ]; then
@@ -495,15 +530,7 @@ fi
 if [ ! -d "$repo_dir/.git" ]; then
   command -v git >/dev/null 2>&1 || die "sync completed without installing Git"
   checkout_work=$(mktemp -d "$HOME/.userland.git.XXXXXX")
-  bootstrap_git clone --quiet --filter=blob:none --recurse-submodules "$repository" "$checkout_work/repo"
-  cloned_commit=$(bootstrap_git -C "$checkout_work/repo" rev-parse "$tag^{commit}")
-  [ "$cloned_commit" = "$commit" ] || die "$tag does not resolve to the released commit"
-  bootstrap_git -C "$checkout_work/repo" merge-base --is-ancestor "$tag" origin/main ||
-    die "$tag is not an ancestor of origin/main"
-  bootstrap_git -C "$checkout_work/repo" checkout -B main "$tag"
-  bootstrap_git -C "$checkout_work/repo" branch --set-upstream-to=origin/main main
-  bootstrap_git -C "$checkout_work/repo" submodule update --quiet --init --recursive
-  validate_checkout "$checkout_work/repo"
+  run_repository_transaction materialize_git_checkout
 
   backup_dir="$HOME/.userland.archive.$transaction_id"
   [ ! -e "$backup_dir" ] && [ ! -L "$backup_dir" ] ||

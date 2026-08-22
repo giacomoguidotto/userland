@@ -549,9 +549,6 @@ userland_ui_confirm() {
     printf '%s%s?%s  %s %s[y/N]%s %s›%s ' "$userland_ui_margin" "$userland_ui_cyan" "$userland_ui_reset" "$userland_ui_text" "$userland_ui_dim" "$userland_ui_reset" "$userland_ui_cyan" "$userland_ui_reset" >"$userland_ui_confirm_output"
   fi
   printf '%s\n' "$userland_ui_confirmation_choice" >"$userland_ui_confirm_output"
-  if [ "$userland_ui_active_mode" = rich ]; then
-    printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail" >"$userland_ui_confirm_output"
-  fi
   return "$userland_ui_confirmation_status"
 }
 
@@ -653,6 +650,7 @@ userland_ui() {
       userland_ui_redact "$*"
       userland_ui_elapsed
       if [ "$userland_ui_active_mode" = rich ]; then
+        printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail"
         case "$userland_ui_summary_state" in
           ok) userland_ui_summary_tint=$userland_ui_green ;;
           attention) userland_ui_summary_tint=$userland_ui_yellow ;;
@@ -662,6 +660,7 @@ userland_ui() {
         printf '%s%s%s%s  %s\n' "$userland_ui_margin" "$userland_ui_summary_tint" "$userland_ui_close" "$userland_ui_reset" "$userland_ui_text"
         printf '%s   %s%s%s\n' "$userland_ui_margin" "$userland_ui_dim" "$userland_ui_elapsed_text" "$userland_ui_reset"
       else
+        printf '\n'
         userland_ui_status "$userland_ui_summary_state" "$userland_ui_text ($userland_ui_elapsed_text)"
       fi
       ;;

@@ -354,7 +354,6 @@ cleanup() {
         repo_created=0
         if [ "$cleanup_cancel_ui" -eq 1 ]; then
           userland_ui status "done" "Deleting ~/.userland"
-          userland_ui spacer
           userland_ui summary cancelled "Cancelled. No changes were applied."
         else
           printf 'userland: deleted ~/.userland\n' >&2
@@ -374,7 +373,6 @@ cleanup() {
     case "$cleanup_status" in
       129 | 130 | 143)
         if bootstrap_prepare_cancel_ui; then
-          userland_ui spacer
           userland_ui summary cancelled "Cancelled. Applied progress was preserved."
         else
           printf 'userland: cancelled; applied progress was preserved\n' >&2

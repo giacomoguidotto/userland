@@ -132,7 +132,7 @@ teardown() {
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui command sync "Preview"; userland_ui summary cancelled "Cancelled. No changes were applied."'
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'\n └\e[0m  Cancelled. No changes were applied.'* ]]
+  [[ "$output" == *$'\n │\n └\e[0m  Cancelled. No changes were applied.'* ]]
   [[ "$output" != *$'\e[2m└'* ]]
 
   run env \
@@ -187,7 +187,7 @@ teardown() {
     NO_COLOR=1 \
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
   [ "$status" -eq 3 ]
-  [[ "$output" == *$'?  Apply this plan? [y/N] › N\n │'* ]]
+  [[ "$output" == *$'?  Apply this plan? [y/N] › N'* ]]
 
   run env \
     USERLAND_ROOT="$TEST_ROOT" \
@@ -199,7 +199,7 @@ teardown() {
     NO_COLOR=1 \
     sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui confirm "Apply this plan?"'
   [ "$status" -eq 0 ]
-  [[ "$output" == *$'?  Apply this plan? [y/N] › Y\n │'* ]]
+  [[ "$output" == *$'?  Apply this plan? [y/N] › Y'* ]]
   [ "$(grep -Fc 'stty -echo' "$TEST_ROOT/lib/ui.sh")" -eq 0 ]
 
   run env \

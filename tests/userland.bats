@@ -100,6 +100,13 @@ teardown() {
   [ "$status" -eq 64 ]
 }
 
+@test "the rich help dialog is indented by one space" {
+  run env USERLAND_UI_MODE=rich USERLAND_UNICODE=0 NO_COLOR=1 "$TEST_ROOT/bin/userland" --help
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'\n Personal macOS state, kept in sync.\n\n Usage\n   userland <command>\n\n Commands\n   plan'* ]]
+  [[ "$output" == *$'\n Automation\n   userland doctor --json'* ]]
+}
+
 @test "completion scripts cover Bash, Zsh, Fish, and Nushell" {
   for shell in bash zsh fish nushell; do
     run "$TEST_ROOT/bin/userland" completions "$shell"

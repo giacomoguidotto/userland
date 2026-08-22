@@ -562,18 +562,18 @@ userland_ui_usage() {
   if [ "$userland_ui_active_mode" = rich ]; then
     userland_ui_wordmark
     printf '\n'
-    printf '%sPersonal macOS state, kept in sync.%s\n\n' "$userland_ui_dim" "$userland_ui_reset"
-    printf '%sUsage%s\n  userland <command>\n\n' "$userland_ui_bold" "$userland_ui_reset"
-    printf '%sCommands%s\n' "$userland_ui_bold" "$userland_ui_reset"
+    printf '%s%sPersonal macOS state, kept in sync.%s\n\n' "$userland_ui_margin" "$userland_ui_dim" "$userland_ui_reset"
+    printf '%s%sUsage%s\n%s  userland <command>\n\n' "$userland_ui_margin" "$userland_ui_bold" "$userland_ui_reset" "$userland_ui_margin"
+    printf '%s%sCommands%s\n' "$userland_ui_margin" "$userland_ui_bold" "$userland_ui_reset"
   else
     printf 'userland\nPersonal macOS state, kept in sync.\n\nUsage\n  userland <command>\n\nCommands\n'
   fi
-  printf '  plan      Preview what would change\n'
-  printf '  sync      Update, apply, and verify declared state\n'
-  printf '  doctor    Check drift and machine health\n\n'
-  printf '  completions <shell>\n'
-  printf '            Print Bash, Fish, Nushell, or Zsh completions\n\n'
-  printf 'Automation\n  userland doctor --json\n'
+  printf '%s  plan      Preview what would change\n' "$userland_ui_margin"
+  printf '%s  sync      Update, apply, and verify declared state\n' "$userland_ui_margin"
+  printf '%s  doctor    Check drift and machine health\n\n' "$userland_ui_margin"
+  printf '%s  completions <shell>\n' "$userland_ui_margin"
+  printf '%s            Print Bash, Fish, Nushell, or Zsh completions\n\n' "$userland_ui_margin"
+  printf '%sAutomation\n%s  userland doctor --json\n' "$userland_ui_margin" "$userland_ui_margin"
 }
 
 userland_ui_confirm() {

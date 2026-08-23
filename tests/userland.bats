@@ -333,6 +333,75 @@ teardown() {
   [[ "$output" == *"[error] Apply this plan? requires an interactive terminal"* ]]
 }
 
+@test "interactive acknowledgements absorb the terminal Enter newline" {
+  run python3 - "$TEST_ROOT" <<'PY'
+import os
+import pty
+import select
+import signal
+import sys
+
+root = sys.argv[1]
+pid, fd = pty.fork()
+if pid == 0:
+    env = os.environ.copy()
+    env.update({
+        "USERLAND_ROOT": root,
+        "USERLAND_UI_MODE": "rich",
+        "USERLAND_UNICODE": "1",
+        "USERLAND_TESTING": "0",
+        "NO_COLOR": "1",
+    })
+    os.execvpe(
+        "sh",
+        [
+            "sh",
+            "-c",
+            '. "$USERLAND_ROOT/lib/common.sh"; '
+            'userland_ui command sync "Preview"; '
+            'userland_ui acknowledge "Press Enter after Raycast reports a successful import."',
+        ],
+        env,
+    )
+
+captured = b""
+sent_enter = False
+timed_out = False
+while True:
+    ready, _, _ = select.select([fd], [], [], 2)
+    if not ready:
+        os.kill(pid, signal.SIGKILL)
+        timed_out = True
+        break
+    try:
+        chunk = os.read(fd, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    captured += chunk
+    if not sent_enter and b"successful import." in captured:
+        os.write(fd, b"\n")
+        sent_enter = True
+
+_, status = os.waitpid(pid, 0)
+output = captured.replace(b"\r\n", b"\n")
+prompt = b"Press Enter after Raycast reports a successful import."
+prompt_output = output[output.find(prompt):]
+
+if timed_out or os.waitstatus_to_exitcode(status) != 0:
+    sys.stdout.buffer.write(output)
+    raise SystemExit(1)
+if b"\n\n" in prompt_output:
+    sys.stdout.buffer.write(prompt_output)
+    raise SystemExit(1)
+if b"\n \xe2\x94\x82\n" not in prompt_output:
+    sys.stdout.buffer.write(prompt_output)
+    raise SystemExit(1)
+PY
+  [ "$status" -eq 0 ]
+}
+
 @test "rich tasks keep successful native logs out of scrollback and render the typed plan once" {
   run env \
     USERLAND_ROOT="$TEST_ROOT" \

@@ -648,8 +648,9 @@ userland_ui_acknowledge() {
   if [ "$userland_ui_acknowledge_output" = /dev/tty ]; then
     IFS= read -r userland_ui_acknowledgement </dev/tty || return 1
     : "$userland_ui_acknowledgement"
+  else
+    printf '\n' >"$userland_ui_acknowledge_output"
   fi
-  printf '\n' >"$userland_ui_acknowledge_output"
   if [ "$userland_ui_active_mode" = rich ]; then
     printf '%s%s\n' "$userland_ui_margin" "$userland_ui_rail" >"$userland_ui_acknowledge_output"
   fi

@@ -110,6 +110,9 @@ backend = "npm:eas-cli"
 version = "0.26.12"
 backend = "npm:tree-sitter-cli"
 
+[tools."npm:tree-sitter-cli".options]
+allow_builds = '["tree-sitter-cli"]'
+
 [[tools.op]]
 version = "2.39.0"
 backend = "vfox:op"

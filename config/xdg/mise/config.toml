@@ -13,7 +13,7 @@ gradle = "9.7.0"
 "npm:@earendil-works/pi-coding-agent" = "0.84.2"
 "npm:@openai/codex" = "0.148.0"
 "npm:eas-cli" = "22.0.0"
-"npm:tree-sitter-cli" = "0.26.12"
+"npm:tree-sitter-cli" = { version = "0.26.12", allow_builds = ["tree-sitter-cli"] }
 pitchfork = "2.22.0"
 uv = "0.12.5"
 python = "3.14.7"

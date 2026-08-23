@@ -839,6 +839,14 @@ EOF
   [ "$(grep -c 'exec -- tree-sitter --version' "$TOOLCHAIN_CALLS")" -gt "$tree_probe_count" ]
 }
 
+@test "tree-sitter allows only its reviewed native-binary lifecycle script" {
+  declaration='"npm:tree-sitter-cli" = { version = "0.26.12", allow_builds = ["tree-sitter-cli"] }'
+  grep -Fqx "$declaration" "$TEST_ROOT/mise.toml"
+  grep -Fqx "$declaration" "$TEST_ROOT/config/xdg/mise/config.toml"
+  [ "$(grep -Fc '[[tools."npm:tree-sitter-cli"]]' "$TEST_ROOT/mise.lock")" -eq 1 ]
+  grep -Fqx 'allow_builds = '\''["tree-sitter-cli"]'\''' "$TEST_ROOT/mise.lock"
+}
+
 @test "plan records exact rolling upgrades and sync applies only that approved list" {
   export TEST_ROLLING_UPGRADES=1
 

@@ -194,14 +194,20 @@ userland_toolchain_promote_mise() {
   userland_toolchain_public_dir=${userland_public_mise%/*}
   mkdir -p "$userland_toolchain_public_dir"
   [ ! -L "$userland_toolchain_public_dir" ] || userland_die 'refusing to promote mise through a symlinked ~/.local/bin'
-  userland_toolchain_mise_tmp=$userland_toolchain_public_dir/.mise.userland.$$
+  # mise dispatches as a shim when argv[0] is not named `mise`. Keep the
+  # validation copy on the destination filesystem for an atomic rename, but
+  # give the executable its canonical basename inside a private directory.
+  userland_toolchain_mise_tmp_dir=$(mktemp -d "$userland_toolchain_public_dir/.mise.userland.XXXXXX")
+  userland_toolchain_mise_tmp=$userland_toolchain_mise_tmp_dir/mise
   cp "$USERLAND_MISE" "$userland_toolchain_mise_tmp"
   chmod 755 "$userland_toolchain_mise_tmp"
   "$userland_toolchain_mise_tmp" --version >/dev/null 2>&1 || {
     rm -f "$userland_toolchain_mise_tmp"
+    rmdir "$userland_toolchain_mise_tmp_dir"
     userland_die 'pinned mise launcher failed validation before promotion'
   }
   mv -f "$userland_toolchain_mise_tmp" "$userland_public_mise"
+  rmdir "$userland_toolchain_mise_tmp_dir"
   userland_log changed 'promoted the pinned mise launcher atomically'
 }
 

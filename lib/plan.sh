@@ -13,6 +13,52 @@ userland_plan_mise_resources() {
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap plan --json >"$USERLAND_PLAN_RESULT"
 }
 
+userland_plan_mise_package_upgrades() {
+  "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages upgrade \
+    --dry-run --yes --jobs "${USERLAND_JOBS:-4}" >"$USERLAND_PLAN_RESULT"
+}
+
+userland_plan_import_mise_package_upgrades() {
+  userland_plan_upgrade_output=$1
+  userland_plan_upgrade_records=$(mktemp "$USERLAND_CACHE_DIR/rolling-upgrades.XXXXXX")
+  awk '
+    /^(pour|build) / && /\(requested([,)])/ {
+      artifact = $2
+      sub(/:$/, "", artifact)
+      version = artifact
+      sub(/^.*\//, "", version)
+      package = artifact
+      sub(/\/[^\/]+$/, "", package)
+      if (package != "" && version != "" && !seen[package]++) {
+        printf "%s\t%s\n", package, version
+      }
+    }
+    /^repair / {
+      artifact = $2
+      sub(/:$/, "", artifact)
+      version = artifact
+      sub(/^.*\//, "", version)
+      package = artifact
+      sub(/\/[^\/]+$/, "", package)
+      if (package != "" && version != "" && !seen[package]++) {
+        printf "%s\t%s\n", package, version
+      }
+    }
+  ' "$userland_plan_upgrade_output" >"$userland_plan_upgrade_records"
+
+  while IFS="$(printf '\t')" read -r userland_plan_upgrade_package userland_plan_upgrade_version; do
+    [ -n "$userland_plan_upgrade_package" ] || continue
+    userland_plan_add apps upgrade automatic declared \
+      "$userland_plan_upgrade_package" \
+      "upgrade installed rolling package to $userland_plan_upgrade_version" \
+      "mise:rolling-upgrade:brew:$userland_plan_upgrade_package" || {
+      rm -f "$userland_plan_upgrade_records"
+      return 1
+    }
+  done <"$userland_plan_upgrade_records"
+  rm -f "$userland_plan_upgrade_records"
+}
+
 userland_plan_mise_dotfiles() {
   "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap dotfiles status --json >"$USERLAND_PLAN_RESULT"
 }
@@ -272,6 +318,10 @@ userland_plan() {
   userland_ui task inspect "Inspecting applications and resources" userland_plan_mise_resources
   userland_plan_import_mise "$USERLAND_PLAN_RESULT" ||
     userland_die "mise returned an unreadable plan; no approval was requested"
+
+  userland_ui task inspect "Inspecting rolling package upgrades" userland_plan_mise_package_upgrades
+  userland_plan_import_mise_package_upgrades "$USERLAND_PLAN_RESULT" ||
+    userland_die "mise returned unreadable rolling-package upgrades; no approval was requested"
 
   userland_ui task inspect "Inspecting managed files" userland_plan_mise_dotfiles
   userland_plan_import_dotfiles "$USERLAND_PLAN_RESULT" ||

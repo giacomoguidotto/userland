@@ -2,6 +2,28 @@
 
 # shellcheck source=common.sh
 . "$USERLAND_ROOT/lib/common.sh"
+
+userland_sync_has_rolling_upgrades() {
+  awk -F '\t' '
+    $1 == "apps" && $2 == "upgrade" && $7 ~ /^mise:rolling-upgrade:/ { found = 1; exit }
+    END { exit !found }
+  ' "$USERLAND_PLAN_FILE"
+}
+
+userland_sync_upgrade_rolling_packages() {
+  set --
+  while IFS="$(printf '\t')" read -r userland_sync_area userland_sync_action _ _ \
+    userland_sync_target _ userland_sync_proof; do
+    [ "$userland_sync_area" = apps ] || continue
+    [ "$userland_sync_action" = upgrade ] || continue
+    case "$userland_sync_proof" in
+      mise:rolling-upgrade:brew:*) set -- "$@" "brew:$userland_sync_target" ;;
+    esac
+  done <"$USERLAND_PLAN_FILE"
+  [ "$#" -gt 0 ] || return 0
+  "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages upgrade \
+    --yes --jobs "${USERLAND_JOBS:-4}" "$@"
+}
 # shellcheck source=repository.sh
 . "$USERLAND_ROOT/lib/repository.sh"
 # shellcheck source=dotfiles.sh
@@ -102,10 +124,12 @@ userland_sync() {
   userland_ui task apply "Install missing rolling packages" \
     "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages apply --yes --jobs "${USERLAND_JOBS:-4}"
 
-  USERLAND_UI_PROGRESS=mise-upgrade
-  export USERLAND_UI_PROGRESS
-  userland_ui task apply "Upgrade installed rolling packages" \
-    "$USERLAND_MISE" -C "$USERLAND_ROOT" bootstrap packages upgrade --yes --jobs "${USERLAND_JOBS:-4}"
+  if userland_sync_has_rolling_upgrades; then
+    USERLAND_UI_PROGRESS=mise-upgrade
+    export USERLAND_UI_PROGRESS
+    userland_ui task apply "Upgrade installed rolling packages" \
+      userland_sync_upgrade_rolling_packages
+  fi
   unset USERLAND_UI_PROGRESS
 
   userland_ui section "Apply machine state"

@@ -37,6 +37,14 @@ if [ "${TEST_CHECK_BOOTSTRAP_CHECKPOINT:-0}" = 1 ]; then
   esac
 fi
 case "$*" in
+  *bootstrap*packages*upgrade*--dry-run*)
+    if [ "${TEST_ROLLING_UPGRADES:-0}" = 1 ]; then
+      printf '%s\n' \
+        'pour lazysql/0.5.6 (requested)' \
+        'pour usage/6.1.0 (requested)' \
+        'pour dependency/1.0.0 (dependency)'
+    fi
+    ;;
   *bootstrap*status*--missing*)
     if [ "${TEST_MACHINE_STATE_DRIFT:-0}" = 1 ]; then
       printf '%s\n' \
@@ -373,6 +381,31 @@ teardown() {
   [ "$output" = '1m 5s · 1/2 · ffmpeg · download' ]
 }
 
+@test "rolling upgrade spinners expose exact progress and the current package" {
+  plan_file=$TEST_TMPDIR/package-upgrade-plan
+  task_log=$TEST_TMPDIR/package-upgrade-task
+  mkdir -p "$USERLAND_CACHE_DIR"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    apps upgrade automatic declared lazysql 'upgrade installed rolling package to 0.5.6' mise:rolling-upgrade:brew:lazysql \
+    apps upgrade automatic declared usage 'upgrade installed rolling package to 6.1.0' mise:rolling-upgrade:brew:usage >"$plan_file"
+  printf '%s\n' \
+    'mise brew:lazysql      ✓ 0.5.6' \
+    'mise brew:usage        download usage-6.1.0.tar.gz' >"$task_log"
+
+  run env \
+    USERLAND_ROOT="$TEST_ROOT" \
+    USERLAND_HOME="$USERLAND_HOME" \
+    USERLAND_CACHE_DIR="$USERLAND_CACHE_DIR" \
+    USERLAND_STATE_DIR="$USERLAND_STATE_DIR" \
+    USERLAND_PLAN_FILE="$plan_file" \
+    USERLAND_UI_PROGRESS=mise-upgrade \
+    TASK_LOG="$task_log" \
+    sh -c '. "$USERLAND_ROOT/lib/common.sh"; userland_ui_task_log=$TASK_LOG; userland_ui_progress_prepare; userland_ui_spinner_started_at=$(($(date +%s) - 23)); userland_ui_progress_refresh; printf "%s\n" "$userland_ui_spinner_detail"'
+
+  [ "$status" -eq 0 ]
+  [ "$output" = '23s · 1/2 · usage · download' ]
+}
+
 @test "Homebrew application spinners expose direct progress and the current package" {
   plan_file=$TEST_TMPDIR/homebrew-plan
   task_log=$TEST_TMPDIR/homebrew-task
@@ -587,7 +620,7 @@ EOF
   [[ "$output" == *"encrypted configuration import"* ]]
   ! grep -q -- '--force-dotfiles' "$MISE_CALLS"
   grep -q 'bootstrap plan --json' "$MISE_CALLS"
-  ! grep -q 'bootstrap packages upgrade --dry-run' "$MISE_CALLS"
+  grep -q 'bootstrap packages upgrade --dry-run' "$MISE_CALLS"
   grep -q 'bootstrap dotfiles status --json' "$MISE_CALLS"
 }
 
@@ -684,7 +717,7 @@ EOF
   [[ "$output" != *"Apply this plan?"* ]]
   [[ "$output" != *"Apply packages"* ]]
   ! grep -q 'bootstrap packages apply' "$MISE_CALLS"
-  ! grep -q 'bootstrap packages upgrade' "$MISE_CALLS"
+  ! grep -q 'bootstrap packages upgrade --yes' "$MISE_CALLS"
 }
 
 @test "plan refuses unreadable machine-state JSON before consent" {
@@ -757,6 +790,7 @@ EOF
   cat >"$USERLAND_MISE" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >>"$TOOLCHAIN_CALLS"
+case ${0##*/} in pinned-mise | mise) ;; *) exit 88 ;; esac
 case "$*" in
   --version) printf '%s\n' '2.0.0 test' ;;
   *'exec -- tree-sitter --version'*) [ -e "$USERLAND_STATE_DIR/tree-sitter-repaired" ] ;;
@@ -803,6 +837,22 @@ EOF
   [ "$status" -eq 1 ]
   [[ "$output" == *'"ok":false'*'"name":"adapters","status":"attention"'* ]]
   [ "$(grep -c 'exec -- tree-sitter --version' "$TOOLCHAIN_CALLS")" -gt "$tree_probe_count" ]
+}
+
+@test "plan records exact rolling upgrades and sync applies only that approved list" {
+  export TEST_ROLLING_UPGRADES=1
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'lazysql: upgrade installed rolling package to 0.5.6'* ]]
+  [[ "$output" == *'usage: upgrade installed rolling package to 6.1.0'* ]]
+  [[ "$output" != *'dependency'* ]]
+
+  : >"$MISE_CALLS"
+  run env USERLAND_REFRESHED=1 USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" sync
+  [ "$status" -eq 0 ]
+  grep -Fq 'bootstrap packages upgrade --yes --jobs 4 brew:lazysql brew:usage' "$MISE_CALLS"
+  ! grep -Eq 'bootstrap packages upgrade --yes --jobs 4$' "$MISE_CALLS"
 }
 
 @test "Android sdkmanager executes with pinned Java 21 and JAVA_HOME" {
@@ -1049,6 +1099,7 @@ EOF
   export USERLAND_BOOTSTRAP_TOKEN=bootstrap-test-token
   export TEST_CHECK_BOOTSTRAP_CHECKPOINT=1
   export TEST_DOTFILES_PENDING=1
+  export TEST_ROLLING_UPGRADES=1
   mkdir -m 700 "$USERLAND_BOOTSTRAP_CONTROL"
   printf '%s\n' "$USERLAND_BOOTSTRAP_TOKEN" >"$USERLAND_BOOTSTRAP_CONTROL/owner"
   mkdir -p "$USERLAND_DATA_DIR/bootstrap.lock"

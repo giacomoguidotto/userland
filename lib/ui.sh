@@ -312,7 +312,9 @@ userland_ui_progress_prepare() {
   [ -n "${USERLAND_PLAN_FILE:-}" ] && [ -f "$USERLAND_PLAN_FILE" ] || return 0
 
   userland_ui_progress_file=$(mktemp "$USERLAND_CACHE_DIR/progress.XXXXXX")
-  if [ "$userland_ui_progress_kind" = mise ]; then
+  if [ "$userland_ui_progress_kind" = mise ] && [ "$userland_ui_progress_action" = upgrade ]; then
+    userland_ui_progress_source='^mise:rolling-upgrade:'
+  elif [ "$userland_ui_progress_kind" = mise ]; then
     userland_ui_progress_source='^mise:package:'
   else
     userland_ui_progress_source='^brewfile:'

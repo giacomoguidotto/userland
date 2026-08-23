@@ -3,6 +3,7 @@
 setup() {
   export TEST_ROOT
   TEST_ROOT=$(CDPATH= cd -- "$BATS_TEST_DIRNAME/.." && pwd)
+  export USERLAND_ROOT=$TEST_ROOT
   export TEST_TMPDIR
   TEST_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/userland-test.XXXXXX")
   export USERLAND_HOME=$TEST_TMPDIR/home
@@ -20,7 +21,8 @@ setup() {
   export TEST_USERLAND_RELEASE_COMMIT
   TEST_USERLAND_RELEASE_COMMIT=$(git -C "$TEST_ROOT" rev-parse HEAD)
   export USERLAND_CURL=$TEST_TMPDIR/bin/curl
-  mkdir -p "$USERLAND_HOME" "$USERLAND_REPO_ROOTS/example/.git" "$TEST_TMPDIR/bin"
+  mkdir -p "$USERLAND_HOME" "$USERLAND_REPO_ROOTS/example/.git" "$TEST_TMPDIR/bin" \
+    "$USERLAND_CACHE_DIR" "$USERLAND_DATA_DIR" "$USERLAND_STATE_DIR/receipts"
   : >"$USERLAND_REPOSITORIES"
 
   cat >"$TEST_TMPDIR/bin/mise" <<'EOF'
@@ -746,6 +748,160 @@ EOF
   [[ "$output" != *"unknown action: noop"* ]]
 }
 
+@test "toolchain health executes payloads, promotes mise atomically, and reinstalls only corruption" {
+  export TEST_TOOLCHAIN_HEALTH=1
+  export USERLAND_MISE=$TEST_TMPDIR/bin/pinned-mise
+  export TOOLCHAIN_CALLS=$TEST_TMPDIR/toolchain-calls
+  mkdir -p "$USERLAND_HOME/.local/bin" "$USERLAND_HOME/.local/share/mise/shims"
+
+  cat >"$USERLAND_MISE" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$TOOLCHAIN_CALLS"
+case "$*" in
+  --version) printf '%s\n' '2.0.0 test' ;;
+  *'exec -- tree-sitter --version'*) [ -e "$USERLAND_STATE_DIR/tree-sitter-repaired" ] ;;
+  *'exec -- '*) exit 0 ;;
+  *'install --force --yes npm:tree-sitter-cli') : >"$USERLAND_STATE_DIR/tree-sitter-repaired" ;;
+  reshim) : ;;
+esac
+EOF
+  cat >"$USERLAND_HOME/.local/bin/mise" <<'EOF'
+#!/bin/sh
+printf '%s\n' '1.0.0 test'
+EOF
+  chmod +x "$USERLAND_MISE" "$USERLAND_HOME/.local/bin/mise"
+
+  while IFS="$(printf '\t')" read -r tool_id command arguments; do
+    case "$tool_id" in '' | '#'*) continue ;; esac
+    cat >"$USERLAND_HOME/.local/share/mise/shims/$command" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+    chmod +x "$USERLAND_HOME/.local/share/mise/shims/$command"
+  done <"$TEST_ROOT/config/tool-probes.tsv"
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/toolchain-health.sh" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"atomically promote the pinned Userland mise launcher"* ]]
+  [[ "$output" == *"tree-sitter"*"reinstall only the corrupted pinned tool"* ]]
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/toolchain-health.sh" apply
+  [ "$status" -eq 0 ]
+  [ "$("$USERLAND_HOME/.local/bin/mise" --version)" = '2.0.0 test' ]
+  grep -Fq 'install --force --yes npm:tree-sitter-cli' "$TOOLCHAIN_CALLS"
+  [ "$(grep -c 'install --force --yes' "$TOOLCHAIN_CALLS")" -eq 1 ]
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/toolchain-health.sh" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"every pinned tool executes and is active in clean global shells"* ]]
+
+  tree_probe_count=$(grep -c 'exec -- tree-sitter --version' "$TOOLCHAIN_CALLS")
+  rm -f "$USERLAND_STATE_DIR/tree-sitter-repaired"
+  cp "$USERLAND_MISE" "$TEST_TMPDIR/bin/mise"
+  chmod +x "$TEST_TMPDIR/bin/mise"
+  run "$TEST_ROOT/bin/userland" doctor --json
+  [ "$status" -eq 1 ]
+  [[ "$output" == *'"ok":false'*'"name":"adapters","status":"attention"'* ]]
+  [ "$(grep -c 'exec -- tree-sitter --version' "$TOOLCHAIN_CALLS")" -gt "$tree_probe_count" ]
+}
+
+@test "Android sdkmanager executes with pinned Java 21 and JAVA_HOME" {
+  export USERLAND_UNAME=Darwin
+  export USERLAND_MISE=$TEST_TMPDIR/bin/android-mise
+  export USERLAND_SDKMANAGER=$TEST_TMPDIR/bin/sdkmanager
+  export ANDROID_HOME=$TEST_TMPDIR/android-sdk
+  java_home=$TEST_TMPDIR/java-21
+  mkdir -p "$java_home/bin" "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/emulator" \
+    "$ANDROID_HOME/platforms/android-36" "$ANDROID_HOME/build-tools/36.0.0"
+  : >"$java_home/bin/java"
+  : >"$ANDROID_HOME/platform-tools/adb"
+  : >"$ANDROID_HOME/emulator/emulator"
+  chmod +x "$java_home/bin/java" "$ANDROID_HOME/platform-tools/adb" "$ANDROID_HOME/emulator/emulator"
+  cat >"$USERLAND_MISE" <<EOF
+#!/bin/sh
+case "\$*" in *'where java'*) printf '%s\\n' '$java_home' ;; esac
+EOF
+  cat >"$TEST_TMPDIR/bin/sdkmanager" <<EOF
+#!/bin/sh
+[ -x "\${JAVA_HOME:-missing}/bin/java" ] || exit 7
+case ":\$PATH:" in *":\${JAVA_HOME}/bin:"*) ;; *) exit 8 ;; esac
+printf '%s\\n' '20.0'
+EOF
+  chmod +x "$USERLAND_MISE" "$TEST_TMPDIR/bin/sdkmanager"
+
+  run "$USERLAND_MISE" -C "$TEST_ROOT" where java
+  [ "$status" -eq 0 ]
+  [ "$output" = "$java_home" ]
+  run env JAVA_HOME="$java_home" PATH="$java_home/bin:$PATH" sdkmanager --version
+  [ "$status" -eq 0 ]
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/android-sdk.sh" doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Android command-line development environment is complete"* ]]
+  grep -Fq 'JAVA_HOME="$HOME/.local/share/mise/installs/java/temurin-21.0.12+8.0.LTS"' "$TEST_ROOT/config/home/zshenv"
+}
+
+@test "Homebrew distinguishes adoptable, outdated, and removable untrusted state" {
+  export USERLAND_UNAME=Darwin
+  export USERLAND_BREW=$TEST_TMPDIR/bin/typed-brew
+  export BREW_CALLS=$TEST_TMPDIR/typed-brew-calls
+  mkdir -p "$USERLAND_HOME/Applications/Raycast.app"
+  cat >"$USERLAND_BREW" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$BREW_CALLS"
+case "$*" in
+  --version) printf '%s\n' 'Homebrew 5.0.0' ;;
+  *'bundle check'*--verbose*)
+    [ -e "$USERLAND_STATE_DIR/bundle-applied" ] && exit 0
+    printf '%s\n' '→ Cask raycast needs to be installed.'
+    exit 1
+    ;;
+  'info --json=v2 --cask raycast') printf '{"casks":[{"artifacts":[{"app":["Raycast.app"],"target":"%s/Applications/Raycast.app"}]}]}\n' "$USERLAND_HOME" ;;
+  'outdated --formula --json=v2')
+    if [ -e "$USERLAND_STATE_DIR/formula-upgraded" ]; then printf '%s\n' '{"formulae":[]}'
+    else printf '%s\n' '{"formulae":[{"name":"ggshield","full_name":null}]}'
+    fi
+    ;;
+  'outdated --cask --json=v2')
+    if [ -e "$USERLAND_STATE_DIR/cask-upgraded" ]; then printf '%s\n' '{"casks":[]}'
+    else printf '%s\n' '{"casks":[{"name":"google-chrome","full_name":"google-chrome"}]}'
+    fi
+    ;;
+  'trust --json=v1') printf '%s\n' '{"taps":["nikitabobko/tap"],"formulae":["supabase/tap/supabase"],"casks":[],"commands":[]}' ;;
+  'list --formula --full-name') printf '%s\n' 'supabase/tap/supabase' ;;
+  'list --cask --full-name') : ;;
+  tap)
+    printf '%s\n' 'nikitabobko/tap' 'supabase/tap'
+    [ -e "$USERLAND_STATE_DIR/tap-removed" ] || printf '%s\n' 'gitguardian/tap'
+    ;;
+  *'bundle --file'*) : >"$USERLAND_STATE_DIR/bundle-applied" ;;
+  'upgrade  ggshield' | 'upgrade ggshield') : >"$USERLAND_STATE_DIR/formula-upgraded" ;;
+  'upgrade --cask google-chrome') : >"$USERLAND_STATE_DIR/cask-upgraded" ;;
+  'untap gitguardian/tap') : >"$USERLAND_STATE_DIR/tap-removed" ;;
+esac
+EOF
+  chmod +x "$USERLAND_BREW"
+  export PATH="$TEST_TMPDIR/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/homebrew-apps.sh" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"raycast"*"adopt the existing application"* ]]
+  [[ "$output" == *"ggshield"*"upgrade the outdated installed Homebrew formula"* ]]
+  [[ "$output" == *"google-chrome"*"upgrade the outdated installed Homebrew cask"* ]]
+  [[ "$output" == *"gitguardian/tap"*"remove unused untrusted tap"* ]]
+  [[ "$output" != *"supabase/tap: remove"* ]]
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/homebrew-apps.sh" apply
+  [ "$status" -eq 0 ]
+  grep -Eq '^upgrade +ggshield$' "$BREW_CALLS"
+  grep -Fq 'upgrade --cask google-chrome' "$BREW_CALLS"
+  grep -Fq 'untap gitguardian/tap' "$BREW_CALLS"
+
+  run env USERLAND_UI_MODE=plain "$TEST_ROOT/lib/adapters/homebrew-apps.sh" plan
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"declared Homebrew applications are installed and current"* ]]
+}
+
 @test "Homebrew plans every missing application and sync avoids unplanned upgrades" {
   export USERLAND_UNAME=Darwin
   export USERLAND_BREW=$TEST_TMPDIR/bin/brew
@@ -805,16 +961,16 @@ EOF
   grep -q 'bundle check.*--no-upgrade' "$BREW_CALLS"
   ! grep -q '^update$' "$BREW_CALLS"
   [[ "$output" == *"nikitabobko/tap"*"add Homebrew tap"* ]]
-  [[ "$output" == *"1password"*"install or adopt Homebrew cask"* ]]
+  [[ "$output" == *"1password"*"install the missing Homebrew cask"* ]]
   [[ "$output" == *"Xcode"*"install from Mac App Store"* ]]
   [[ "$output" != *"Homebrew will install or adopt missing personal applications"* ]]
 
   run env BREW_PRESENT=0 "$TEST_ROOT/bin/userland" plan
   [ "$status" -eq 0 ]
   [[ "$output" == *"Homebrew"*"install from the pinned Homebrew installer"* ]]
-  [[ "$output" == *"helium-browser"*"install or adopt Homebrew cask"* ]]
-  [[ "$output" == *"bazecor"*"install or replace with the current Homebrew cask"* ]]
-  [[ "$output" == *"yubico-authenticator"*"install or replace with the current Homebrew cask"* ]]
+  [[ "$output" == *"helium-browser"*"install the missing Homebrew cask"* ]]
+  [[ "$output" == *"bazecor"*"install the missing Homebrew cask"* ]]
+  [[ "$output" == *"yubico-authenticator"*"install the missing Homebrew cask"* ]]
   [[ "$output" == *"Xcode"*"install from Mac App Store"* ]]
 
   : >"$BREW_CALLS"
@@ -830,7 +986,9 @@ EOF
   ! grep -q 'cleanup' "$BREW_CALLS"
   grep -Fq 'tap "nikitabobko/tap", trusted: true' "$TEST_ROOT/config/brewfile"
   grep -Fq 'cask "bazecor", args: { force: true }' "$TEST_ROOT/config/brewfile"
+  grep -Fq 'cask "raycast", args: { adopt: true }' "$TEST_ROOT/config/brewfile"
   grep -Fq 'cask "yubico-authenticator", args: { force: true }' "$TEST_ROOT/config/brewfile"
+  ! grep -Fq 'Raycast Beta' "$TEST_ROOT/config/manual-apps.tsv"
 
   : >"$BREW_CALLS"
   run env BREW_APPLY_FAIL=1 USERLAND_UI_MODE=plain "$TEST_ROOT/bin/userland" sync

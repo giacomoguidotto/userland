@@ -92,7 +92,7 @@ userland_run_adapters() {
 
   # Adapter order is implementation, not machine state. Keep it private to the
   # dispatcher so config contains only user-owned choices.
-  userland_adapter_names='homebrew-apps android-sdk personal-repos browser-extensions file-handlers raycast shell-cache manual-apps repository-snapshot security-health'
+  userland_adapter_names='toolchain-health homebrew-apps android-sdk personal-repos browser-extensions file-handlers raycast shell-cache manual-apps repository-snapshot security-health'
   for userland_adapter_name in $userland_adapter_names; do
     userland_adapter=$USERLAND_ROOT/lib/adapters/$userland_adapter_name.sh
     [ -x "$userland_adapter" ] || {
@@ -101,6 +101,7 @@ userland_run_adapters() {
       continue
     }
     case "$userland_adapter_name" in
+      toolchain-health) userland_adapter_label='Toolchain health' ;;
       homebrew-apps) userland_adapter_label='Homebrew applications' ;;
       android-sdk) userland_adapter_label='Android development tools' ;;
       personal-repos) userland_adapter_label='Personal repositories' ;;
@@ -136,7 +137,7 @@ userland_run_adapters() {
       fi
     else
       case "$userland_adapter_name" in
-        homebrew-apps)
+        toolchain-health | homebrew-apps)
           USERLAND_PLAN_AREA=apps USERLAND_PLAN_ACTION=install
           ;;
         android-sdk | browser-extensions | manual-apps)

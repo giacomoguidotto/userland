@@ -18,6 +18,7 @@ cask "notion", args: { adopt: true }
 cask "notion-calendar", args: { adopt: true }
 cask "paper", args: { adopt: true }
 cask "postman", args: { adopt: true }
+cask "raycast", args: { adopt: true }
 cask "shottr", args: { adopt: true }
 cask "signal", args: { adopt: true }
 cask "spotify", args: { adopt: true }

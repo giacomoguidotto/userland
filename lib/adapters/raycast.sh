@@ -12,25 +12,36 @@ userland_raycast_export_is_eligible() {
   [ -f "$userland_raycast_export" ] || return 1
   case "$userland_raycast_export" in *.rayconfig) ;; *) return 1 ;; esac
   [ "$(wc -c <"$userland_raycast_export")" -gt 1024 ] || return 1
-  # Raycast has used both opaque binary exports and gzip-compressed JSON
-  # envelopes. The JSON envelope is eligible only when it declares ciphertext
-  # and the authenticated-encryption parameters, never clear settings data.
-  userland_raycast_header=$(od -An -tx1 -N2 "$userland_raycast_export" | tr -d ' \n')
-  [ "$userland_raycast_header" = 1f8b ] || return 0
-  gzip -t "$userland_raycast_export" 2>/dev/null || return 1
-  for userland_raycast_marker in '"data":"' '"encryption":{' '"salt":"' '"iv":"' '"authTag":"'; do
-    gzip -dc "$userland_raycast_export" 2>/dev/null | LC_ALL=C grep -aFq "$userland_raycast_marker" || return 1
-  done
+  # Raycast has used legacy opaque exports, gzip-compressed JSON envelopes,
+  # and the RAYCFG3 container introduced by Raycast 2. Validate every format
+  # that exposes its encrypted-envelope metadata.
+  userland_raycast_header=$(od -An -tx1 -N8 "$userland_raycast_export" | tr -d ' \n')
+  case "$userland_raycast_header" in
+    1f8b*)
+      gzip -t "$userland_raycast_export" 2>/dev/null || return 1
+      for userland_raycast_marker in '"data":"' '"encryption":{' '"salt":"' '"iv":"' '"authTag":"'; do
+        gzip -dc "$userland_raycast_export" 2>/dev/null | LC_ALL=C grep -aFq "$userland_raycast_marker" || return 1
+      done
+      ;;
+    524159434647330a)
+      userland_raycast_metadata_length=$(od -An -tu4 -j8 -N4 "$userland_raycast_export" | tr -d ' \n')
+      case "$userland_raycast_metadata_length" in '' | *[!0-9]*) return 1 ;; esac
+      [ "$userland_raycast_metadata_length" -gt 0 ] || return 1
+      [ "$((12 + userland_raycast_metadata_length))" -lt "$(wc -c <"$userland_raycast_export")" ] || return 1
+      dd if="$userland_raycast_export" bs=1 skip=12 count="$userland_raycast_metadata_length" 2>/dev/null |
+        gzip -t 2>/dev/null || return 1
+      for userland_raycast_marker in '"schemaVersion":3' '"encryption":{' '"salt":"' '"iv":"'; do
+        dd if="$userland_raycast_export" bs=1 skip=12 count="$userland_raycast_metadata_length" 2>/dev/null |
+          gzip -dc 2>/dev/null | LC_ALL=C grep -aFq "$userland_raycast_marker" || return 1
+      done
+      ;;
+  esac
 }
 
 userland_raycast_application() {
-  for userland_raycast_candidate in "Raycast Beta" Raycast; do
-    [ -d "/Applications/$userland_raycast_candidate.app" ] ||
-      [ -d "$USERLAND_HOME/Applications/$userland_raycast_candidate.app" ] || continue
-    printf '%s\n' "$userland_raycast_candidate"
-    return 0
-  done
-  return 1
+  [ -d "/Applications/Raycast.app" ] ||
+    [ -d "$USERLAND_HOME/Applications/Raycast.app" ] || return 1
+  printf '%s\n' Raycast
 }
 
 userland_raycast_is_current() {
@@ -58,7 +69,7 @@ case "${1:-}" in
       exit 2
     }
     userland_raycast_app=$(userland_raycast_application) || {
-      userland_log manual "install Raycast Beta, then rerun sync to import its configuration"
+      userland_log manual "install Raycast, then rerun sync to import its configuration"
       exit 2
     }
     [ -t 0 ] || {

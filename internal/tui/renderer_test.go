@@ -102,6 +102,19 @@ func TestRichSectionKeepsItsAccentMarker(t *testing.T) {
 	}
 }
 
+func TestSummaryReportsElapsedCommandTime(t *testing.T) {
+	var output bytes.Buffer
+	started := time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC)
+	renderer := NewAt(&output, richEnvironment(), started)
+	renderer.now = func() time.Time { return started.Add(17 * time.Second) }
+
+	renderer.Summary(StatusOK, "Done.")
+
+	if expected := "    \x1b[2m17s\x1b[0m\n"; !strings.Contains(output.String(), expected) {
+		t.Fatalf("summary omitted elapsed command time %q: %q", expected, output.String())
+	}
+}
+
 func TestConfirmationDefaultsToYes(t *testing.T) {
 	tests := []struct {
 		name   string

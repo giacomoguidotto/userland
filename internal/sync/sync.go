@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/giacomoguidotto/userland/internal/adapters"
 	"github.com/giacomoguidotto/userland/internal/doctor"
@@ -25,7 +26,19 @@ import (
 
 func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool) int {
 	env := platform.NewEnvironment(environ)
-	render := tui.New(stdout, environ)
+	started := time.Now()
+	if encoded := env.Get("USERLAND_SYNC_STARTED_AT"); encoded != "" {
+		if nanoseconds, err := strconv.ParseInt(encoded, 10, 64); err == nil {
+			candidate := time.Unix(0, nanoseconds)
+			if !candidate.After(started) {
+				started = candidate
+			}
+		}
+	} else {
+		environ = env.With("USERLAND_SYNC_STARTED_AT", strconv.FormatInt(started.UnixNano(), 10))
+		env = platform.NewEnvironment(environ)
+	}
+	render := tui.NewAt(stdout, environ, started)
 	if err := env.Validate(); err != nil {
 		tui.New(stderr, environ).Status(tui.StatusError, err.Error())
 		return 1

@@ -86,6 +86,7 @@ python = "3.14.7"
 "~/.config/atuin" = { source = "xdg/atuin", mode = "symlink-each" }
 "~/.config/bat" = { source = "xdg/bat", mode = "symlink-each" }
 "~/.config/btop" = { source = "xdg/btop", mode = "symlink-each" }
+"~/.config/direnv" = { source = "xdg/direnv", mode = "symlink-each" }
 "~/.config/ghostty" = { source = "xdg/ghostty", mode = "symlink-each" }
 "~/.config/git" = { source = "xdg/git", mode = "symlink-each" }
 "~/.config/gh" = { source = "xdg/gh", mode = "symlink-each" }

@@ -8,9 +8,6 @@ export REACT_EDITOR="zed --wait"
 # used to tell lazygit to use delta as pager (https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Pagers.md#using-git-config)
 export GIT_PAGER="delta"
 
-# remove the direnv log when cd
-export DIRENV_LOG_FORMAT=""
-
 # override the default starship config path
 export STARSHIP_CONFIG="$HOME/.config/starship/config.toml"
 

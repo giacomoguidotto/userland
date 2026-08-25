@@ -40,6 +40,8 @@ type Renderer struct {
 	env     map[string]string
 	mode    Mode
 	unicode bool
+	started time.Time
+	now     func() time.Time
 	reset   string
 	bold    string
 	dim     string
@@ -62,6 +64,11 @@ type taskAnimation struct {
 }
 
 func New(out io.Writer, environ []string) Renderer {
+	return NewAt(out, environ, time.Now())
+}
+
+// NewAt creates a renderer whose summaries measure from the supplied command start.
+func NewAt(out io.Writer, environ []string, started time.Time) Renderer {
 	env := make(map[string]string, len(environ))
 	for _, entry := range environ {
 		key, value, ok := strings.Cut(entry, "=")
@@ -97,7 +104,10 @@ func New(out io.Writer, environ []string) Renderer {
 
 	color := env["NO_COLOR"] == "" && env["CLICOLOR"] != "0" && env["TERM"] != "dumb" &&
 		(mode == ModeRich || env["CLICOLOR_FORCE"] != "" && env["CLICOLOR_FORCE"] != "0")
-	renderer := Renderer{out: out, env: env, mode: mode, unicode: unicode, task: &taskAnimation{}}
+	renderer := Renderer{
+		out: out, env: env, mode: mode, unicode: unicode,
+		started: started, now: time.Now, task: &taskAnimation{},
+	}
 	if color {
 		renderer.reset = "\x1b[0m"
 		renderer.bold = "\x1b[1m"
@@ -193,9 +203,10 @@ func (r Renderer) Section(title string) {
 }
 
 func (r Renderer) Summary(status Status, message string) {
+	elapsed := r.elapsed()
 	if r.mode == ModePlain {
 		fmt.Fprintln(r.out)
-		r.Status(status, message+" (<1s)")
+		r.Status(status, message+" ("+elapsed+")")
 		return
 	}
 	tint := r.green
@@ -208,7 +219,33 @@ func (r Renderer) Summary(status Status, message string) {
 	}
 	fmt.Fprintln(r.out, r.rail())
 	fmt.Fprintf(r.out, " %s%s%s  %s\n", tint, r.closeSymbol(), r.reset, r.redact(message))
-	fmt.Fprintf(r.out, "    %s<1s%s\n", r.dim, r.reset)
+	fmt.Fprintf(r.out, "    %s%s%s\n", r.dim, elapsed, r.reset)
+}
+
+func (r Renderer) elapsed() string {
+	now := time.Now
+	if r.now != nil {
+		now = r.now
+	}
+	duration := now().Sub(r.started)
+	if duration < 0 {
+		duration = 0
+	}
+	return formatElapsed(duration)
+}
+
+func formatElapsed(duration time.Duration) string {
+	seconds := int(duration / time.Second)
+	if seconds >= 3600 {
+		return fmt.Sprintf("%dh %dm", seconds/3600, seconds%3600/60)
+	}
+	if seconds >= 60 {
+		return fmt.Sprintf("%dm %ds", seconds/60, seconds%60)
+	}
+	if seconds > 0 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	return "<1s"
 }
 
 func (r Renderer) Confirm(in io.Reader, prompt string) int {
@@ -370,15 +407,7 @@ func (r Renderer) taskFrame() {
 	}
 	label, detail, started, frame := r.task.label, r.task.detail, r.task.started, r.task.frame
 	r.task.mu.Unlock()
-	seconds := int(time.Since(started).Seconds())
-	duration := "<1s"
-	if seconds >= 3600 {
-		duration = fmt.Sprintf("%dh %dm", seconds/3600, seconds%3600/60)
-	} else if seconds >= 60 {
-		duration = fmt.Sprintf("%dm %ds", seconds/60, seconds%60)
-	} else if seconds > 0 {
-		duration = fmt.Sprintf("%ds", seconds)
-	}
+	duration := formatElapsed(time.Since(started))
 	if detail != "" {
 		duration += " · " + detail
 	}
@@ -431,9 +460,10 @@ func (r Renderer) Spacer() {
 }
 
 func (r Renderer) SummaryOK(message string) {
+	elapsed := r.elapsed()
 	if r.mode == ModePlain {
 		fmt.Fprintln(r.out)
-		fmt.Fprintf(r.out, "[ok] %s (<1s)\n", message)
+		fmt.Fprintf(r.out, "[ok] %s (%s)\n", message, elapsed)
 		return
 	}
 	close := "`"
@@ -442,7 +472,7 @@ func (r Renderer) SummaryOK(message string) {
 	}
 	fmt.Fprintln(r.out, r.rail())
 	fmt.Fprintf(r.out, " %s%s%s  %s\n", r.green, close, r.reset, message)
-	fmt.Fprintf(r.out, "    %s<1s%s\n", r.dim, r.reset)
+	fmt.Fprintf(r.out, "    %s%s%s\n", r.dim, elapsed, r.reset)
 }
 
 func (r Renderer) wordmark() {

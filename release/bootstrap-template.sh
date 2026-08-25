@@ -1,8 +1,6 @@
 #!/bin/sh
 set -eu
 
-bootstrap_started_at=$(date +%s)
-
 tag='@USERLAND_TAG@'
 commit='@USERLAND_COMMIT@'
 archive_sha256='@USERLAND_ARCHIVE_SHA256@'
@@ -146,10 +144,10 @@ validate_checkout_identity() {
     die "$checkout_path main has no upstream"
   [ "$upstream" = origin/main ] || die "$checkout_path main does not track origin/main"
 
-  [ -f "$checkout_path/mise.toml" ] && [ ! -L "$checkout_path/mise.toml" ] ||
-    die "$checkout_path/mise.toml is not a regular file"
-  [ -f "$checkout_path/bin/userland" ] && [ -x "$checkout_path/bin/userland" ] && [ ! -L "$checkout_path/bin/userland" ] ||
-    die "$checkout_path/bin/userland is not a regular executable"
+  [ -f "$checkout_path/cfg/mise.toml" ] && [ ! -L "$checkout_path/cfg/mise.toml" ] ||
+    die "$checkout_path/cfg/mise.toml is not a regular file"
+  [ -f "$checkout_path/cmd/userland/main.go" ] && [ ! -L "$checkout_path/cmd/userland/main.go" ] ||
+    die "$checkout_path/cmd/userland/main.go is not a regular file"
 }
 
 validate_checkout() {
@@ -254,8 +252,8 @@ validate_materialized_checkout() {
     die "$materialized_path has no regular userland command"
   [ -x "$materialized_path/bin/mise" ] && [ ! -L "$materialized_path/bin/mise" ] ||
     die "$materialized_path has no regular mise launcher"
-  [ -f "$materialized_path/mise.toml" ] && [ ! -L "$materialized_path/mise.toml" ] ||
-    die "$materialized_path/mise.toml is not a regular file"
+  [ -f "$materialized_path/cfg/mise.toml" ] && [ ! -L "$materialized_path/cfg/mise.toml" ] ||
+    die "$materialized_path/cfg/mise.toml is not a regular file"
   [ -z "$(find "$release_dir" -type l -print -quit 2>/dev/null)" ] ||
     die "release archives with symlinks are not supported"
   [ -z "$(find "$materialized_path" -type l -print -quit 2>/dev/null)" ] ||
@@ -311,13 +309,44 @@ backup_is_owned_by_transaction() {
 }
 
 bootstrap_prepare_cancel_ui() {
-  [ -f "$repo_dir/lib/ui.sh" ] && [ ! -L "$repo_dir/lib/ui.sh" ] || return 1
-  USERLAND_HOME=$HOME
-  export USERLAND_HOME
-  # shellcheck source=../lib/ui.sh
-  . "$repo_dir/lib/ui.sh"
-  # shellcheck disable=SC2034 # Consumed by userland_ui_elapsed in the sourced module.
-  userland_ui_started_at=$bootstrap_started_at
+  bootstrap_ui_mode=${USERLAND_UI_MODE:-auto}
+  if [ "$bootstrap_ui_mode" = auto ]; then
+    if [ -t 1 ] && [ "${TERM:-}" != dumb ] && [ -z "${CI:-}" ]; then
+      bootstrap_ui_mode=rich
+    else
+      bootstrap_ui_mode=plain
+    fi
+  fi
+  bootstrap_ui_unicode=${USERLAND_UNICODE:-0}
+  return 0
+}
+
+bootstrap_ui_status() {
+  bootstrap_ui_state=$1
+  shift
+  if [ "$bootstrap_ui_mode" = rich ]; then
+    bootstrap_ui_symbol=o
+    [ "$bootstrap_ui_unicode" = 0 ] || bootstrap_ui_symbol='◇'
+    printf ' %s  %s\n' "$bootstrap_ui_symbol" "$*"
+  else
+    printf '[ok] %s\n' "$*"
+  fi
+}
+
+bootstrap_ui_summary() {
+  bootstrap_ui_state=$1
+  shift
+  if [ "$bootstrap_ui_mode" = rich ]; then
+    bootstrap_ui_close='`'
+    bootstrap_ui_rail='|'
+    if [ "$bootstrap_ui_unicode" != 0 ]; then
+      bootstrap_ui_close='└'
+      bootstrap_ui_rail='│'
+    fi
+    printf ' %s\n %s  %s\n    <1s\n' "$bootstrap_ui_rail" "$bootstrap_ui_close" "$*"
+  else
+    printf '\n[%s] %s (<1s)\n' "$bootstrap_ui_state" "$*"
+  fi
 }
 
 # shellcheck disable=SC2329 # Invoked by the signal and exit trap.
@@ -353,15 +382,15 @@ cleanup() {
       if rm -rf "$repo_dir"; then
         repo_created=0
         if [ "$cleanup_cancel_ui" -eq 1 ]; then
-          userland_ui status "done" "Deleting ~/.userland"
-          userland_ui summary cancelled "Cancelled. No changes were applied."
+          bootstrap_ui_status "done" "Deleting ~/.userland"
+          bootstrap_ui_summary cancelled "Cancelled. No changes were applied."
         else
           printf 'userland: deleted ~/.userland\n' >&2
         fi
       else
         cleanup_status=1
         if [ "$cleanup_cancel_ui" -eq 1 ]; then
-          userland_ui summary error "Could not delete ~/.userland."
+          bootstrap_ui_summary error "Could not delete ~/.userland."
         else
           printf 'userland: could not delete cancelled checkout at %s\n' "$repo_dir" >&2
         fi
@@ -373,7 +402,7 @@ cleanup() {
     case "$cleanup_status" in
       129 | 130 | 143)
         if bootstrap_prepare_cancel_ui; then
-          userland_ui summary cancelled "Cancelled. Applied progress was preserved."
+          bootstrap_ui_summary cancelled "Cancelled. Applied progress was preserved."
         else
           printf 'userland: cancelled; applied progress was preserved\n' >&2
         fi
@@ -445,7 +474,7 @@ fi
 install_current_release_link
 cleanup_stale_current_links
 install_command_link "$release_dir/bin/userland"
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/mise.toml" >/dev/null
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/cfg/mise.toml" >/dev/null
 
 if [ -L "$repo_dir" ]; then
   die "$repo_dir must not be a symlink"
@@ -478,7 +507,21 @@ else
   repo_created=1
 fi
 
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
+materialize_checkout_command() {
+  mkdir -p "$repo_dir/bin"
+  checkout_command_tmp=$repo_dir/bin/.userland.$$
+  cp "$release_dir/bin/userland" "$checkout_command_tmp"
+  chmod 755 "$checkout_command_tmp"
+  mv "$checkout_command_tmp" "$repo_dir/bin/userland"
+  if [ -d "$repo_dir/.git" ] && [ ! -L "$repo_dir/.git" ]; then
+    mkdir -p "$repo_dir/.git/info"
+    checkout_exclude=$repo_dir/.git/info/exclude
+    touch "$checkout_exclude"
+    grep -Fqx '/bin/userland' "$checkout_exclude" || printf '%s\n' '/bin/userland' >>"$checkout_exclude"
+  fi
+}
+materialize_checkout_command
 install_command_link "$repo_dir/bin/userland"
 
 run_sync() {
@@ -558,7 +601,7 @@ if [ ! -d "$repo_dir/.git" ]; then
 fi
 
 validate_checkout "$repo_dir"
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
 install_command_link "$repo_dir/bin/userland"
 
 if [ "$sync_status" -eq 2 ]; then

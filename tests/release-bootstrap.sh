@@ -14,8 +14,8 @@ fail() {
 tag=v1.2.3
 commit=0123456789abcdef0123456789abcdef01234567
 fixture="$work/fixture/userland-1.2.3"
-mkdir -p "$fixture/bin" "$fixture/lib"
-cp "$repository_root/lib/ui.sh" "$fixture/lib/ui.sh"
+mkdir -p "$fixture/bin" "$fixture/cfg" "$fixture/cmd/userland"
+printf '%s\n' 'package main' >"$fixture/cmd/userland/main.go"
 
 cat >"$fixture/bin/userland" <<'EOF'
 #!/bin/sh
@@ -37,7 +37,7 @@ if [ "${TEST_SIGNAL_PARENT:-0}" = 1 ]; then
 fi
 if [ "${TEST_DIRTY_DURING_SYNC:-0}" = 1 ]; then
   : >"$entry_root/.git/test-dirty"
-  printf 'user edit\n' >>"$entry_root/mise.toml"
+  printf 'user edit\n' >>"$entry_root/cfg/mise.toml"
 fi
 exit "$TEST_SYNC_STATUS"
 EOF
@@ -48,7 +48,7 @@ cat >"$fixture/bin/mise" <<'EOF'
 exit 0
 EOF
 chmod +x "$fixture/bin/userland" "$fixture/bin/mise"
-printf 'min_version = "2026.8.9"\n' >"$fixture/mise.toml"
+printf 'min_version = "2026.8.9"\n' >"$fixture/cfg/mise.toml"
 tar -czf "$work/userland-v1.2.3.tar.gz" -C "$work/fixture" userland-1.2.3
 archive_sha=$(shasum -a 256 "$work/userland-v1.2.3.tar.gz" | awk '{ print $1 }')
 
@@ -99,10 +99,11 @@ if [ "$1" = clone ]; then
     mkdir -p "$destination"
     exit 12
   fi
-  mkdir -p "$destination/.git" "$destination/bin"
+  mkdir -p "$destination/.git" "$destination/bin" "$destination/cfg" "$destination/cmd/userland"
   cp "$TEST_REPO_COMMAND" "$destination/bin/userland"
   chmod +x "$destination/bin/userland"
-  printf 'min_version = "2026.8.9"\n' >"$destination/mise.toml"
+  printf '%s\n' 'package main' >"$destination/cmd/userland/main.go"
+  printf 'min_version = "2026.8.9"\n' >"$destination/cfg/mise.toml"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-head"
   printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" >"$destination/.git/test-remote-main"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-fetched-commit"
@@ -129,8 +130,8 @@ if [ "$1" = -C ]; then
       [ "${GIT_OPTIONAL_LOCKS:-}" = 0 ] || exit 9
       [ "${GIT_CONFIG_GLOBAL:-}" = /dev/null ] || exit 9
       [ "${GIT_CONFIG_NOSYSTEM:-}" = 1 ] || exit 9
-      [ "${TEST_GIT_DIRTY:-0}" = 0 ] || printf ' M mise.toml\n'
-      [ ! -e "$checkout_path/.git/test-dirty" ] || printf ' M mise.toml\n'
+      [ "${TEST_GIT_DIRTY:-0}" = 0 ] || printf ' M cfg/mise.toml\n'
+      [ ! -e "$checkout_path/.git/test-dirty" ] || printf ' M cfg/mise.toml\n'
       ;;
     symbolic-ref)
       printf '%s\n' "${TEST_GIT_BRANCH:-main}"
@@ -193,7 +194,10 @@ HOME="$attention_home" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >"$work/attention-output" 2>&1 || attention_status=$?
-[ "$attention_status" -eq 0 ] || fail "completed attention run returned $attention_status"
+[ "$attention_status" -eq 0 ] || {
+  cat "$work/attention-output" >&2
+  fail "completed attention run returned $attention_status"
+}
 grep -Fq 'created=1' "$work/attention-observation" ||
   fail "first run did not hand checkout creation to the Preflight UI"
 if grep -Fq 'userland: created ~/.userland' "$work/attention-output"; then
@@ -255,7 +259,7 @@ HOME="$attention_home" \
 if grep -Fq 'userland is ready' "$work/rerun-output"; then
   fail "safe rerun printed a second completion message"
 fi
-grep -Fq "$attention_home/.userland/mise.toml" "$work/rerun-trust" ||
+grep -Fq "$attention_home/.userland/cfg/mise.toml" "$work/rerun-trust" ||
   fail "safe checkout was not trusted"
 [ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.userland/bin/userland" ] ||
   fail "safe rerun did not restore the repository link"
@@ -315,10 +319,11 @@ prepare_existing_checkout() {
   existing_home=$1
   prepare_home "$existing_home"
   existing_repo="$existing_home/.userland"
-  mkdir -p "$existing_repo/.git" "$existing_repo/bin"
+  mkdir -p "$existing_repo/.git" "$existing_repo/bin" "$existing_repo/cfg" "$existing_repo/cmd/userland"
   cp "$work/repo-userland" "$existing_repo/bin/userland"
   chmod +x "$existing_repo/bin/userland"
-  printf 'original checkout config\n' >"$existing_repo/mise.toml"
+  printf '%s\n' 'package main' >"$existing_repo/cmd/userland/main.go"
+  printf 'original checkout config\n' >"$existing_repo/cfg/mise.toml"
   printf '%s\n' "$commit" >"$existing_repo/.git/test-head"
   printf '%s\n' "$commit" >"$existing_repo/.git/test-remote-main"
 }
@@ -378,7 +383,7 @@ HOME="$edited_upgrade_home" \
   fail "edited checkout cancellation returned $edited_upgrade_status"
 [ "$(cat "$edited_upgrade_home/.userland/.git/test-head")" = "$upgrade_commit" ] ||
   fail "edited checkout cancellation rolled back the prepared commit"
-grep -Fq 'user edit' "$edited_upgrade_home/.userland/mise.toml" ||
+grep -Fq 'user edit' "$edited_upgrade_home/.userland/cfg/mise.toml" ||
   fail "edited checkout cancellation discarded the user edit"
 [ -d "$edited_upgrade_home/.userland" ] ||
   fail "edited checkout cancellation removed the canonical checkout"
@@ -394,11 +399,11 @@ assert_checkout_refused() {
   case_home=$2
   case_status=$3
   [ "$case_status" -ne 0 ] || fail "$case_name checkout was accepted"
-  [ "$(cat "$case_home/.userland/mise.toml")" = 'original checkout config' ] ||
+  [ "$(cat "$case_home/.userland/cfg/mise.toml")" = 'original checkout config' ] ||
     fail "$case_name checkout was modified"
   [ "$(readlink "$case_home/.local/bin/userland")" = "$case_home/.local/share/userland/releases/$tag/bin/userland" ] ||
     fail "$case_name checkout replaced the release command"
-  if grep -Fq "$case_home/.userland/mise.toml" "$work/$case_name-trust"; then
+  if grep -Fq "$case_home/.userland/cfg/mise.toml" "$work/$case_name-trust"; then
     fail "$case_name checkout was trusted"
   fi
 }
@@ -574,7 +579,7 @@ HOME="$promotion_home" \
   fail "failed promotion discarded the applied archive stage"
 [ ! -d "$promotion_home/.userland/.git" ] || fail "failed promotion published an invalid Git checkout"
 
-printf '%s\n' tampered >>"$promotion_home/.userland/mise.toml"
+printf '%s\n' tampered >>"$promotion_home/.userland/cfg/mise.toml"
 tampered_status=0
 HOME="$promotion_home" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \

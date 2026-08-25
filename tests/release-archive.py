@@ -17,14 +17,14 @@ EPOCH = 1_700_000_000
 
 def create_fixture(parent: Path, reverse: bool, host_mtime: int) -> Path:
     root = parent / "userland-1.2.3"
-    directories = [root / "bin", root / "config"]
+    directories = [root / "bin", root / "cfg"]
     for directory in reversed(directories) if reverse else directories:
         directory.mkdir(parents=True, exist_ok=True)
 
     files = [
         (root / "README.md", "userland\n", 0o644),
         (root / "bin" / "userland", "#!/bin/sh\nexit 0\n", 0o755),
-        (root / "config" / "settings", "jobs = 4\n", 0o644),
+        (root / "cfg" / "settings", "jobs = 4\n", 0o644),
     ]
     for path, contents, mode in reversed(files) if reverse else files:
         path.write_text(contents)
@@ -65,11 +65,11 @@ def main() -> None:
         assert [member.name for member in members] == [
             "userland-1.2.3",
             "userland-1.2.3/bin",
-            "userland-1.2.3/config",
+            "userland-1.2.3/cfg",
             "userland-1.2.3/README.md",
             "userland-1.2.3/current",
             "userland-1.2.3/bin/userland",
-            "userland-1.2.3/config/settings",
+            "userland-1.2.3/cfg/settings",
         ]
         for member in members:
             assert member.mtime == EPOCH

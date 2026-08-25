@@ -14,11 +14,11 @@ output=$3
 release_validate_tag "$tag" || release_die "invalid SemVer tag: $tag"
 [ ! -e "$output" ] || release_die "output already exists: $output"
 git cat-file -e "$commit^{commit}" 2>/dev/null || release_die "unknown commit: $commit"
-git cat-file -e "$commit:bin/userland" 2>/dev/null || release_die "bin/userland is missing from $commit"
 if git cat-file -e "$commit:bin/mise" 2>/dev/null; then
   release_die "bin/mise is release-generated and must not be tracked"
 fi
 command -v mise >/dev/null 2>&1 || release_die "mise is required to build a release"
+command -v go >/dev/null 2>&1 || release_die "Go is required to build a release"
 command -v python3 >/dev/null 2>&1 || release_die "python3 is required to build a release"
 
 mise_version=2026.8.9
@@ -39,7 +39,7 @@ esac
 
 release_tree=$work/tree/userland-$version
 mkdir -p "$release_tree/bin"
-git archive --format=tar "$commit" LICENSE bin completions config lib mise.lock mise.toml |
+git archive --format=tar "$commit" LICENSE cmd completions cfg go.mod go.sum internal userland.go |
   tar -xf - -C "$release_tree"
 
 if [ -f .gitmodules ]; then
@@ -55,6 +55,19 @@ if [ -f .gitmodules ]; then
         tar -xf - -C "$release_tree/$submodule_path"
     done
 fi
+
+CGO_ENABLED=0 go -C "$release_tree" build \
+  -trimpath \
+  -buildvcs=false \
+  -ldflags='-s -w' \
+  -o bin/userland \
+  ./cmd/userland
+rm -rf \
+  "$release_tree/cmd" \
+  "$release_tree/internal" \
+  "$release_tree/go.mod" \
+  "$release_tree/go.sum" \
+  "$release_tree/userland.go"
 
 mise generate bootstrap --version "$mise_version" --write "$release_tree/bin/mise" >/dev/null
 python3 "$script_dir/create-archive.py" "$release_tree" "$output/$archive" "$epoch"

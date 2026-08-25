@@ -14,6 +14,17 @@ setup_file() {
   go build -o "$USERLAND_GO_PLAN_BIN" ./tests/compat/go-plan
 }
 
+prepare_shell_cache_commands() {
+  mkdir -p "$USERLAND_HOME/.local/bin"
+  printf '%s\n' \
+    '#!/bin/sh' \
+    'printf "fixture %s\\n" "$*"' >"$USERLAND_HOME/.local/bin/shell-cache-command"
+  chmod +x "$USERLAND_HOME/.local/bin/shell-cache-command"
+  for command in atuin carapace direnv fzf starship zoxide; do
+    ln -s shell-cache-command "$USERLAND_HOME/.local/bin/$command"
+  done
+}
+
 setup() {
   export TEST_TMPDIR
   TEST_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/userland-compat.XXXXXX")
@@ -39,6 +50,7 @@ setup() {
   printf '%s\n' "$TEST_USERLAND_RELEASE_COMMIT" >"$USERLAND_ORACLE_ROOT/.userland-release"
   mkdir -p "$USERLAND_HOME" "$USERLAND_CACHE_DIR" "$USERLAND_DATA_DIR" "$USERLAND_STATE_DIR/receipts" "$TEST_TMPDIR/bin" "$USERLAND_REPO_ROOTS/example/.git"
   : >"$USERLAND_REPOSITORIES"
+  prepare_shell_cache_commands
 
   printf '%s\n' \
     '#!/bin/sh' \
@@ -90,6 +102,7 @@ assert_compatible() {
 reset_machine_fixture() {
   rm -rf "$USERLAND_HOME" "$USERLAND_CACHE_DIR" "$USERLAND_DATA_DIR" "$USERLAND_STATE_DIR" "$USERLAND_REPO_ROOTS"
   mkdir -p "$USERLAND_HOME" "$USERLAND_CACHE_DIR" "$USERLAND_DATA_DIR" "$USERLAND_STATE_DIR/receipts" "$USERLAND_REPO_ROOTS/example/.git"
+  prepare_shell_cache_commands
   : >"$MISE_CALLS"
 }
 

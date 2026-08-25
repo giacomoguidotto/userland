@@ -115,6 +115,59 @@ checkout_git() {
     "$@"
 }
 
+migrate_obsolete_nvim_submodule() {
+  checkout_path=$1
+  legacy_relative=config/xdg/nvim
+  current_relative=cfg/xdg/nvim
+  legacy_path="$checkout_path/$legacy_relative"
+
+  [ -d "$legacy_path" ] && [ ! -L "$legacy_path" ] || return 0
+  [ -e "$legacy_path/.git" ] && [ ! -L "$legacy_path/.git" ] || return 0
+
+  legacy_parent_status=$(checkout_git "$checkout_path" status \
+    --porcelain=v1 --untracked-files=all --ignore-submodules=none -- "$legacy_relative") ||
+    return 0
+  [ "$legacy_parent_status" = "?? $legacy_relative/" ] || return 0
+
+  expected_commit=$(checkout_git "$checkout_path" rev-parse "HEAD:$current_relative" 2>/dev/null) ||
+    return 0
+  actual_commit=$(bootstrap_git -C "$legacy_path" rev-parse HEAD 2>/dev/null) ||
+    return 0
+  [ "$actual_commit" = "$expected_commit" ] || return 0
+
+  if bootstrap_git -C "$legacy_path" config --local --no-includes --get core.worktree >/dev/null 2>&1; then
+    return 0
+  fi
+  legacy_origin=$(bootstrap_git -C "$legacy_path" config --local --no-includes --get remote.origin.url 2>/dev/null) ||
+    return 0
+  [ "$legacy_origin" = 'https://github.com/GiacomoGuidotto/kickstart.nvim.git' ] || return 0
+  legacy_checkout_status=$(bootstrap_git -C "$legacy_path" status \
+    --porcelain=v1 --untracked-files=all --ignore-submodules=none) ||
+    return 0
+  [ -z "$legacy_checkout_status" ] || return 0
+
+  trash_root="$HOME/.Trash"
+  if [ -e "$trash_root" ] || [ -L "$trash_root" ]; then
+    [ -d "$trash_root" ] && [ ! -L "$trash_root" ] || return 0
+  else
+    mkdir -p "$trash_root" || return 0
+  fi
+  migration_backup=$(mktemp -d "$trash_root/userland-migration.XXXXXX") || return 0
+  if ! mv "$legacy_path" "$migration_backup/config-xdg-nvim"; then
+    rmdir "$migration_backup" 2>/dev/null || :
+    return 0
+  fi
+  printf 'userland: moved obsolete config/xdg/nvim checkout to Trash at %s\n' \
+    "$migration_backup/config-xdg-nvim" >"$control_dir/migration-notice"
+}
+
+report_migration_notice() {
+  migration_notice="$control_dir/migration-notice"
+  [ -f "$migration_notice" ] || return 0
+  cat "$migration_notice"
+  rm "$migration_notice"
+}
+
 validate_checkout_identity() {
   checkout_path=$1
   [ ! -L "$checkout_path" ] || die "$checkout_path must not be a symlink"
@@ -135,7 +188,13 @@ validate_checkout_identity() {
 
   checkout_status=$(checkout_git "$checkout_path" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) ||
     die "could not read checkout status"
-  [ -z "$checkout_status" ] || die "$checkout_path has local changes"
+  if [ -n "$checkout_status" ]; then
+    printf 'userland: %s has local changes; the installer will not overwrite them\n' "$checkout_path" >&2
+    printf '%s\n' 'userland: review them with: git -C "$HOME/.userland" status --short' >&2
+    printf '%s\n' 'userland: keep them with: git -C "$HOME/.userland" stash push --include-untracked' >&2
+    printf '%s\n' 'userland: then rerun: curl -fsSL https://userland.guidotto.dev | sh' >&2
+    exit 1
+  fi
 
   branch=$(checkout_git "$checkout_path" symbolic-ref --quiet --short HEAD 2>/dev/null) ||
     die "$checkout_path is not on a branch"
@@ -152,6 +211,7 @@ validate_checkout_identity() {
 
 validate_checkout() {
   checkout_path=$1
+  migrate_obsolete_nvim_submodule "$checkout_path"
   validate_checkout_identity "$checkout_path"
 
   head_commit=$(checkout_git "$checkout_path" rev-parse 'HEAD^{commit}' 2>/dev/null) ||
@@ -180,6 +240,7 @@ validate_checkout() {
 
 prepare_checkout() {
   checkout_path=$1
+  migrate_obsolete_nvim_submodule "$checkout_path"
   validate_checkout_identity "$checkout_path"
   previous_head=$(checkout_git "$checkout_path" rev-parse 'HEAD^{commit}' 2>/dev/null) ||
     die "could not resolve the checkout commit"
@@ -213,11 +274,13 @@ run_repository_transaction() {
 
   if [ "$repository_transaction_status" -eq 0 ]; then
     rm -f "$repository_transaction_log"
+    report_migration_notice
     return 0
   fi
 
   cat "$repository_transaction_log" >&2
   rm -f "$repository_transaction_log"
+  report_migration_notice
   return "$repository_transaction_status"
 }
 
@@ -601,6 +664,7 @@ if [ ! -d "$repo_dir/.git" ]; then
 fi
 
 validate_checkout "$repo_dir"
+report_migration_notice
 MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
 install_command_link "$repo_dir/bin/userland"
 

@@ -122,6 +122,8 @@ if [ "$1" = -C ]; then
       if [ "${7:-}" = core.worktree ]; then
         [ "${TEST_GIT_EXTERNAL_WORKTREE:-0}" = 0 ] && exit 1
         printf '../outside\n'
+      elif [ "$checkout_path" = "${TEST_GIT_LEGACY_SUBMODULE_PATH:-}" ]; then
+        printf '%s\n' 'https://github.com/GiacomoGuidotto/kickstart.nvim.git'
       else
         printf '%s\n' "${TEST_GIT_ORIGIN:-https://github.com/giacomoguidotto/userland.git}"
       fi
@@ -130,8 +132,14 @@ if [ "$1" = -C ]; then
       [ "${GIT_OPTIONAL_LOCKS:-}" = 0 ] || exit 9
       [ "${GIT_CONFIG_GLOBAL:-}" = /dev/null ] || exit 9
       [ "${GIT_CONFIG_NOSYSTEM:-}" = 1 ] || exit 9
-      [ "${TEST_GIT_DIRTY:-0}" = 0 ] || printf ' M cfg/mise.toml\n'
-      [ ! -e "$checkout_path/.git/test-dirty" ] || printf ' M cfg/mise.toml\n'
+      if [ "$checkout_path" = "${TEST_GIT_LEGACY_SUBMODULE_PATH:-}" ]; then
+        [ "${TEST_GIT_LEGACY_SUBMODULE_DIRTY:-0}" = 0 ] || printf ' M init.lua\n'
+      else
+        [ "${TEST_GIT_DIRTY:-0}" = 0 ] || printf ' M cfg/mise.toml\n'
+        [ ! -e "$checkout_path/.git/test-dirty" ] || printf ' M cfg/mise.toml\n'
+        [ -z "${TEST_GIT_LEGACY_SUBMODULE_PATH:-}" ] || [ ! -d "$TEST_GIT_LEGACY_SUBMODULE_PATH" ] ||
+          printf '?? config/xdg/nvim/\n'
+      fi
       ;;
     symbolic-ref)
       printf '%s\n' "${TEST_GIT_BRANCH:-main}"
@@ -140,6 +148,7 @@ if [ "$1" = -C ]; then
       case "$4" in
         --is-inside-work-tree) printf 'true\n' ;;
         --abbrev-ref) printf '%s\n' "${TEST_GIT_UPSTREAM:-origin/main}" ;;
+        HEAD:cfg/xdg/nvim) cat "$checkout_path/.git/test-submodule-head" ;;
         refs/remotes/origin/main*) cat "$checkout_path/.git/test-remote-main" ;;
         refs/userland/bootstrap/*) cat "$checkout_path/.git/test-fetched-commit" ;;
         *) cat "$checkout_path/.git/test-head" ;;
@@ -437,8 +446,69 @@ HOME="$dirty_home" \
   TEST_TRUST_LOG="$work/dirty-trust" \
   USERLAND_DATA_DIR="$dirty_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
-  sh "$work/bootstrap" >/dev/null 2>&1 || dirty_status=$?
+  sh "$work/bootstrap" >"$work/dirty-output" 2>&1 || dirty_status=$?
 assert_checkout_refused dirty "$dirty_home" "$dirty_status"
+grep -Fq 'the installer will not overwrite them' "$work/dirty-output" ||
+  fail "dirty checkout refusal did not explain the safety policy"
+grep -Fq 'git -C "$HOME/.userland" status --short' "$work/dirty-output" ||
+  fail "dirty checkout refusal did not provide an inspection command"
+grep -Fq 'git -C "$HOME/.userland" stash push --include-untracked' "$work/dirty-output" ||
+  fail "dirty checkout refusal did not provide a preservation command"
+
+legacy_submodule_home="$work/legacy-submodule-home"
+prepare_existing_checkout "$legacy_submodule_home"
+legacy_submodule_path="$legacy_submodule_home/.userland/config/xdg/nvim"
+legacy_submodule_commit=d3193d7aaeb0022f8fb417a275a51871862d731e
+mkdir -p "$legacy_submodule_path/.git"
+printf '%s\n' "$legacy_submodule_commit" >"$legacy_submodule_path/.git/test-head"
+printf '%s\n' "$legacy_submodule_commit" >"$legacy_submodule_home/.userland/.git/test-submodule-head"
+legacy_submodule_status=0
+HOME="$legacy_submodule_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_GIT_LEGACY_SUBMODULE_PATH="$legacy_submodule_path" \
+  TEST_OBSERVATION="$work/legacy-submodule-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$legacy_submodule_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >"$work/legacy-submodule-output" 2>&1 || legacy_submodule_status=$?
+[ "$legacy_submodule_status" -eq 0 ] || {
+  cat "$work/legacy-submodule-output" >&2
+  fail "verified legacy submodule migration returned $legacy_submodule_status"
+}
+[ ! -e "$legacy_submodule_path" ] || fail "verified legacy submodule remained in the checkout"
+find "$legacy_submodule_home/.Trash" -type d -path '*/config-xdg-nvim' -print -quit |
+  grep -q . || fail "verified legacy submodule was not preserved in Trash"
+grep -Fq 'moved obsolete config/xdg/nvim checkout to Trash' "$work/legacy-submodule-output" ||
+  fail "verified legacy submodule migration was not reported"
+
+legacy_submodule_dirty_home="$work/legacy-submodule-dirty-home"
+prepare_existing_checkout "$legacy_submodule_dirty_home"
+legacy_submodule_dirty_path="$legacy_submodule_dirty_home/.userland/config/xdg/nvim"
+mkdir -p "$legacy_submodule_dirty_path/.git"
+printf '%s\n' "$legacy_submodule_commit" >"$legacy_submodule_dirty_path/.git/test-head"
+printf '%s\n' "$legacy_submodule_commit" >"$legacy_submodule_dirty_home/.userland/.git/test-submodule-head"
+legacy_submodule_dirty_status=0
+HOME="$legacy_submodule_dirty_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_GIT_LEGACY_SUBMODULE_DIRTY=1 \
+  TEST_GIT_LEGACY_SUBMODULE_PATH="$legacy_submodule_dirty_path" \
+  TEST_OBSERVATION="$work/legacy-submodule-dirty-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  TEST_TRUST_LOG="$work/legacy-submodule-dirty-trust" \
+  USERLAND_DATA_DIR="$legacy_submodule_dirty_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >"$work/legacy-submodule-dirty-output" 2>&1 || legacy_submodule_dirty_status=$?
+assert_checkout_refused legacy-submodule-dirty "$legacy_submodule_dirty_home" "$legacy_submodule_dirty_status"
+[ -d "$legacy_submodule_dirty_path" ] || fail "dirty legacy submodule was moved"
+grep -Fq 'the installer will not overwrite them' "$work/legacy-submodule-dirty-output" ||
+  fail "dirty legacy submodule refusal was not actionable"
+if grep -Fq 'moved obsolete config/xdg/nvim checkout to Trash' "$work/legacy-submodule-dirty-output"; then
+  fail "dirty legacy submodule was reported as migrated"
+fi
 
 ancestry_home="$work/ancestry-home"
 prepare_existing_checkout "$ancestry_home"

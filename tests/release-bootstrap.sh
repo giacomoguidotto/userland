@@ -14,8 +14,8 @@ fail() {
 tag=v1.2.3
 commit=0123456789abcdef0123456789abcdef01234567
 fixture="$work/fixture/userland-1.2.3"
-mkdir -p "$fixture/bin" "$fixture/lib"
-cp "$repository_root/lib/ui.sh" "$fixture/lib/ui.sh"
+mkdir -p "$fixture/bin" "$fixture/cmd/userland"
+printf '%s\n' 'package main' >"$fixture/cmd/userland/main.go"
 
 cat >"$fixture/bin/userland" <<'EOF'
 #!/bin/sh
@@ -99,9 +99,10 @@ if [ "$1" = clone ]; then
     mkdir -p "$destination"
     exit 12
   fi
-  mkdir -p "$destination/.git" "$destination/bin"
+  mkdir -p "$destination/.git" "$destination/bin" "$destination/cmd/userland"
   cp "$TEST_REPO_COMMAND" "$destination/bin/userland"
   chmod +x "$destination/bin/userland"
+  printf '%s\n' 'package main' >"$destination/cmd/userland/main.go"
   printf 'min_version = "2026.8.9"\n' >"$destination/mise.toml"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-head"
   printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" >"$destination/.git/test-remote-main"
@@ -193,7 +194,10 @@ HOME="$attention_home" \
   USERLAND_DATA_DIR="$attention_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >"$work/attention-output" 2>&1 || attention_status=$?
-[ "$attention_status" -eq 0 ] || fail "completed attention run returned $attention_status"
+[ "$attention_status" -eq 0 ] || {
+  cat "$work/attention-output" >&2
+  fail "completed attention run returned $attention_status"
+}
 grep -Fq 'created=1' "$work/attention-observation" ||
   fail "first run did not hand checkout creation to the Preflight UI"
 if grep -Fq 'userland: created ~/.userland' "$work/attention-output"; then
@@ -315,9 +319,10 @@ prepare_existing_checkout() {
   existing_home=$1
   prepare_home "$existing_home"
   existing_repo="$existing_home/.userland"
-  mkdir -p "$existing_repo/.git" "$existing_repo/bin"
+  mkdir -p "$existing_repo/.git" "$existing_repo/bin" "$existing_repo/cmd/userland"
   cp "$work/repo-userland" "$existing_repo/bin/userland"
   chmod +x "$existing_repo/bin/userland"
+  printf '%s\n' 'package main' >"$existing_repo/cmd/userland/main.go"
   printf 'original checkout config\n' >"$existing_repo/mise.toml"
   printf '%s\n' "$commit" >"$existing_repo/.git/test-head"
   printf '%s\n' "$commit" >"$existing_repo/.git/test-remote-main"

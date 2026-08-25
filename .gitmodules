@@ -1,3 +1,3 @@
 [submodule "cfg/xdg/nvim"]
-	path = config/xdg/nvim
+	path = cfg/xdg/nvim
 	url = https://github.com/GiacomoGuidotto/kickstart.nvim.git

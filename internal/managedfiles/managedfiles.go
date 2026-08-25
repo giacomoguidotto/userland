@@ -475,7 +475,7 @@ func (m Manager) walkLegacy(root string, visit func(link, source string)) {
 
 func (m Manager) ownedLegacy(source string) bool {
 	prefixes := []string{
-		filepath.Join(m.Env.Root, "cfg") + string(os.PathSeparator), filepath.Join(m.Env.Root, "agents") + string(os.PathSeparator),
+		filepath.Join(m.Env.Root, "config") + string(os.PathSeparator), filepath.Join(m.Env.Root, "agents") + string(os.PathSeparator),
 		filepath.Join(m.Env.Data, "repo", "cfg") + string(os.PathSeparator), filepath.Join(m.Env.Data, "repo", "config") + string(os.PathSeparator), filepath.Join(m.Env.Data, "repo", "agents") + string(os.PathSeparator),
 	}
 	if strings.Contains(source, string(os.PathSeparator)+"workspace"+string(os.PathSeparator)+"cfg"+string(os.PathSeparator)) {

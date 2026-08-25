@@ -48,6 +48,11 @@ func main() {
 }
 
 func runtimeEnvironment(environ []string) []string {
+	executablePath, _ := os.Executable()
+	return runtimeEnvironmentFor(environ, executablePath)
+}
+
+func runtimeEnvironmentFor(environ []string, executablePath string) []string {
 	values := make(map[string]string, len(environ))
 	for _, entry := range environ {
 		key, value, ok := strings.Cut(entry, "=")
@@ -55,20 +60,24 @@ func runtimeEnvironment(environ []string) []string {
 			values[key] = value
 		}
 	}
-	if executablePath, err := os.Executable(); err == nil {
+	home := values["HOME"]
+	if executablePath != "" {
 		if resolved, err := filepath.EvalSymlinks(executablePath); err == nil {
 			executablePath = resolved
 		}
 		candidate := filepath.Dir(filepath.Dir(executablePath))
 		if values["USERLAND_ROOT_EXPLICIT"] != "1" {
-			if _, err := os.Stat(filepath.Join(candidate, "cfg", "schema-version")); err == nil || values["USERLAND_ROOT"] == "" {
+			if hasSchema(candidate) {
+				values["USERLAND_ROOT"] = candidate
+			} else if values["USERLAND_ROOT"] == "" && hasSchema(filepath.Join(home, ".userland")) {
+				values["USERLAND_ROOT"] = filepath.Join(home, ".userland")
+			} else if values["USERLAND_ROOT"] == "" {
 				values["USERLAND_ROOT"] = candidate
 			}
 		} else if values["USERLAND_ROOT"] == "" {
 			values["USERLAND_ROOT"] = candidate
 		}
 	}
-	home := values["HOME"]
 	if values["USERLAND_HOME"] == "" {
 		values["USERLAND_HOME"] = home
 	}
@@ -96,6 +105,11 @@ func runtimeEnvironment(environ []string) []string {
 		result = append(result, key+"="+value)
 	}
 	return result
+}
+
+func hasSchema(root string) bool {
+	info, err := os.Stat(filepath.Join(root, "cfg", "schema-version"))
+	return err == nil && !info.IsDir()
 }
 
 func resolveMise(values map[string]string) string {

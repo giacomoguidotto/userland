@@ -154,7 +154,8 @@ reset_machine_fixture() {
         "$TEST_ROOT/tests/compat/plan-oracle.sh" >"$TEST_TMPDIR/oracle.plan"
       USERLAND_UI_MODE=$mode USERLAND_UNICODE=$unicode \
         "$USERLAND_GO_PLAN_BIN" >"$TEST_TMPDIR/port.plan"
-      diff -u "$TEST_TMPDIR/oracle.plan" "$TEST_TMPDIR/port.plan"
+      python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.plan" --legacy-ui >"$TEST_TMPDIR/oracle.expected.plan"
+      diff -u "$TEST_TMPDIR/oracle.expected.plan" "$TEST_TMPDIR/port.plan"
     done
   done
 }
@@ -173,7 +174,7 @@ reset_machine_fixture() {
       capture "$USERLAND_ORACLE_ROOT/bin/userland" "$TEST_TMPDIR/oracle" plan
       rm -f "$USERLAND_CACHE_DIR/repositories.tsv" "$USERLAND_CACHE_DIR/repositories.meta"
       capture "$USERLAND_GO_BIN" "$TEST_TMPDIR/port" plan
-      python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
+      python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
       python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
       diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"
       diff -u "$TEST_TMPDIR/oracle.stderr" "$TEST_TMPDIR/port.stderr"
@@ -188,7 +189,7 @@ reset_machine_fixture() {
 
   capture "$USERLAND_ORACLE_ROOT/bin/userland" "$TEST_TMPDIR/oracle" doctor
   capture "$USERLAND_GO_BIN" "$TEST_TMPDIR/port" doctor
-  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
+  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.stderr" "$TEST_TMPDIR/port.stderr"
@@ -219,7 +220,7 @@ reset_machine_fixture() {
   assert_compatible sync
 }
 
-@test "sync preserves default-deny consent without applying" {
+@test "sync preserves explicit no consent without applying" {
   export USERLAND_UI_MODE=plain NO_COLOR=1
   export USERLAND_ASSUME_YES=
   export USERLAND_UI_TEST_CONFIRMATION=no
@@ -227,7 +228,7 @@ reset_machine_fixture() {
   capture "$USERLAND_ORACLE_ROOT/bin/userland" "$TEST_TMPDIR/oracle" sync
   reset_machine_fixture
   capture "$USERLAND_GO_BIN" "$TEST_TMPDIR/port" sync
-  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
+  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.stderr" "$TEST_TMPDIR/port.stderr"
@@ -251,7 +252,7 @@ reset_machine_fixture() {
     -e "s|$TEST_ROOT|<root>|g" \
     -e 's/^-C <root> doctor$/doctor/' \
     "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
-  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
+  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.stderr" "$TEST_TMPDIR/port.stderr"
@@ -275,7 +276,7 @@ reset_machine_fixture() {
     -e "s|$TEST_ROOT/cfg|<root>|g" \
     -e "s|$TEST_ROOT|<root>|g" \
     "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
-  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
+  python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.stderr" "$TEST_TMPDIR/port.stderr"

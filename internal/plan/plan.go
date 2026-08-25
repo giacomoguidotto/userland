@@ -142,11 +142,11 @@ func Glyph(item Item) string {
 func areaTitle(area Area) string {
 	switch area {
 	case AreaOS:
-		return "OS changes"
+		return "OS"
 	case AreaFS:
-		return "Filesystem changes"
+		return "Filesystem"
 	case AreaApps:
-		return "Application additions"
+		return "Applications"
 	default:
 		return "Cleanup"
 	}

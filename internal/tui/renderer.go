@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -45,6 +47,14 @@ type Renderer struct {
 	yellow  string
 	red     string
 	cyan    string
+	task    *taskAnimation
+}
+
+type taskAnimation struct {
+	mu      sync.Mutex
+	writeMu sync.Mutex
+	stop    chan struct{}
+	done    chan struct{}
 }
 
 func New(out io.Writer, environ []string) Renderer {
@@ -83,7 +93,7 @@ func New(out io.Writer, environ []string) Renderer {
 
 	color := env["NO_COLOR"] == "" && env["CLICOLOR"] != "0" && env["TERM"] != "dumb" &&
 		(mode == ModeRich || env["CLICOLOR_FORCE"] != "" && env["CLICOLOR_FORCE"] != "0")
-	renderer := Renderer{out: out, env: env, mode: mode, unicode: unicode}
+	renderer := Renderer{out: out, env: env, mode: mode, unicode: unicode, task: &taskAnimation{}}
 	if color {
 		renderer.reset = "\x1b[0m"
 		renderer.bold = "\x1b[1m"
@@ -171,7 +181,7 @@ func (r Renderer) Section(title string) {
 		fmt.Fprintf(r.out, "== %s\n", r.redact(title))
 		return
 	}
-	fmt.Fprintf(r.out, "%s\n %s  %s\n%s\n", r.rail(), r.sectionSymbol(), r.redact(title), r.rail())
+	fmt.Fprintf(r.out, "%s\n %s%s%s  %s\n%s\n", r.rail(), r.cyan, r.sectionSymbol(), r.reset, r.redact(title), r.rail())
 }
 
 func (r Renderer) Summary(status Status, message string) {
@@ -198,34 +208,36 @@ func (r Renderer) Confirm(in io.Reader, prompt string) int {
 		if r.mode == ModePlain {
 			r.Status(StatusInfo, prompt+" yes")
 		} else {
-			fmt.Fprintf(r.out, " %s?%s  %s [y/N] › Y\n", r.cyan, r.reset, r.redact(prompt))
+			fmt.Fprintf(r.out, " %s?%s  %s %s[Y/n]%s %s›%s Y\n", r.cyan, r.reset, r.redact(prompt), r.dim, r.reset, r.cyan, r.reset)
 		}
 		return 0
 	}
 	answer, testConfirmation := r.env["USERLAND_UI_TEST_CONFIRMATION"]
+	answered := true
 	if !(r.env["USERLAND_TESTING"] == "1" && testConfirmation) {
 		file, ok := in.(*os.File)
 		if !ok || !term.IsTerminal(int(file.Fd())) {
 			r.Status(StatusError, prompt+" requires an interactive terminal")
 			return 1
 		}
-		fmt.Fprintf(r.out, " %s?%s  %s [y/N] › ", r.cyan, r.reset, r.redact(prompt))
-		line, _ := bufio.NewReader(in).ReadString('\n')
+		fmt.Fprintf(r.out, " %s?%s  %s %s[Y/n]%s %s›%s ", r.cyan, r.reset, r.redact(prompt), r.dim, r.reset, r.cyan, r.reset)
+		line, err := bufio.NewReader(in).ReadString('\n')
+		answered = err == nil
 		answer = strings.TrimSpace(line)
 	}
-	accepted := strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")
+	accepted := answered && (answer == "" || strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes"))
 	if r.mode == ModeRich && r.env["USERLAND_TESTING"] == "1" && testConfirmation {
 		value := "N"
 		if accepted {
 			value = "Y"
 		}
-		fmt.Fprintf(r.out, " %s?%s  %s [y/N] › %s\n", r.cyan, r.reset, r.redact(prompt), value)
+		fmt.Fprintf(r.out, " %s?%s  %s %s[Y/n]%s %s›%s %s\n", r.cyan, r.reset, r.redact(prompt), r.dim, r.reset, r.cyan, r.reset, value)
 	} else if r.mode == ModePlain && r.env["USERLAND_TESTING"] == "1" && testConfirmation {
 		value := "N"
 		if accepted {
 			value = "Y"
 		}
-		fmt.Fprintf(r.out, "%s [y/N] %s\n", r.redact(prompt), value)
+		fmt.Fprintf(r.out, "%s [Y/n] %s\n", r.redact(prompt), value)
 	}
 	if accepted {
 		return 0
@@ -265,17 +277,70 @@ func (r Renderer) BeginTask(label string) {
 	if r.mode != ModeRich {
 		return
 	}
-	glyph := "-"
-	if r.unicode {
-		glyph = "⠋"
+	if r.task == nil {
+		return
 	}
-	fmt.Fprintf(r.out, "\r\x1b[2K %s%s%s  %s… %s<1s%s", r.cyan, glyph, r.reset, label, r.dim, r.reset)
+	r.ClearTask()
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	r.task.mu.Lock()
+	r.task.stop = stop
+	r.task.done = done
+	r.task.mu.Unlock()
+	started := time.Now()
+	r.taskFrame(label, 0, started)
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(120 * time.Millisecond)
+		defer ticker.Stop()
+		frame := 1
+		for {
+			select {
+			case <-ticker.C:
+				r.taskFrame(label, frame, started)
+				frame++
+			case <-stop:
+				return
+			}
+		}
+	}()
 }
 
 func (r Renderer) ClearTask() {
-	if r.mode == ModeRich {
-		fmt.Fprint(r.out, "\r\x1b[2K")
+	if r.mode != ModeRich || r.task == nil {
+		return
 	}
+	r.task.mu.Lock()
+	stop, done := r.task.stop, r.task.done
+	r.task.stop, r.task.done = nil, nil
+	r.task.mu.Unlock()
+	if stop == nil {
+		return
+	}
+	close(stop)
+	<-done
+	r.task.writeMu.Lock()
+	fmt.Fprint(r.out, "\r\x1b[2K")
+	r.task.writeMu.Unlock()
+}
+
+func (r Renderer) taskFrame(label string, frame int, started time.Time) {
+	glyphs := []string{"-", "\\", "|", "/"}
+	if r.unicode {
+		glyphs = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	}
+	seconds := int(time.Since(started).Seconds())
+	duration := "<1s"
+	if seconds >= 3600 {
+		duration = fmt.Sprintf("%dh %dm", seconds/3600, seconds%3600/60)
+	} else if seconds >= 60 {
+		duration = fmt.Sprintf("%dm %ds", seconds/60, seconds%60)
+	} else if seconds > 0 {
+		duration = fmt.Sprintf("%ds", seconds)
+	}
+	r.task.writeMu.Lock()
+	fmt.Fprintf(r.out, "\r\x1b[2K %s%s%s  %s… %s%s%s", r.cyan, glyphs[frame%len(glyphs)], r.reset, r.redact(label), r.dim, duration, r.reset)
+	r.task.writeMu.Unlock()
 }
 
 func (r Renderer) TaskSuccess(label string) {

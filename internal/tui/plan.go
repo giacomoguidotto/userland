@@ -51,7 +51,7 @@ func (r Renderer) Plan(value *plan.Plan, runLog string) {
 				fmt.Fprintln(r.out)
 			}
 		}
-		fmt.Fprintf(r.out, "%s\n %s  %d automatic · %d attended · %d cleanup", rail, r.doneSymbol(), summary.Automatic, summary.Attended, summary.Cleanup)
+		fmt.Fprintf(r.out, "%s\n %s%s%s  %d automatic · %d attended · %d cleanup", rail, r.green, r.doneSymbol(), r.reset, summary.Automatic, summary.Attended, summary.Cleanup)
 		if summary.Blocked != 0 {
 			fmt.Fprintf(r.out, " · %d blocked", summary.Blocked)
 		}

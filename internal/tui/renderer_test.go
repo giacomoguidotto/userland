@@ -77,6 +77,7 @@ func TestRichPlanUsesSemanticColorAndCurrentHeadings(t *testing.T) {
 		" │  \x1b[36m~\x1b[0m  ffmpeg",
 		"\x1b[2mupgrade installed rolling package\x1b[0m",
 		" │   \x1b[2mNo stale userland-owned items\x1b[0m",
+		" \x1b[32m◇\x1b[0m  1 automatic · 0 attended · 0 cleanup",
 		" │  \x1b[2mDetails ~/.local/state/userland/last-run.log\x1b[0m",
 	} {
 		if !strings.Contains(result, expected) {

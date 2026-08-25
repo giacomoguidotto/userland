@@ -13,25 +13,32 @@ import (
 
 func TestPlanLegacyRecordsOnlyOwnedLinks(t *testing.T) {
 	manager := testManager(t)
-	owned := filepath.Join(manager.Env.Root, "cfg", "home", "zshrc")
-	if err := os.MkdirAll(filepath.Dir(owned), 0o755); err != nil {
+	current := filepath.Join(manager.Env.Root, "cfg", "home", "zshrc")
+	legacy := filepath.Join(manager.Env.Root, "config", "home", "zshenv")
+	for _, source := range []string{current, legacy} {
+		if err := os.MkdirAll(filepath.Dir(source), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(source, []byte("managed\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	currentLink := filepath.Join(manager.Env.Home, ".zshrc")
+	if err := os.Symlink(current, currentLink); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(owned, []byte("managed\n"), 0o600); err != nil {
+	legacyLink := filepath.Join(manager.Env.Home, ".zshenv")
+	if err := os.Symlink(legacy, legacyLink); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(manager.Env.Home, ".zshrc")
-	if err := os.Symlink(owned, link); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("/tmp/unmanaged-zshrc", filepath.Join(manager.Env.Home, ".zshenv")); err != nil {
+	if err := os.Symlink("/tmp/unmanaged-hushlogin", filepath.Join(manager.Env.Home, ".hushlogin")); err != nil {
 		t.Fatal(err)
 	}
 
 	value := plan.New()
 	manager.PlanLegacy(value)
 	items := value.Items()
-	if len(items) != 1 || items[0].Target != link || items[0].Proof != "legacy-link:"+owned {
+	if len(items) != 1 || items[0].Target != legacyLink || items[0].Proof != "legacy-link:"+legacy {
 		t.Fatalf("unexpected legacy plan: %#v", items)
 	}
 }

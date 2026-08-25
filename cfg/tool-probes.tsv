@@ -1,6 +1,5 @@
 # mise tool	command	version probe arguments
 node	node	--version
-go	go	version
 bun	bun	--version
 op	op	--version
 java	java	-version

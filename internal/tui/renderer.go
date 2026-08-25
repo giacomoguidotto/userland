@@ -220,7 +220,7 @@ func (r Renderer) Confirm(in io.Reader, prompt string) int {
 			r.Status(StatusError, prompt+" requires an interactive terminal")
 			return 1
 		}
-		fmt.Fprintf(r.out, " %s?%s  %s %s[Y/n]%s %s›%s ", r.cyan, r.reset, r.redact(prompt), r.dim, r.reset, r.cyan, r.reset)
+		r.confirmationPrompt(prompt)
 		line, err := bufio.NewReader(in).ReadString('\n')
 		answered = err == nil
 		answer = strings.TrimSpace(line)
@@ -243,6 +243,14 @@ func (r Renderer) Confirm(in io.Reader, prompt string) int {
 		return 0
 	}
 	return 3
+}
+
+func (r Renderer) confirmationPrompt(prompt string) {
+	if r.mode == ModePlain {
+		fmt.Fprintf(r.out, "%s [Y/n] ", r.redact(prompt))
+		return
+	}
+	fmt.Fprintf(r.out, " %s?%s  %s %s[Y/n]%s %s›%s ", r.cyan, r.reset, r.redact(prompt), r.dim, r.reset, r.cyan, r.reset)
 }
 
 func (r Renderer) closeSymbol() string {

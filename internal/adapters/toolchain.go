@@ -106,7 +106,7 @@ func toolchain(c *Context, action Action) int {
 }
 
 func toolProbes(c *Context) ([]toolProbe, bool) {
-	rows, err := readTSV(filepath.Join(c.Env.Root, "cfg", "tool-probes.tsv"), 3)
+	rows, err := readCSV(filepath.Join(c.Env.Root, "cfg", "tool-probes.csv"), "mise_tool", "command", "version_probe_arguments")
 	if err != nil {
 		return nil, false
 	}

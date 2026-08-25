@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
@@ -19,7 +20,7 @@ func SnapshotFresh(env platform.Environment) bool {
 	if err != nil || firstLine(meta) != "v2 "+strings.Join(roots, ":") {
 		return false
 	}
-	info, err := os.Stat(filepath.Join(env.Cache, "repositories.tsv"))
+	info, err := os.Stat(filepath.Join(env.Cache, "repositories.csv"))
 	return err == nil && time.Since(info.ModTime()) < time.Duration(env.RepositoryTTL())*time.Second
 }
 
@@ -71,9 +72,13 @@ func RefreshSnapshot(ctx context.Context, env platform.Environment) (string, err
 	}
 	sort.Strings(repositories)
 	repositories = unique(repositories)
-	snapshot := filepath.Join(env.Cache, "repositories.tsv")
+	snapshot := filepath.Join(env.Cache, "repositories.csv")
 	meta := filepath.Join(env.Cache, "repositories.meta")
-	if err := atomicWrite(snapshot, []byte(strings.Join(repositories, "\n")+trailingNewline(repositories)), 0o600); err != nil {
+	rows := make([][]string, 0, len(repositories))
+	for _, path := range repositories {
+		rows = append(rows, []string{path})
+	}
+	if err := csvfile.Write(snapshot, []string{"path"}, rows, 0o600); err != nil {
 		return "", err
 	}
 	if err := atomicWrite(meta, []byte("v2 "+strings.Join(repositoryRoots(env), ":")+"\n"), 0o600); err != nil {
@@ -182,10 +187,4 @@ func unique(values []string) []string {
 		}
 	}
 	return result
-}
-func trailingNewline(values []string) string {
-	if len(values) == 0 {
-		return ""
-	}
-	return "\n"
 }

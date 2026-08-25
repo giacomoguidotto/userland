@@ -1,0 +1,16 @@
+mise_tool,command,version_probe_arguments
+node,node,--version
+bun,bun,--version
+op,op,--version
+java,java,-version
+gradle,gradle,--version
+aqua:bats-core/bats-core,bats,--version
+aqua:koalaman/shellcheck,shellcheck,--version
+aqua:mvdan/sh,shfmt,--version
+npm:@earendil-works/pi-coding-agent,pi,--version
+npm:@openai/codex,codex,--version
+npm:eas-cli,eas,--version
+npm:tree-sitter-cli,tree-sitter,--version
+pitchfork,pitchfork,--version
+uv,uv,--version
+python,python,--version

@@ -18,9 +18,9 @@ import (
 func personalRepositories(c *Context, action Action) int {
 	path := c.Env.Get("USERLAND_REPOSITORIES")
 	if path == "" {
-		path = filepath.Join(c.Env.Root, "cfg", "repositories.tsv")
+		path = filepath.Join(c.Env.Root, "cfg", "repositories.csv")
 	}
-	rows, err := readTSV(path, 2)
+	rows, err := readCSV(path, "github_repository", "home_relative_path")
 	if err != nil {
 		c.Log(Attention, err.Error())
 		return 1
@@ -85,7 +85,7 @@ func browserExtensions(c *Context, action Action) int {
 	if !c.Env.IsMacOS() {
 		return 0
 	}
-	rows, err := readTSV(filepath.Join(c.Env.Root, "cfg", "browser-extensions.tsv"), 3)
+	rows, err := readCSV(filepath.Join(c.Env.Root, "cfg", "browser-extensions.csv"), "browser", "extension_id", "name")
 	if err != nil {
 		return 1
 	}
@@ -137,7 +137,7 @@ func fileHandlers(c *Context, action Action) int {
 	if !c.Env.IsMacOS() {
 		return 0
 	}
-	rows, err := readTSV(filepath.Join(c.Env.Root, "cfg", "file-handlers.tsv"), 3)
+	rows, err := readCSV(filepath.Join(c.Env.Root, "cfg", "file-handlers.csv"), "bundle_id", "extension_or_uti", "role")
 	if err != nil {
 		return 1
 	}
@@ -192,7 +192,7 @@ func manualApps(c *Context, action Action) int {
 	if !c.Env.IsMacOS() || action == Apply {
 		return 0
 	}
-	rows, err := readTSV(filepath.Join(c.Env.Root, "cfg", "manual-apps.tsv"), 3)
+	rows, err := readCSV(filepath.Join(c.Env.Root, "cfg", "manual-apps.csv"), "name", "application_path", "reason")
 	if err != nil {
 		return 1
 	}
@@ -233,7 +233,7 @@ func repositorySnapshot(c *Context, action Action) int {
 }
 
 func repositorySnapshotFresh(env platform.Environment) bool {
-	snapshot := filepath.Join(env.Cache, "repositories.tsv")
+	snapshot := filepath.Join(env.Cache, "repositories.csv")
 	meta := filepath.Join(env.Cache, "repositories.meta")
 	roots := env.Get("USERLAND_REPO_ROOTS")
 	if roots == "" {

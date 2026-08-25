@@ -1,17 +1,18 @@
 package adapters
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 
+	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/platform"
 	realmstate "github.com/giacomoguidotto/userland/internal/realm"
 )
 
 func realmsEnabled(env platform.Environment) bool {
-	contents, err := os.ReadFile(filepath.Join(env.State, "realms.tsv"))
-	return err == nil && strings.TrimSpace(string(contents)) != ""
+	rows, err := csvfile.Read(filepath.Join(env.State, "realms.csv"), []string{"name", "path"})
+	return err == nil && len(rows) != 0 || err != nil && !errors.Is(err, os.ErrNotExist)
 }
 
 func realms(c *Context, action Action) int {

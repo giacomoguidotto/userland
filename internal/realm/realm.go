@@ -2,7 +2,6 @@
 package realm
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -12,7 +11,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/platform"
+	repositorycatalog "github.com/giacomoguidotto/userland/internal/repository"
 )
 
 var realmName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
@@ -221,7 +222,12 @@ func (m Manager) Inspect() ([]Finding, error) {
 			continue
 		}
 		active = append(active, attached)
-		findings = append(findings, Finding{Current, attached.Name + " realm is active at " + m.portablePath(mount)})
+		repositories, repositoryErr := repositorycatalog.InspectDeclarations(context.Background(), m.Env, mount)
+		if repositoryErr != nil {
+			findings = append(findings, Finding{Attention, attached.Name + " realm repository taxonomy is invalid: " + repositoryErr.Error()})
+			continue
+		}
+		findings = appendRealmRepositories(findings, attached.Name, m.portablePath(mount), repositories)
 	}
 	expected, err := m.gitRealmsContents(active)
 	if err != nil {
@@ -275,14 +281,23 @@ func (m Manager) Reconcile(ctx context.Context) ([]Finding, error) {
 			findings = append(findings, Finding{Attention, activationErr.Error()})
 			continue
 		}
-		if changed || cloned {
+		activationChanged := changed || cloned
+		if activationChanged {
 			if err := m.allow(ctx, filepath.Join(mount, ".envrc")); err != nil {
 				findings = append(findings, Finding{Attention, err.Error()})
 				continue
 			}
 			findings = append(findings, Finding{Change, attached.Name + " realm activation was refreshed"})
+		}
+		repositories, repositoryErr := repositorycatalog.ReconcileDeclarations(ctx, m.Env, mount)
+		if repositoryErr != nil {
+			findings = append(findings, Finding{Attention, attached.Name + " realm repository taxonomy could not be reconciled: " + repositoryErr.Error()})
+			continue
+		}
+		if activationChanged {
+			findings = appendRepositoryFindings(findings, attached.Name, repositories)
 		} else {
-			findings = append(findings, Finding{Current, attached.Name + " realm is active at " + m.portablePath(mount)})
+			findings = appendRealmRepositories(findings, attached.Name, m.portablePath(mount), repositories)
 		}
 		active = append(active, attached)
 	}
@@ -290,6 +305,28 @@ func (m Manager) Reconcile(ctx context.Context) ([]Finding, error) {
 		return findings, err
 	}
 	return findings, nil
+}
+
+func appendRealmRepositories(findings []Finding, name, mount string, repositories []repositorycatalog.DeclarationFinding) []Finding {
+	if len(repositories) == 1 && repositories[0].State == repositorycatalog.DeclarationCurrent {
+		return append(findings, Finding{Current, name + " realm is active at " + mount + " and its repository taxonomy matches"})
+	}
+	findings = append(findings, Finding{Current, name + " realm is active at " + mount})
+	return appendRepositoryFindings(findings, name, repositories)
+}
+
+func appendRepositoryFindings(findings []Finding, name string, repositories []repositorycatalog.DeclarationFinding) []Finding {
+	for _, item := range repositories {
+		state := Current
+		switch item.State {
+		case repositorycatalog.DeclarationChange:
+			state = Change
+		case repositorycatalog.DeclarationAttention:
+			state = Attention
+		}
+		findings = append(findings, Finding{state, name + " realm: " + item.Message})
+	}
+	return findings
 }
 
 func (m Manager) validateDeclaration(candidate declaration) error {
@@ -439,25 +476,19 @@ func (m Manager) ensureDeclaration(candidate declaration) (bool, error) {
 			return false, nil
 		}
 	}
-	path := m.catalogPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return false, err
+	declarations = append(declarations, candidate)
+	rows := make([][]string, 0, len(declarations))
+	for _, item := range declarations {
+		rows = append(rows, []string{item.Name, item.Repository, item.Path, item.Mode})
 	}
-	contents, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false, err
-	}
-	if len(contents) == 0 {
-		contents = []byte("# name\trepository\tdefault_path\tmode\n")
-	} else if contents[len(contents)-1] != '\n' {
-		contents = append(contents, '\n')
-	}
-	contents = append(contents, []byte(strings.Join([]string{candidate.Name, candidate.Repository, candidate.Path, candidate.Mode}, "\t")+"\n")...)
-	return true, atomicWrite(path, contents, 0o600)
+	return true, csvfile.Write(m.catalogPath(), realmHeader, rows, 0o600)
 }
 
 func (m Manager) loadDeclarations() ([]declaration, error) {
-	rows, err := readRows(m.catalogPath(), 4)
+	rows, err := csvfile.Read(m.catalogPath(), realmHeader)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +503,10 @@ func (m Manager) loadDeclarations() ([]declaration, error) {
 }
 
 func (m Manager) loadAttachments() ([]attachment, error) {
-	rows, err := readRows(m.attachmentsPath(), 2)
+	rows, err := csvfile.Read(m.attachmentsPath(), attachmentHeader)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -488,11 +522,11 @@ func (m Manager) loadAttachments() ([]attachment, error) {
 
 func (m Manager) writeAttachments(attachments []attachment) error {
 	sort.Slice(attachments, func(i, j int) bool { return attachments[i].Name < attachments[j].Name })
-	var contents strings.Builder
+	rows := make([][]string, 0, len(attachments))
 	for _, item := range attachments {
-		fmt.Fprintf(&contents, "%s\t%s\n", item.Name, item.Path)
+		rows = append(rows, []string{item.Name, item.Path})
 	}
-	return atomicWrite(m.attachmentsPath(), []byte(contents.String()), 0o600)
+	return csvfile.Write(m.attachmentsPath(), attachmentHeader, rows, 0o600)
 }
 
 func (m Manager) writeGitRealms(attachments []attachment) error {
@@ -534,10 +568,10 @@ func (m Manager) catalogPath() string {
 	if path := m.Env.Get("USERLAND_REALMS"); path != "" {
 		return path
 	}
-	return filepath.Join(m.Env.Root, "cfg", "realms.tsv")
+	return filepath.Join(m.Env.Root, "cfg", "realms.csv")
 }
 
-func (m Manager) attachmentsPath() string { return filepath.Join(m.Env.State, "realms.tsv") }
+func (m Manager) attachmentsPath() string { return filepath.Join(m.Env.State, "realms.csv") }
 func (m Manager) gitRealmsPath() string {
 	if path := m.Env.Get("USERLAND_GIT_REALMS"); path != "" {
 		return path
@@ -599,31 +633,6 @@ func sameRepository(left, right string) bool {
 	return normalize(left) == normalize(right)
 }
 
-func readRows(path string, fields int) ([][]string, error) {
-	file, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var rows [][]string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		values := strings.Split(line, "\t")
-		if len(values) != fields {
-			return nil, fmt.Errorf("invalid declaration in %s", path)
-		}
-		rows = append(rows, values)
-	}
-	return rows, scanner.Err()
-}
-
 func atomicWrite(path string, contents []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -682,3 +691,6 @@ func gitValue(value string) string {
 	}
 	return value
 }
+
+var realmHeader = []string{"name", "repository", "default_path", "mode"}
+var attachmentHeader = []string{"name", "path"}

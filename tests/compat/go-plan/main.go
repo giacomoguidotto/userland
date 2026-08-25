@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/tui"
 )
@@ -13,19 +13,13 @@ import (
 func main() {
 	environ := os.Environ()
 	root := env(environ, "USERLAND_ROOT")
-	file, err := os.Open(filepath.Join(root, "tests", "compat", "plan.tsv"))
+	rows, err := csvfile.Read(filepath.Join(root, "tests", "compat", "plan.csv"), []string{"area", "action", "handling", "ownership", "target", "detail", "proof"})
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
 
 	value := plan.New()
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		fields := strings.Split(scanner.Text(), "\t")
-		if len(fields) != 7 {
-			panic("invalid plan fixture")
-		}
+	for _, fields := range rows {
 		if err := value.Add(plan.Item{
 			Area: plan.Area(fields[0]), Action: plan.Action(fields[1]),
 			Handling: plan.Handling(fields[2]), Ownership: plan.Ownership(fields[3]),

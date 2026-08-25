@@ -35,7 +35,7 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 ## Realms
 
 A realm applies a private operational identity below one directory. The
-portable, optional catalog lives in `cfg/realms.tsv`; the attachment map for
+portable, optional catalog lives in `cfg/realms.csv`; the attachment map for
 the current Mac lives in Userland state and is not committed. A new Mac can
 therefore discover a realm without cloning or activating it until `realm add`
 is run explicitly.
@@ -47,6 +47,13 @@ loads the realm's `mise.toml` once through the existing direnv hook. An optional
 `.userland/envrc` can provide additional private exports. If the realm contains
 `.gitconfig`, Userland generates a native Git `includeIf` for repositories below
 the mounted path.
+
+A realm can declare its repository taxonomy in
+`.userland/repositories.csv` with `repository,path` columns. Plan and doctor
+validate each checkout and its raw origin. Sync clones only missing checkouts
+and maintains local Git exclusions in the realm control repository. It never
+pulls, switches, resets, stages, cleans, or deletes an existing child checkout,
+and declarations do not own branches or revisions.
 
 `realm remove` revokes direnv authorization and removes only Userland-generated
 activation. The checkout, private files, and optional catalog entry remain.
@@ -71,6 +78,8 @@ declarations never live in the library and are owned only by `cfg/`.
 Userland invokes Mise only through `cfg/mise.toml`; parent development tooling
 cannot leak into machine synchronization. A fork can replace `cfg/` without
 editing the library or its development environment.
+Tabular declarations use header-validated CSV files so values can be quoted
+without changing their schema.
 The compatibility suite materializes v0.2.3 from Git as a shell oracle, then
 compares terminal bytes, exit status, command traces, and sync behavior against
 the Go implementation.

@@ -1,0 +1,8 @@
+area,action,handling,ownership,target,detail,proof
+os,set,automatic,declared,Dock · autohide,false to true,macos-default:Dock:autohide
+os,review,blocked,declared,Security policy,requires review,security:test
+fs,link,automatic,declared,~/.zshrc,from ~/.userland/cfg/home/zshrc,dotfile:~/.zshrc
+apps,install,attended,external,Xcode,install from Mac App Store,mas:Xcode
+apps,upgrade,automatic,declared,ripgrep,upgrade with Homebrew,mise:package:brew:ripgrep
+cleanup,remove,automatic,userland,~/.old-userland,stale link,receipt:old
+apps,upgrade,automatic,declared,ripgrep,duplicate must disappear,duplicate

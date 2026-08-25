@@ -33,7 +33,7 @@ setup() {
   export USERLAND_DATA_DIR=$TEST_TMPDIR/data
   export USERLAND_STATE_DIR=$TEST_TMPDIR/state
   export USERLAND_REPO_ROOTS=$TEST_TMPDIR/repos
-  export USERLAND_REPOSITORIES=$TEST_TMPDIR/repositories.tsv
+  export USERLAND_REPOSITORIES=$TEST_TMPDIR/repositories.csv
   export USERLAND_UNAME=Linux
   export USERLAND_ARCHIVE=1
   export USERLAND_ASSUME_YES=1
@@ -193,9 +193,9 @@ reset_machine_fixture() {
   for mode in plain rich; do
     for unicode in 0 1; do
       export USERLAND_UI_MODE=$mode USERLAND_UNICODE=$unicode
-      rm -f "$USERLAND_CACHE_DIR/repositories.tsv" "$USERLAND_CACHE_DIR/repositories.meta"
+      rm -f "$USERLAND_CACHE_DIR/repositories.csv" "$USERLAND_CACHE_DIR/repositories.meta"
       capture "$USERLAND_ORACLE_ROOT/bin/userland" "$TEST_TMPDIR/oracle" plan
-      rm -f "$USERLAND_CACHE_DIR/repositories.tsv" "$USERLAND_CACHE_DIR/repositories.meta"
+      rm -f "$USERLAND_CACHE_DIR/repositories.csv" "$USERLAND_CACHE_DIR/repositories.meta"
       capture "$USERLAND_GO_BIN" "$TEST_TMPDIR/port" plan
       python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
       python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"

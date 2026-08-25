@@ -26,13 +26,13 @@ func TestAddAdoptsExistingCheckoutAndCreatesPathScopedActivation(t *testing.T) {
 		t.Fatalf("unexpected add result: %#v", result)
 	}
 
-	catalog := readFile(t, filepath.Join(fixture.root, "cfg", "realms.tsv"))
-	wantDeclaration := "work\t" + fixture.repository + "\t~/dev/work\toptional\n"
+	catalog := readFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"))
+	wantDeclaration := "work," + fixture.repository + ",~/dev/work,optional\n"
 	if !strings.Contains(catalog, wantDeclaration) {
 		t.Fatalf("catalog omitted %q: %q", wantDeclaration, catalog)
 	}
-	attachments := readFile(t, filepath.Join(fixture.state, "realms.tsv"))
-	if attachments != "work\t~/dev/work\n" {
+	attachments := readFile(t, filepath.Join(fixture.state, "realms.csv"))
+	if attachments != "name,path\nwork,~/dev/work\n" {
 		t.Fatalf("unexpected attachment map: %q", attachments)
 	}
 
@@ -78,8 +78,8 @@ func TestAddKeepsTheDeclaredRealmNameWhenRepositoryNameDiffers(t *testing.T) {
 	mount := filepath.Join(fixture.home, "dev", "work")
 	initRepository(t, mount, repository)
 	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
-	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.tsv"),
-		"# name\trepository\tdefault_path\tmode\nwork\t"+repository+"\t~/dev/work\toptional\n", 0o600)
+	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
+		"name,repository,default_path,mode\nwork,"+repository+",~/dev/work,optional\n", 0o600)
 
 	result, err := New(fixture.env()).Add(context.Background(), repository, mount)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestAddKeepsTheDeclaredRealmNameWhenRepositoryNameDiffers(t *testing.T) {
 	if result.Name != "work" {
 		t.Fatalf("realm name followed repository rename: %#v", result)
 	}
-	if got := readFile(t, filepath.Join(fixture.state, "realms.tsv")); got != "work\t~/dev/work\n" {
+	if got := readFile(t, filepath.Join(fixture.state, "realms.csv")); got != "name,path\nwork,~/dev/work\n" {
 		t.Fatalf("attachment did not preserve logical name: %q", got)
 	}
 }
@@ -140,7 +140,7 @@ func TestAddDoesNotOptInThisMachineWhenDirenvAuthorizationFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "could not authorize") {
 		t.Fatalf("expected direnv authorization failure, got %v", err)
 	}
-	attachments, readErr := os.ReadFile(filepath.Join(fixture.state, "realms.tsv"))
+	attachments, readErr := os.ReadFile(filepath.Join(fixture.state, "realms.csv"))
 	if readErr == nil && strings.TrimSpace(string(attachments)) != "" {
 		t.Fatalf("failed add opted this machine in: %q", attachments)
 	} else if readErr != nil && !os.IsNotExist(readErr) {
@@ -171,10 +171,10 @@ func TestRemoveDetachesWithoutDeletingCheckoutOrDeclaration(t *testing.T) {
 	if _, err := os.Lstat(filepath.Join(mount, ".envrc")); !os.IsNotExist(err) {
 		t.Fatalf("activation still exists: %v", err)
 	}
-	if got := readFile(t, filepath.Join(fixture.state, "realms.tsv")); got != "" {
+	if got := readFile(t, filepath.Join(fixture.state, "realms.csv")); got != "name,path\n" {
 		t.Fatalf("attachment remains: %q", got)
 	}
-	if got := readFile(t, filepath.Join(fixture.root, "cfg", "realms.tsv")); !strings.Contains(got, fixture.repository) {
+	if got := readFile(t, filepath.Join(fixture.root, "cfg", "realms.csv")); !strings.Contains(got, fixture.repository) {
 		t.Fatalf("portable declaration was removed: %q", got)
 	}
 	if got := readFile(t, filepath.Join(fixture.home, ".config", "git", "userland-realms.gitconfig")); strings.Contains(got, mount) {
@@ -187,8 +187,8 @@ func TestRemoveDetachesWithoutDeletingCheckoutOrDeclaration(t *testing.T) {
 
 func TestInspectIgnoresOptionalRealmsUntilThisMachineOptsIn(t *testing.T) {
 	fixture := newFixture(t)
-	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.tsv"),
-		"# name\trepository\tdefault_path\tmode\nwork\t"+fixture.repository+"\t~/dev/work\toptional\n", 0o600)
+	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
+		"name,repository,default_path,mode\nwork,"+fixture.repository+",~/dev/work,optional\n", 0o600)
 
 	findings, err := New(fixture.env()).Inspect()
 	if err != nil {
@@ -204,9 +204,9 @@ func TestInspectBlocksAnUnmanagedEnvrc(t *testing.T) {
 	mount := filepath.Join(fixture.home, "dev", "work")
 	initRepository(t, mount, fixture.repository)
 	writeFile(t, filepath.Join(mount, ".envrc"), "export KEEP_ME=1\n", 0o600)
-	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.tsv"),
-		"# name\trepository\tdefault_path\tmode\nwork\t"+fixture.repository+"\t~/dev/work\toptional\n", 0o600)
-	writeFile(t, filepath.Join(fixture.state, "realms.tsv"), "work\t~/dev/work\n", 0o600)
+	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
+		"name,repository,default_path,mode\nwork,"+fixture.repository+",~/dev/work,optional\n", 0o600)
+	writeFile(t, filepath.Join(fixture.state, "realms.csv"), "name,path\nwork,~/dev/work\n", 0o600)
 
 	findings, err := New(fixture.env()).Inspect()
 	if err != nil {
@@ -214,6 +214,35 @@ func TestInspectBlocksAnUnmanagedEnvrc(t *testing.T) {
 	}
 	if len(findings) == 0 || findings[0].State != Attention || !strings.Contains(findings[0].Message, "unmanaged .envrc") {
 		t.Fatalf("unmanaged activation was not blocked: %#v", findings)
+	}
+}
+
+func TestInspectReportsRepositoryTaxonomyDriftWithoutTouchingTheCheckout(t *testing.T) {
+	fixture := newFixture(t)
+	mount := filepath.Join(fixture.home, "dev", "work")
+	initRepository(t, mount, fixture.repository)
+	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
+	writeFile(t, filepath.Join(mount, ".userland", "repositories.csv"),
+		"repository,path\ngit@example.test:private/missing.git,services/missing\n", 0o600)
+	manager := New(fixture.env())
+	if _, err := manager.Add(context.Background(), fixture.repository, mount); err != nil {
+		t.Fatal(err)
+	}
+
+	findings, err := manager.Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var missing, exclusions bool
+	for _, finding := range findings {
+		missing = missing || finding.State == Change && strings.Contains(finding.Message, "services/missing repository is missing")
+		exclusions = exclusions || finding.State == Change && strings.Contains(finding.Message, "repository exclusions need regeneration")
+	}
+	if !missing || !exclusions {
+		t.Fatalf("repository taxonomy drift was not reported: %#v", findings)
+	}
+	if _, err := os.Stat(filepath.Join(mount, "services", "missing")); !os.IsNotExist(err) {
+		t.Fatalf("inspect changed the missing checkout: %v", err)
 	}
 }
 

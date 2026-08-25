@@ -2,17 +2,16 @@
 package adapters
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
@@ -197,27 +196,7 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func readTSV(path string, fields int) ([][]string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	var rows [][]string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		values := strings.SplitN(line, "\t", fields)
-		if len(values) != fields {
-			return nil, fmt.Errorf("invalid declaration in %s", path)
-		}
-		rows = append(rows, values)
-	}
-	return rows, scanner.Err()
-}
+func readCSV(path string, header ...string) ([][]string, error) { return csvfile.Read(path, header) }
 
 func fileSHA256(path string) (string, error) {
 	file, err := os.Open(path)

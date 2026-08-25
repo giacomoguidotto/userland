@@ -25,7 +25,7 @@ func TestHumanGroupsMachineChecksWithoutRepeatedSections(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ".userland-release"), []byte(commit+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	repositories := filepath.Join(root, "repositories.tsv")
+	repositories := filepath.Join(root, "repositories.csv")
 	if err := os.WriteFile(repositories, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}

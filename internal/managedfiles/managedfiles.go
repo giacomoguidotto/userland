@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 const recoveryFormat = "dotfiles-v1"

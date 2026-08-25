@@ -16,10 +16,10 @@ import (
 
 	"github.com/giacomoguidotto/userland/internal/adapters"
 	"github.com/giacomoguidotto/userland/internal/managedfiles"
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
 	"github.com/giacomoguidotto/userland/internal/repository"
 	"github.com/giacomoguidotto/userland/internal/tui"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 type runner struct {

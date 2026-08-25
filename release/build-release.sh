@@ -39,7 +39,7 @@ esac
 
 release_tree=$work/tree/userland-$version
 mkdir -p "$release_tree/bin"
-git archive --format=tar "$commit" LICENSE cmd completions cfg go.mod go.sum internal plan userland.go |
+git archive --format=tar "$commit" LICENSE cmd completions cfg go.mod go.sum internal userland.go |
   tar -xf - -C "$release_tree"
 
 if [ -f .gitmodules ]; then
@@ -65,7 +65,6 @@ CGO_ENABLED=0 go -C "$release_tree" build \
 rm -rf \
   "$release_tree/cmd" \
   "$release_tree/internal" \
-  "$release_tree/plan" \
   "$release_tree/go.mod" \
   "$release_tree/go.sum" \
   "$release_tree/userland.go"

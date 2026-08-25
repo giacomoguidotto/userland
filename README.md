@@ -38,8 +38,7 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | `cmd/` | The thin Go command entry point. |
 | `cfg/` | Personal machine state, including its isolated Mise declaration and lockfile, dotfiles, applications, repositories, and agent assets. |
 | `completions/` | Static shell completion definitions. |
-| `internal/` | Go orchestration, adapters, recovery transactions, health checks, and terminal rendering. |
-| `plan/` | The public typed planning library. |
+| `internal/` | Go orchestration, typed planning, adapters, recovery transactions, health checks, and terminal rendering. |
 | `release/` | Checksum-verified release and bootstrap delivery. |
 | `tests/` | Frozen-v0.2.3 compatibility, release, and HTTP interface checks. |
 

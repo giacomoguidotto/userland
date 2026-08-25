@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 type toolProbe struct {

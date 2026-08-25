@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 func TestPlanLegacyRecordsOnlyOwnedLinks(t *testing.T) {

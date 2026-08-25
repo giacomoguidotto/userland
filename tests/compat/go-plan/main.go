@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/tui"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 func main() {

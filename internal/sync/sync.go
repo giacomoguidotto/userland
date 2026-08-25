@@ -16,11 +16,11 @@ import (
 	"github.com/giacomoguidotto/userland/internal/adapters"
 	"github.com/giacomoguidotto/userland/internal/doctor"
 	"github.com/giacomoguidotto/userland/internal/managedfiles"
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/planner"
 	"github.com/giacomoguidotto/userland/internal/platform"
 	"github.com/giacomoguidotto/userland/internal/repository"
 	"github.com/giacomoguidotto/userland/internal/tui"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool) int {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
-	"github.com/giacomoguidotto/userland/plan"
 )
 
 func TestHomebrewPlansAndAppliesTypedHealthIssues(t *testing.T) {

@@ -1,4 +1,4 @@
-// Package plan models a deterministic set of proposed Userland changes.
+// Package plan models the deterministic set of proposed Userland changes.
 package plan
 
 import (

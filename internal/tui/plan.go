@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/giacomoguidotto/userland/plan"
+	"github.com/giacomoguidotto/userland/internal/plan"
 )
 
 // Plan renders the public plan model using the same stable terminal contract as

@@ -23,26 +23,30 @@ func (r Renderer) Plan(value *plan.Plan, runLog string) {
 
 	if r.mode == ModeRich {
 		rail := r.rail()
-		fmt.Fprintf(r.out, "%s\n %s  Plan\n%s\n", rail, r.sectionSymbol(), rail)
+		fmt.Fprintf(r.out, "%s\n %s%s  Plan%s\n%s\n", rail, r.cyan, r.sectionSymbol(), r.reset, rail)
 		for index, section := range sections {
 			if index > 0 {
 				fmt.Fprintln(r.out, rail)
 			}
-			fmt.Fprintf(r.out, " ├─ %s\n", section.Title)
+			fmt.Fprintf(r.out, " %s├─ %s%s%s\n", r.cyan, r.bold, section.Title, r.reset)
 			if len(section.Items) == 0 {
 				if section.Area == plan.AreaCleanup {
-					fmt.Fprintf(r.out, "%s   No stale userland-owned items\n", rail)
+					fmt.Fprintf(r.out, "%s   %sNo stale userland-owned items%s\n", rail, r.dim, r.reset)
 				} else {
-					fmt.Fprintf(r.out, "%s   No changes\n", rail)
+					fmt.Fprintf(r.out, "%s   %sNo changes%s\n", rail, r.dim, r.reset)
 				}
 				continue
 			}
 			for _, item := range section.Items {
 				target := r.redact(item.Target)
 				detail := r.redact(item.Detail)
-				fmt.Fprintf(r.out, "%s  %s  %s", rail, plan.Glyph(item), target)
+				tint := r.cyan
+				if item.Handling == plan.Blocked || item.Handling == plan.Attended {
+					tint = r.yellow
+				}
+				fmt.Fprintf(r.out, "%s  %s%s%s  %s", rail, tint, plan.Glyph(item), r.reset, target)
 				if detail != "" {
-					fmt.Fprintf(r.out, "%*s%s", width-len([]rune(target))+2, "", detail)
+					fmt.Fprintf(r.out, "%*s%s%s%s", width-len([]rune(target))+2, "", r.dim, detail, r.reset)
 				}
 				fmt.Fprintln(r.out)
 			}
@@ -51,7 +55,7 @@ func (r Renderer) Plan(value *plan.Plan, runLog string) {
 		if summary.Blocked != 0 {
 			fmt.Fprintf(r.out, " · %d blocked", summary.Blocked)
 		}
-		fmt.Fprintf(r.out, "\n%s\n%s  Details %s\n%s\n", rail, rail, r.redact(runLog), rail)
+		fmt.Fprintf(r.out, "\n%s\n%s  %sDetails %s%s\n%s\n", rail, rail, r.dim, r.redact(runLog), r.reset, rail)
 		return
 	}
 

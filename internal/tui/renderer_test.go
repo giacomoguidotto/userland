@@ -129,3 +129,18 @@ func TestConfirmationDefaultsToYes(t *testing.T) {
 		})
 	}
 }
+
+func TestPlainInteractiveConfirmationUsesPlainPrompt(t *testing.T) {
+	var output bytes.Buffer
+	renderer := New(&output, []string{
+		"USERLAND_UI_MODE=plain",
+		"NO_COLOR=1",
+		"USERLAND_HOME=/Users/example",
+	})
+
+	renderer.confirmationPrompt("Apply this plan?")
+
+	if expected := "Apply this plan? [Y/n] "; output.String() != expected {
+		t.Fatalf("plain confirmation = %q, want %q", output.String(), expected)
+	}
+}

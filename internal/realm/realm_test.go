@@ -72,6 +72,27 @@ func TestAddAdoptsExistingCheckoutAndCreatesPathScopedActivation(t *testing.T) {
 	}
 }
 
+func TestAddKeepsTheDeclaredRealmNameWhenRepositoryNameDiffers(t *testing.T) {
+	fixture := newFixture(t)
+	repository := "git@example.test:private/userland-work.git"
+	mount := filepath.Join(fixture.home, "dev", "work")
+	initRepository(t, mount, repository)
+	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
+	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.tsv"),
+		"# name\trepository\tdefault_path\tmode\nwork\t"+repository+"\t~/dev/work\toptional\n", 0o600)
+
+	result, err := New(fixture.env()).Add(context.Background(), repository, mount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "work" {
+		t.Fatalf("realm name followed repository rename: %#v", result)
+	}
+	if got := readFile(t, filepath.Join(fixture.state, "realms.tsv")); got != "work\t~/dev/work\n" {
+		t.Fatalf("attachment did not preserve logical name: %q", got)
+	}
+}
+
 func TestAddClonesAMissingRealmWithoutPullingExistingOnes(t *testing.T) {
 	fixture := newFixture(t)
 	source := filepath.Join(fixture.base, "source")

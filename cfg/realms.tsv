@@ -1,2 +1,2 @@
 # name	repository	default_path	mode
-work	git@github.com:giacomoguidotto/work.git	~/dev/work	optional
+work	git@github.com:giacomoguidotto/userland-work.git	~/dev/work	optional

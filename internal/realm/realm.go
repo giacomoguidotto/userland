@@ -64,11 +64,11 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	name, err := repositoryName(repository)
+	declaredPath := m.portablePath(absMount)
+	name, err := m.resolveName(repository, declaredPath)
 	if err != nil {
 		return Result{}, err
 	}
-	declaredPath := m.portablePath(absMount)
 	declared := declaration{Name: name, Repository: repository, Path: declaredPath, Mode: "optional"}
 	if err := m.validateDeclaration(declared); err != nil {
 		return Result{}, err
@@ -577,6 +577,19 @@ func repositoryName(repository string) (string, error) {
 		return "", errors.New("could not derive a safe realm name from repository")
 	}
 	return name, nil
+}
+
+func (m Manager) resolveName(repository, path string) (string, error) {
+	declarations, err := m.loadDeclarations()
+	if err != nil {
+		return "", err
+	}
+	for _, declared := range declarations {
+		if declared.Path == path && sameRepository(declared.Repository, repository) {
+			return declared.Name, nil
+		}
+	}
+	return repositoryName(repository)
 }
 
 func sameRepository(left, right string) bool {

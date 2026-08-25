@@ -51,6 +51,7 @@
 
 [include]
     path = ./catppuccin.gitconfig
+    path = ./userland-realms.gitconfig
 
 # url rewrites works on a first-match basis, so needs to be after the overrides
 [url "git@life-github:"]

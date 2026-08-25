@@ -99,6 +99,22 @@ assert_compatible() {
   diff -u "$oracle.status" "$port.status"
 }
 
+assert_compatible_with_realm_additions() {
+  local kind=$1
+  shift
+  local oracle=$TEST_TMPDIR/oracle
+  local port=$TEST_TMPDIR/port
+
+  capture "$USERLAND_ORACLE_ROOT/bin/userland" "$oracle" "$@"
+  capture "$USERLAND_GO_BIN" "$port" "$@"
+  python3 "$TEST_ROOT/tests/compat/strip-realm.py" "$kind" "$port.stdout" >"$port.compat.stdout"
+  python3 "$TEST_ROOT/tests/compat/strip-realm.py" "$kind" "$port.stderr" >"$port.compat.stderr"
+
+  diff -u "$oracle.stdout" "$port.compat.stdout"
+  diff -u "$oracle.stderr" "$port.compat.stderr"
+  diff -u "$oracle.status" "$port.status"
+}
+
 reset_machine_fixture() {
   rm -rf "$USERLAND_HOME" "$USERLAND_CACHE_DIR" "$USERLAND_DATA_DIR" "$USERLAND_STATE_DIR" "$USERLAND_REPO_ROOTS"
   mkdir -p "$USERLAND_HOME" "$USERLAND_CACHE_DIR" "$USERLAND_DATA_DIR" "$USERLAND_STATE_DIR/receipts" "$USERLAND_REPO_ROOTS/example/.git"
@@ -110,20 +126,27 @@ reset_machine_fixture() {
   export USERLAND_VERSION=v0.2.3
   export NO_COLOR=1
 
-  USERLAND_UI_MODE=plain assert_compatible --help
-  USERLAND_UI_MODE=rich USERLAND_UNICODE=0 assert_compatible --help
-  USERLAND_UI_MODE=rich USERLAND_UNICODE=1 assert_compatible --help
-  USERLAND_UI_MODE=plain assert_compatible unknown
+  USERLAND_UI_MODE=plain assert_compatible_with_realm_additions help --help
+  USERLAND_UI_MODE=rich USERLAND_UNICODE=0 assert_compatible_with_realm_additions help --help
+  USERLAND_UI_MODE=rich USERLAND_UNICODE=1 assert_compatible_with_realm_additions help --help
+  USERLAND_UI_MODE=plain assert_compatible_with_realm_additions help unknown
+
+  USERLAND_UI_MODE=plain "$USERLAND_GO_BIN" --help >"$TEST_TMPDIR/realm-help"
+  grep -q 'realm add <repository> <path>' "$TEST_TMPDIR/realm-help"
+  grep -q 'realm remove <name-or-path>' "$TEST_TMPDIR/realm-help"
 }
 
 @test "the port preserves completion bytes and errors" {
   export USERLAND_UI_MODE=plain
   export NO_COLOR=1
 
-  assert_compatible completions bash
-  assert_compatible completions fish
-  assert_compatible completions nushell
-  assert_compatible completions zsh
+  for shell in bash fish nushell zsh; do
+    assert_compatible_with_realm_additions completion completions "$shell"
+    "$USERLAND_GO_BIN" completions "$shell" >"$TEST_TMPDIR/realm-$shell"
+    grep -q realm "$TEST_TMPDIR/realm-$shell"
+    grep -q add "$TEST_TMPDIR/realm-$shell"
+    grep -q remove "$TEST_TMPDIR/realm-$shell"
+  done
   assert_compatible completions
   assert_compatible completions powershell
 }

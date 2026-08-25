@@ -61,6 +61,7 @@ type adapter struct {
 	action      plan.Action
 	attention   plan.Handling
 	run         func(*Context, Action) int
+	enabled     func(platform.Environment) bool
 	directApply bool
 }
 
@@ -69,6 +70,7 @@ var registry = []adapter{
 	{name: "homebrew-apps", label: "Homebrew applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: homebrew},
 	{name: "android-sdk", label: "Android development tools", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: androidSDK, directApply: true},
 	{name: "personal-repos", label: "Personal repositories", area: plan.AreaFS, action: "clone", attention: plan.Blocked, run: personalRepositories},
+	{name: "realms", label: "Realms", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: realms, enabled: realmsEnabled},
 	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions},
 	{name: "file-handlers", label: "File handlers", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: fileHandlers},
 	{name: "raycast", label: "Raycast configuration", area: plan.AreaApps, action: "configure", attention: plan.Blocked, run: raycast, directApply: true},
@@ -101,6 +103,9 @@ func RunTasks(ctx context.Context, env platform.Environment, action Action, stdi
 func runRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
 	result := Result{}
 	for _, item := range registry {
+		if item.enabled != nil && !item.enabled(env) {
+			continue
+		}
 		if begin != nil {
 			begin(item.label)
 		}

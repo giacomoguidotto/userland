@@ -24,6 +24,17 @@ def capture(command: str, environment: dict[str, str]) -> tuple[int, bytes]:
     return os.waitstatus_to_exitcode(status), bytes(output)
 
 
+def without_realm_help(data: bytes) -> bytes:
+    omitted = (
+        b"realm add <repository> <path>",
+        b"Attach optional private configuration",
+        b"realm remove <name-or-path>",
+        b"Detach configuration without deleting its checkout",
+    )
+    result = b"".join(line for line in data.splitlines(keepends=True) if not any(value in line for value in omitted))
+    return result.replace(b"\r\n\r\n\r\n   completions", b"\r\n\r\n   completions")
+
+
 def main() -> None:
     oracle, port = sys.argv[1:3]
     base = os.environ.copy()
@@ -38,7 +49,8 @@ def main() -> None:
     for additions in cases:
         environment = base | additions
         expected = capture(oracle, environment)
-        actual = capture(port, environment)
+        actual_status, actual_output = capture(port, environment)
+        actual = actual_status, without_realm_help(actual_output)
         if actual != expected:
             print(f"PTY mismatch for {additions}", file=sys.stderr)
             print(f"expected status: {expected[0]}, actual status: {actual[0]}", file=sys.stderr)

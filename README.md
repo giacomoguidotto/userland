@@ -28,7 +28,30 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | `userland plan` | Show what would change without changing the machine. |
 | `userland sync` | Apply declared state, guide attended steps, then run the doctor. Safe to rerun after an interruption. |
 | `userland doctor` | Report drift and machine health without changing anything. Use `--json` for structured output. |
+| `userland realm add <repository> <path>` | Attach optional private configuration to a directory tree on this Mac. |
+| `userland realm remove <name-or-path>` | Detach a realm without deleting its checkout or portable declaration. |
 | `userland completions <shell>` | Print completions for Bash, Fish, Nushell, or Zsh. Zsh is wired in automatically by sync. |
+
+## Realms
+
+A realm applies a private operational identity below one directory. The
+portable, optional catalog lives in `cfg/realms.tsv`; the attachment map for
+the current Mac lives in Userland state and is not committed. A new Mac can
+therefore discover a realm without cloning or activating it until `realm add`
+is run explicitly.
+
+`realm add` clones a missing checkout or adopts an existing checkout whose raw
+origin matches the declaration. It never pulls, resets, switches, stages, or
+cleans an existing repository. Userland then creates an excluded `.envrc` that
+loads the realm's `mise.toml` once through the existing direnv hook. An optional
+`.userland/envrc` can provide additional private exports. If the realm contains
+`.gitconfig`, Userland generates a native Git `includeIf` for repositories below
+the mounted path.
+
+`realm remove` revokes direnv authorization and removes only Userland-generated
+activation. The checkout, private files, and optional catalog entry remain.
+Passwords, tokens, and private keys should still live in a credential store,
+not merely in a private Git repository.
 
 ## Repository map
 
@@ -36,7 +59,7 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | --- | --- |
 | `.mise/` | Fork-owned development tools, lockfile, lint, and test tasks. |
 | `cmd/` | The thin Go command entry point. |
-| `cfg/` | Personal machine state, including its isolated Mise declaration and lockfile, dotfiles, applications, repositories, and agent assets. |
+| `cfg/` | Personal machine state, including its isolated Mise declaration and lockfile, dotfiles, applications, repositories, optional realm catalog, and agent assets. |
 | `completions/` | Static shell completion definitions. |
 | `internal/` | Go orchestration, typed planning, adapters, recovery transactions, health checks, and terminal rendering. |
 | `release/` | Checksum-verified release and bootstrap delivery. |
@@ -54,7 +77,7 @@ the Go implementation.
 
 ## Ownership
 
-Userland owns only the personal state declared here. Corporate software, work accounts, credentials, browser profiles, histories, caches, application databases, and machine-local authentication stay out.
+Userland owns only the personal state declared here. Private realm contents, credentials, browser profiles, histories, caches, application databases, and machine-local authentication stay out of the public repository.
 
 Sync never stashes, resets, cleans, or edits another repository. It does not prune unmanaged packages, applications, files, Dock items, login items, or browser extensions. Dotfile conflicts stop the run; supported legacy migrations preserve undeclared children.
 

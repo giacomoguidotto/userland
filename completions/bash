@@ -4,10 +4,15 @@ _userland_completion() {
   command=${COMP_WORDS[1]:-}
   choices=
   if [ "$COMP_CWORD" -eq 1 ]; then
-    choices='plan sync doctor completions help'
+    choices='plan sync doctor realm completions help'
   else
     case "$command" in
       doctor) choices='--json' ;;
+      realm)
+        if [ "$COMP_CWORD" -eq 2 ]; then
+          choices='add remove'
+        fi
+        ;;
       completions) choices='bash fish nushell zsh' ;;
     esac
   fi

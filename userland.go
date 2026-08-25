@@ -6,9 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/giacomoguidotto/userland/internal/doctor"
 	"github.com/giacomoguidotto/userland/internal/planner"
+	"github.com/giacomoguidotto/userland/internal/platform"
+	"github.com/giacomoguidotto/userland/internal/realm"
 	usersync "github.com/giacomoguidotto/userland/internal/sync"
 	"github.com/giacomoguidotto/userland/internal/tui"
 	"golang.org/x/term"
@@ -70,12 +73,68 @@ func Run(ctx context.Context, invocation Invocation) ExitCode {
 		return ExitSuccess
 	case "completions":
 		return runCompletions(invocation)
+	case "realm":
+		return runRealm(ctx, invocation)
 	default:
 		renderer = tui.New(invocation.Stderr, invocation.Environ)
 		renderer.Usage()
 		renderer.Status(tui.StatusError, "unknown command: "+command)
 		return ExitUsage
 	}
+}
+
+func runRealm(ctx context.Context, invocation Invocation) ExitCode {
+	if len(invocation.Args) < 2 {
+		return usageError(invocation, "realm expects add or remove")
+	}
+	manager := realm.New(platform.NewEnvironment(invocation.Environ))
+	render := tui.New(invocation.Stdout, invocation.Environ)
+	switch invocation.Args[1] {
+	case "add":
+		if len(invocation.Args) != 4 {
+			return usageError(invocation, "realm add expects a repository and mount path")
+		}
+		render.Command("realm add", "Attach private configuration to a directory tree.")
+		result, err := manager.Add(ctx, invocation.Args[2], invocation.Args[3])
+		if err != nil {
+			tui.New(invocation.Stderr, invocation.Environ).Status(tui.StatusError, err.Error())
+			return ExitFailure
+		}
+		if result.Changed {
+			render.Status(tui.StatusOK, result.Name+" realm attached at "+portableHome(result.Mount, invocation.Environ))
+		} else {
+			render.Status(tui.StatusOK, result.Name+" realm is already attached at "+portableHome(result.Mount, invocation.Environ))
+		}
+		return ExitSuccess
+	case "remove":
+		if len(invocation.Args) != 3 {
+			return usageError(invocation, "realm remove expects a name or mount path")
+		}
+		render.Command("realm remove", "Detach private configuration without deleting its checkout.")
+		result, err := manager.Remove(ctx, invocation.Args[2])
+		if err != nil {
+			tui.New(invocation.Stderr, invocation.Environ).Status(tui.StatusError, err.Error())
+			return ExitFailure
+		}
+		render.Status(tui.StatusOK, result.Name+" realm detached; checkout preserved at "+portableHome(result.Mount, invocation.Environ))
+		return ExitSuccess
+	default:
+		return usageError(invocation, "realm expects add or remove")
+	}
+}
+
+func portableHome(path string, environ []string) string {
+	home := environValue(environ, "USERLAND_HOME")
+	if home == "" {
+		home = environValue(environ, "HOME")
+	}
+	if path == home {
+		return "~"
+	}
+	if prefix := home + string(os.PathSeparator); home != "" && strings.HasPrefix(path, prefix) {
+		return "~/" + strings.TrimPrefix(path, prefix)
+	}
+	return path
 }
 
 func runDoctorJSON(ctx context.Context, invocation Invocation) ExitCode {

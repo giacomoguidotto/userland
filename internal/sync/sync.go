@@ -272,7 +272,9 @@ func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer
 	} else {
 		render.Status(tui.StatusInfo, label)
 	}
-	result := env.RunMise(ctx, nil, args...)
+	progress := newPackageProgress(render, args)
+	result := env.RunMiseObserved(ctx, nil, progress, args...)
+	progress.Flush()
 	if render.Rich() {
 		render.ClearTask()
 	} else if len(result.Output) != 0 {
@@ -290,6 +292,66 @@ func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer
 	}
 	render.Status(tui.StatusInfo, "Log: "+runLog)
 	return result.Code
+}
+
+type packageProgress struct {
+	render   tui.Renderer
+	position map[string]int
+	total    int
+	pending  string
+}
+
+func newPackageProgress(render tui.Renderer, args []string) *packageProgress {
+	positions := make(map[string]int)
+	for _, argument := range args {
+		name, ok := strings.CutPrefix(argument, "brew:")
+		if !ok || name == "" {
+			continue
+		}
+		if _, exists := positions[name]; !exists {
+			positions[name] = len(positions) + 1
+		}
+	}
+	return &packageProgress{render: render, position: positions, total: len(positions)}
+}
+
+func (p *packageProgress) Write(value []byte) (int, error) {
+	p.pending += strings.ReplaceAll(string(value), "\r", "\n")
+	for {
+		line, rest, found := strings.Cut(p.pending, "\n")
+		if !found {
+			break
+		}
+		p.observe(line)
+		p.pending = rest
+	}
+	return len(value), nil
+}
+
+func (p *packageProgress) Flush() {
+	if p.pending != "" {
+		p.observe(p.pending)
+		p.pending = ""
+	}
+}
+
+func (p *packageProgress) observe(line string) {
+	if p.total == 0 {
+		return
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 2 || fields[0] != "mise" {
+		return
+	}
+	name, ok := strings.CutPrefix(fields[1], "brew:")
+	if !ok {
+		return
+	}
+	position, declared := p.position[name]
+	if !declared {
+		return
+	}
+	p.render.UpdateTask(fmt.Sprintf("%d/%d · %s", position, p.total, name))
 }
 
 func nativeTask(render tui.Renderer, label string, operation func() int) int {

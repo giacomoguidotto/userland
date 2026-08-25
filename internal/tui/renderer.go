@@ -55,6 +55,10 @@ type taskAnimation struct {
 	writeMu sync.Mutex
 	stop    chan struct{}
 	done    chan struct{}
+	label   string
+	detail  string
+	started time.Time
+	frame   int
 }
 
 func New(out io.Writer, environ []string) Renderer {
@@ -294,19 +298,23 @@ func (r Renderer) BeginTask(label string) {
 	r.task.mu.Lock()
 	r.task.stop = stop
 	r.task.done = done
+	r.task.label = label
+	r.task.detail = ""
+	r.task.started = time.Now()
+	r.task.frame = 0
 	r.task.mu.Unlock()
-	started := time.Now()
-	r.taskFrame(label, 0, started)
+	r.taskFrame()
 	go func() {
 		defer close(done)
 		ticker := time.NewTicker(120 * time.Millisecond)
 		defer ticker.Stop()
-		frame := 1
 		for {
 			select {
 			case <-ticker.C:
-				r.taskFrame(label, frame, started)
-				frame++
+				r.task.mu.Lock()
+				r.task.frame++
+				r.task.mu.Unlock()
+				r.taskFrame()
 			case <-stop:
 				return
 			}
@@ -332,11 +340,32 @@ func (r Renderer) ClearTask() {
 	r.task.writeMu.Unlock()
 }
 
-func (r Renderer) taskFrame(label string, frame int, started time.Time) {
+// UpdateTask replaces the live detail shown after the elapsed duration.
+func (r Renderer) UpdateTask(detail string) {
+	if r.mode != ModeRich || r.task == nil {
+		return
+	}
+	r.task.mu.Lock()
+	active := r.task.stop != nil
+	r.task.detail = detail
+	r.task.mu.Unlock()
+	if active {
+		r.taskFrame()
+	}
+}
+
+func (r Renderer) taskFrame() {
 	glyphs := []string{"-", "\\", "|", "/"}
 	if r.unicode {
 		glyphs = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	}
+	r.task.mu.Lock()
+	if r.task.stop == nil {
+		r.task.mu.Unlock()
+		return
+	}
+	label, detail, started, frame := r.task.label, r.task.detail, r.task.started, r.task.frame
+	r.task.mu.Unlock()
 	seconds := int(time.Since(started).Seconds())
 	duration := "<1s"
 	if seconds >= 3600 {
@@ -346,8 +375,11 @@ func (r Renderer) taskFrame(label string, frame int, started time.Time) {
 	} else if seconds > 0 {
 		duration = fmt.Sprintf("%ds", seconds)
 	}
+	if detail != "" {
+		duration += " · " + detail
+	}
 	r.task.writeMu.Lock()
-	fmt.Fprintf(r.out, "\r\x1b[2K %s%s%s  %s… %s%s%s", r.cyan, glyphs[frame%len(glyphs)], r.reset, r.redact(label), r.dim, duration, r.reset)
+	fmt.Fprintf(r.out, "\r\x1b[2K %s%s%s  %s… %s%s%s", r.cyan, glyphs[frame%len(glyphs)], r.reset, r.redact(label), r.dim, r.redact(duration), r.reset)
 	r.task.writeMu.Unlock()
 }
 

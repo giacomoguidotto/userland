@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Environment struct {
@@ -129,6 +130,16 @@ type Result struct {
 }
 
 func Run(ctx context.Context, environ []string, stdin io.Reader, name string, args ...string) Result {
+	return run(ctx, environ, stdin, nil, name, args...)
+}
+
+// RunObserved captures combined process output while forwarding each chunk to
+// observer. The observer is called serially and may be nil.
+func RunObserved(ctx context.Context, environ []string, stdin io.Reader, observer io.Writer, name string, args ...string) Result {
+	return run(ctx, environ, stdin, observer, name, args...)
+}
+
+func run(ctx context.Context, environ []string, stdin io.Reader, observer io.Writer, name string, args ...string) Result {
 	if !strings.ContainsRune(name, os.PathSeparator) {
 		if resolved, ok := LookPath(environ, name); ok {
 			name = resolved
@@ -137,7 +148,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, name string, ar
 	command := exec.CommandContext(ctx, name, args...)
 	command.Env = environ
 	command.Stdin = stdin
-	var output bytes.Buffer
+	output := observedOutput{observer: observer}
 	command.Stdout, command.Stderr = &output, &output
 	err := command.Run()
 	if err == nil {
@@ -154,8 +165,38 @@ func RunInvocation(ctx context.Context, stdin io.Reader, invocation Invocation) 
 	return Run(ctx, invocation.Environ, stdin, invocation.Name, invocation.Args...)
 }
 
+func RunInvocationObserved(ctx context.Context, stdin io.Reader, observer io.Writer, invocation Invocation) Result {
+	return RunObserved(ctx, invocation.Environ, stdin, observer, invocation.Name, invocation.Args...)
+}
+
 func (e Environment) RunMise(ctx context.Context, stdin io.Reader, args ...string) Result {
 	return RunInvocation(ctx, stdin, e.MiseInvocation(args...))
+}
+
+func (e Environment) RunMiseObserved(ctx context.Context, stdin io.Reader, observer io.Writer, args ...string) Result {
+	return RunInvocationObserved(ctx, stdin, observer, e.MiseInvocation(args...))
+}
+
+type observedOutput struct {
+	mu       sync.Mutex
+	buffer   bytes.Buffer
+	observer io.Writer
+}
+
+func (o *observedOutput) Write(value []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	written, err := o.buffer.Write(value)
+	if err == nil && o.observer != nil {
+		_, err = o.observer.Write(value)
+	}
+	return written, err
+}
+
+func (o *observedOutput) Bytes() []byte {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]byte(nil), o.buffer.Bytes()...)
 }
 
 func LookPath(environ []string, name string) (string, bool) {

@@ -187,11 +187,10 @@ func Human(ctx context.Context, environ []string, out io.Writer, embedded bool) 
 			code = 1
 		}
 	}
-	render.Section("Toolchain")
+	render.Section("System")
 	if !miseTask(ctx, machine, render, "Toolchain", "doctor") {
 		code = 1
 	}
-	render.Section("Machine state")
 	if !miseTask(ctx, machine, render, "Machine state", "bootstrap", "status", "--missing") {
 		code = 1
 	}

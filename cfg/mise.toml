@@ -76,6 +76,7 @@ python = "3.14.7"
 "~/.zshrc" = { source = "home/zshrc", mode = "symlink" }
 "~/.zshenv" = { source = "home/zshenv", mode = "symlink" }
 "~/.hushlogin" = { source = "home/hushlogin", mode = "symlink" }
+"~/.docker/cli-plugins" = { source = "docker/cli-plugins", mode = "symlink-each" }
 "~/.ssh/config" = { source = "home/ssh/config", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.claude/skills" = { source = "agents/skills", mode = "symlink-each" }

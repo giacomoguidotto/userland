@@ -56,12 +56,15 @@ if [ -f .gitmodules ]; then
     done
 fi
 
-CGO_ENABLED=0 go -C "$release_tree" build \
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go -C "$release_tree" build \
   -trimpath \
   -buildvcs=false \
   -ldflags='-s -w' \
   -o bin/userland \
   ./cmd/userland
+binary_header=$(od -An -tx1 -N8 "$release_tree/bin/userland" | tr -d ' \n')
+[ "$binary_header" = cffaedfe0c000001 ] ||
+  release_die "release binary is not a Darwin arm64 Mach-O executable: $binary_header"
 rm -rf \
   "$release_tree/cmd" \
   "$release_tree/internal" \

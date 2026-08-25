@@ -89,7 +89,7 @@ func toolchain(c *Context, action Action) int {
 		c.Log(Changed, "reinstalling affected pinned tool: "+probe.id)
 		invocation := c.Env.MiseInvocation("install", "--force", "--yes", probe.id)
 		invocation = invocation.WithEnvironment("MISE_QUIET", "true")
-		if result := platform.RunInvocation(c.Context, nil, invocation); result.Code != 0 {
+		if result := runInvocation(c, nil, invocation); result.Code != 0 {
 			return result.Code
 		}
 		if !probePinned(c, probe) {
@@ -171,11 +171,20 @@ func toolProblems(c *Context, probes []toolProbe, complete bool) []toolProblem {
 	if !complete {
 		return append(result, toolProblem{"probe-manifest", "review", "tool-probes"})
 	}
-	for _, probe := range probes {
+	problems := make([]*toolProblem, len(probes))
+	parallelReadOnly(c, len(probes), func(index int) {
+		probe := probes[index]
 		if !probePinned(c, probe) {
-			result = append(result, toolProblem{probe.id, "reinstall", probe.command})
+			problem := toolProblem{probe.id, "reinstall", probe.command}
+			problems[index] = &problem
 		} else if globalReady && !probeGlobal(c, probe) {
-			result = append(result, toolProblem{probe.id, "activate", probe.command})
+			problem := toolProblem{probe.id, "activate", probe.command}
+			problems[index] = &problem
+		}
+	})
+	for _, problem := range problems {
+		if problem != nil {
+			result = append(result, *problem)
 		}
 	}
 	return result
@@ -186,8 +195,15 @@ func toolPublicMiseCurrent(c *Context) bool {
 	if !executable(public) || !executable(c.Env.Mise) {
 		return false
 	}
-	pinned := run(c, c.Env.Mise, "--version")
-	current := run(c, public, "--version")
+	results := make([]platform.Result, 2)
+	parallelReadOnly(c, len(results), func(index int) {
+		if index == 0 {
+			results[index] = run(c, c.Env.Mise, "--version")
+		} else {
+			results[index] = run(c, public, "--version")
+		}
+	})
+	pinned, current := results[0], results[1]
 	return pinned.Code == 0 && current.Code == 0 && safeVersion(pinned.Output) != "" && safeVersion(pinned.Output) == safeVersion(current.Output)
 }
 
@@ -195,7 +211,7 @@ func probePinned(c *Context, probe toolProbe) bool {
 	args := append([]string{"exec", "--", probe.command}, probe.args...)
 	invocation := c.Env.MiseInvocation(args...)
 	invocation = invocation.WithEnvironment("MISE_QUIET", "true")
-	return platform.RunInvocation(c.Context, nil, invocation).Code == 0
+	return runInvocation(c, nil, invocation).Code == 0
 }
 
 func probeGlobal(c *Context, probe toolProbe) bool {

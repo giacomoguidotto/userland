@@ -24,9 +24,6 @@ func homebrew(c *Context, action Action) int {
 		return 0
 	}
 	brew, present := brewCommand(c)
-	if present {
-		present = brewRun(c, brew, "--version").Code == 0
-	}
 	declarations, err := brewDeclarations(filepath.Join(c.Env.Root, "cfg", "brewfile"))
 	if err != nil {
 		return 1
@@ -151,11 +148,23 @@ func brewDeclarations(path string) ([][2]string, error) {
 }
 
 func collectBrewIssues(c *Context, brew string, declarations [][2]string) []brewIssue {
-	var issues []brewIssue
 	brewfile := filepath.Join(c.Env.Root, "cfg", "brewfile")
-	result := brewRun(c, brew, "bundle", "check", "--file", brewfile, "--no-upgrade", "--verbose")
-	if result.Code != 0 {
-		for _, line := range strings.Split(string(result.Output), "\n") {
+	var bundle, outdated platform.Result
+	var tapIssues []brewIssue
+	parallelReadOnly(c, 3, func(index int) {
+		switch index {
+		case 0:
+			bundle = brewRun(c, brew, "bundle", "check", "--file", brewfile, "--no-upgrade", "--verbose")
+		case 1:
+			outdated = brewRun(c, brew, "outdated", "--json=v2")
+		case 2:
+			tapIssues = collectBrewTapIssues(c, brew, declarations)
+		}
+	})
+
+	var issues []brewIssue
+	if bundle.Code != 0 {
+		for _, line := range strings.Split(string(bundle.Output), "\n") {
 			line = strings.TrimPrefix(strings.TrimPrefix(line, "→ "), "-> ")
 			suffix := " needs to be installed."
 			if strings.HasSuffix(line, " needs to be tapped.") {
@@ -176,9 +185,8 @@ func collectBrewIssues(c *Context, brew string, declarations [][2]string) []brew
 			issues = append(issues, brewIssue{state, kind, name})
 		}
 	}
-	issues = append(issues, brewOutdated(c, brew, "brew", "--formula")...)
-	issues = append(issues, brewOutdated(c, brew, "cask", "--cask")...)
-	issues = append(issues, collectBrewTapIssues(c, brew, declarations)...)
+	issues = append(issues, brewOutdated(outdated.Output, declarations)...)
+	issues = append(issues, tapIssues...)
 	return issues
 }
 
@@ -210,39 +218,59 @@ func brewCaskAdoptable(c *Context, brew, name string) bool {
 	return false
 }
 
-func brewOutdated(c *Context, brew, kind, flag string) []brewIssue {
-	result := brewRun(c, brew, "outdated", flag, "--json=v2")
-	if result.Code != 0 || len(result.Output) == 0 {
+func brewOutdated(output []byte, declarations [][2]string) []brewIssue {
+	if len(output) == 0 {
 		return nil
 	}
 	var document struct {
 		Formulae []struct{ Name, FullName string } `json:"formulae"`
 		Casks    []struct{ Name, FullName string } `json:"casks"`
 	}
-	if json.Unmarshal(result.Output, &document) != nil {
+	if json.Unmarshal(output, &document) != nil {
 		return nil
 	}
-	var resultIssues []brewIssue
-	items := document.Formulae
-	if kind == "cask" {
-		items = document.Casks
+	owned := map[string]map[string]bool{"brew": {}, "cask": {}}
+	for _, declaration := range declarations {
+		if names := owned[declaration[0]]; names != nil {
+			names[declaration[1]] = true
+		}
 	}
-	for _, item := range items {
+	var resultIssues []brewIssue
+	for _, item := range document.Formulae {
 		name := item.FullName
 		if name == "" {
 			name = item.Name
 		}
-		resultIssues = append(resultIssues, brewIssue{"outdated", kind, name})
+		if owned["brew"][name] || owned["brew"][item.Name] {
+			resultIssues = append(resultIssues, brewIssue{"outdated", "brew", name})
+		}
+	}
+	for _, item := range document.Casks {
+		name := item.FullName
+		if name == "" {
+			name = item.Name
+		}
+		if owned["cask"][name] || owned["cask"][item.Name] {
+			resultIssues = append(resultIssues, brewIssue{"outdated", "cask", name})
+		}
 	}
 	return resultIssues
 }
 
 func collectBrewTapIssues(c *Context, brew string, declarations [][2]string) []brewIssue {
-	trust := brewRun(c, brew, "trust", "--json=v1")
-	formulae := brewRun(c, brew, "list", "--formula", "--full-name")
-	casks := brewRun(c, brew, "list", "--cask", "--full-name")
-	taps := brewRun(c, brew, "tap")
-	if trust.Code != 0 || formulae.Code != 0 || casks.Code != 0 || taps.Code != 0 {
+	results := make([]platform.Result, 3)
+	parallelReadOnly(c, len(results), func(index int) {
+		switch index {
+		case 0:
+			results[index] = brewRun(c, brew, "trust", "--json=v1")
+		case 1:
+			results[index] = brewRun(c, brew, "list", "--full-name")
+		case 2:
+			results[index] = brewRun(c, brew, "tap")
+		}
+	})
+	trust, installed, taps := results[0], results[1], results[2]
+	if trust.Code != 0 || installed.Code != 0 || taps.Code != 0 {
 		return nil
 	}
 	var trusted struct {
@@ -269,9 +297,8 @@ func collectBrewTapIssues(c *Context, brew string, declarations [][2]string) []b
 			issues = append(issues, brewIssue{"untrusted-declared", "Tap", name})
 		}
 	}
-	installed := string(formulae.Output) + "\n" + string(casks.Output)
 	for _, name := range strings.Fields(string(taps.Output)) {
-		if !declared[name] && !trustedSet[name] && !strings.Contains(installed, name+"/") {
+		if !declared[name] && !trustedSet[name] && !strings.Contains(string(installed.Output), name+"/") {
 			issues = append(issues, brewIssue{"untrusted-unused", "Tap", name})
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/plan"
@@ -47,6 +48,7 @@ type Context struct {
 	Events   []Event
 	Plan     *plan.Plan
 	Terminal bool
+	commands chan struct{}
 }
 
 func (c *Context) Log(level Level, message string) {
@@ -100,6 +102,13 @@ func RunTasks(ctx context.Context, env platform.Environment, action Action, stdi
 }
 
 func runRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+	if action != Apply {
+		return runReadOnlyRegistry(ctx, env, action, stdin, terminal, value, begin, observer)
+	}
+	return runSerialRegistry(ctx, env, action, stdin, terminal, value, begin, observer)
+}
+
+func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
 	result := Result{}
 	for _, item := range registry {
 		if item.enabled != nil && !item.enabled(env) {
@@ -128,6 +137,83 @@ func runRegistry(ctx context.Context, env platform.Environment, action Action, s
 			}
 		}
 	}
+	return finishResult(result, action)
+}
+
+type adapterExecution struct {
+	item       adapter
+	invocation *Context
+	code       int
+}
+
+func runReadOnlyRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+	items := make([]adapter, 0, len(registry))
+	for _, item := range registry {
+		if item.enabled == nil || item.enabled(env) {
+			items = append(items, item)
+		}
+	}
+	if len(items) == 0 {
+		return Result{}
+	}
+
+	const parallelism = 4
+	commands := make(chan struct{}, parallelism)
+	executions := make([]adapterExecution, len(items))
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	workerCount := min(parallelism, len(items))
+	for range workerCount {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				item := items[index]
+				var localPlan *plan.Plan
+				if action == Plan && value != nil {
+					localPlan = plan.New()
+				}
+				invocation := &Context{
+					Context: ctx, Env: env, Stdin: stdin, Plan: localPlan,
+					Terminal: terminal, commands: commands,
+				}
+				executions[index] = adapterExecution{item: item, invocation: invocation, code: item.run(invocation, action)}
+			}
+		}()
+	}
+	for index := range items {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
+
+	result := Result{}
+	for _, execution := range executions {
+		if begin != nil {
+			begin(execution.item.label)
+		}
+		if observer != nil {
+			observer(execution.item.label, execution.invocation.Events, execution.code)
+		}
+		if action == Plan {
+			if execution.invocation.Plan != nil {
+				for _, item := range execution.invocation.Plan.Items() {
+					_ = value.Add(item)
+				}
+			}
+			capturePlan(value, execution.item, execution.invocation.Events)
+		}
+		result.Events = append(result.Events, execution.invocation.Events...)
+		if execution.code == 2 {
+			result.Attention = true
+		} else if execution.code != 0 {
+			result.Code = execution.code
+		}
+	}
+	return finishResult(result, action)
+}
+
+func finishResult(result Result, action Action) Result {
 	if result.Code != 0 {
 		return result
 	}
@@ -175,15 +261,58 @@ func capturePlan(value *plan.Plan, item adapter, events []Event) {
 }
 
 func run(c *Context, name string, args ...string) platform.Result {
-	return platform.Run(c.Context, c.Env.List, nil, name, args...)
+	return limitedRun(c, func() platform.Result {
+		return platform.Run(c.Context, c.Env.List, nil, name, args...)
+	})
 }
 
 func runMise(c *Context, args ...string) platform.Result {
-	return c.Env.RunMise(c.Context, nil, args...)
+	return limitedRun(c, func() platform.Result {
+		return c.Env.RunMise(c.Context, nil, args...)
+	})
 }
 
 func runWith(c *Context, environ []string, stdin io.Reader, name string, args ...string) platform.Result {
-	return platform.Run(c.Context, environ, stdin, name, args...)
+	return limitedRun(c, func() platform.Result {
+		return platform.Run(c.Context, environ, stdin, name, args...)
+	})
+}
+
+func runInvocation(c *Context, stdin io.Reader, invocation platform.Invocation) platform.Result {
+	return limitedRun(c, func() platform.Result {
+		return platform.RunInvocation(c.Context, stdin, invocation)
+	})
+}
+
+func limitedRun(c *Context, operation func() platform.Result) platform.Result {
+	if c.commands == nil {
+		return operation()
+	}
+	select {
+	case c.commands <- struct{}{}:
+		defer func() { <-c.commands }()
+		return operation()
+	case <-c.Context.Done():
+		return platform.Result{Code: 1, Err: c.Context.Err()}
+	}
+}
+
+func parallelReadOnly(c *Context, count int, operation func(int)) {
+	if c.commands == nil {
+		for index := range count {
+			operation(index)
+		}
+		return
+	}
+	var group sync.WaitGroup
+	for index := range count {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			operation(index)
+		}()
+	}
+	group.Wait()
 }
 
 func executable(path string) bool {

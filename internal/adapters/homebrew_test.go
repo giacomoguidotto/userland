@@ -20,7 +20,7 @@ func TestHomebrewPlansAndAppliesTypedHealthIssues(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	brewfile := "tap \"declared/tap\"\nbrew \"ggshield\"\ncask \"raycast\"\n"
+	brewfile := "tap \"declared/tap\"\nbrew \"ggshield\"\ncask \"raycast\"\ncask \"zed\"\n"
 	if err := os.WriteFile(filepath.Join(root, "cfg", "brewfile"), []byte(brewfile), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -29,13 +29,11 @@ func TestHomebrewPlansAndAppliesTypedHealthIssues(t *testing.T) {
 	script := fmt.Sprintf(`#!/bin/sh
 printf '%%s\n' "$*" >>%q
 case "$*" in
-  --version) echo 'Homebrew 5.0.0' ;;
   *'bundle check'*--verbose*) echo '→ Cask raycast needs to be installed.'; exit 1 ;;
   'info --json=v2 --cask raycast') echo '{"casks":[{"artifacts":[{"app":["Raycast.app"],"target":"%s/Applications/Raycast.app"}]}]}' ;;
-  'outdated --formula --json=v2') echo '{"formulae":[{"name":"ggshield","full_name":null}]}' ;;
-  'outdated --cask --json=v2') echo '{"casks":[]}' ;;
+  'outdated --json=v2') echo '{"formulae":[{"name":"ggshield","full_name":null},{"name":"bat","full_name":null}],"casks":[{"name":"zed","full_name":null},{"name":"unmanaged","full_name":null}]}' ;;
   'trust --json=v1') echo '{"taps":["declared/tap"]}' ;;
-  'list --formula --full-name'|'list --cask --full-name') : ;;
+  'list --full-name') : ;;
   tap) echo 'declared/tap'; echo 'unused/tap' ;;
 esac
 `, calls, home)
@@ -54,12 +52,18 @@ esac
 		t.Fatalf("plan returned %d", code)
 	}
 	items := value.Items()
-	if len(items) != 3 {
-		t.Fatalf("expected adopt, upgrade, and cleanup, got %#v", items)
+	if len(items) != 4 {
+		t.Fatalf("expected adopt, two owned upgrades, and cleanup, got %#v", items)
 	}
 	assertPlanItem(t, items, "raycast", "adopt the existing application into Homebrew ownership")
 	assertPlanItem(t, items, "ggshield", "upgrade the outdated installed Homebrew formula")
+	assertPlanItem(t, items, "zed", "upgrade the outdated installed Homebrew cask")
 	assertPlanItem(t, items, "unused/tap", "untap after proving no installed formula or cask depends on it")
+	for _, item := range items {
+		if item.Target == "bat" || item.Target == "unmanaged" {
+			t.Fatalf("Homebrew planned an upgrade owned outside the Brewfile: %#v", item)
+		}
+	}
 
 	applyContext := &Context{Context: context.Background(), Env: env}
 	if code := homebrew(applyContext, Apply); code != 0 {
@@ -69,9 +73,14 @@ esac
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"bundle --file " + filepath.Join(root, "cfg", "brewfile") + " --no-upgrade", "upgrade ggshield", "untap unused/tap"} {
+	for _, expected := range []string{"bundle --file " + filepath.Join(root, "cfg", "brewfile") + " --no-upgrade", "upgrade ggshield", "upgrade --cask zed", "untap unused/tap"} {
 		if !containsLine(string(trace), expected) {
 			t.Fatalf("trace omitted %q:\n%s", expected, trace)
+		}
+	}
+	for _, removed := range []string{"--version", "outdated --formula --json=v2", "outdated --cask --json=v2", "list --formula --full-name", "list --cask --full-name"} {
+		if containsLine(string(trace), removed) {
+			t.Fatalf("trace retained redundant probe %q:\n%s", removed, trace)
 		}
 	}
 }

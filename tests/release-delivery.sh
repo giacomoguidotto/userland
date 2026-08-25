@@ -83,6 +83,16 @@ grep -Fq 'max-age=0, must-revalidate' "$work/promoted-site/_headers" || fail "ro
 grep -Fq 'max-age=31536000, immutable' "$work/promoted-site/_headers" || fail "version cache policy missing"
 
 python3 "$test_dir/release-archive.py"
+
+target_output="$work/target-output"
+GOOS=linux GOARCH=amd64 \
+  "$release_dir/build-release.sh" v9.9.9 "$(git -C "$repository_root" rev-parse HEAD)" "$target_output"
+mkdir -p "$work/target-archive"
+tar -xzf "$target_output/userland-v9.9.9.tar.gz" -C "$work/target-archive"
+target_header=$(od -An -tx1 -N8 "$work/target-archive/userland-9.9.9/bin/userland" | tr -d ' \n')
+[ "$target_header" = cffaedfe0c000001 ] ||
+  fail "release binary is not a Darwin arm64 Mach-O executable: $target_header"
+
 "$test_dir/release-bootstrap.sh"
 
 printf 'release delivery tests passed\n'

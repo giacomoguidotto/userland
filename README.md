@@ -34,8 +34,9 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 
 | Folder | Contents |
 | --- | --- |
+| `.mise/` | Fork-owned development tools, lockfile, lint, and test tasks. |
 | `cmd/` | The thin Go command entry point. |
-| `cfg/` | Personal machine state, including dotfiles, applications, repositories, and agent assets. |
+| `cfg/` | Personal machine state, including its isolated Mise declaration and lockfile, dotfiles, applications, repositories, and agent assets. |
 | `completions/` | Static shell completion definitions. |
 | `internal/` | Go orchestration, adapters, recovery transactions, health checks, and terminal rendering. |
 | `plan/` | The public typed planning library. |
@@ -45,6 +46,9 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 The release command is a statically linked Go binary. Its public interface is
 `userland.Run`, while machine effects stay behind internal collectors. Personal
 declarations never live in the library and are owned only by `cfg/`.
+Userland invokes Mise only through `cfg/mise.toml`; parent development tooling
+cannot leak into machine synchronization. A fork can replace `cfg/` without
+editing the library or its development environment.
 The compatibility suite materializes v0.2.3 from Git as a shell oracle, then
 compares terminal bytes, exit status, command traces, and sync behavior against
 the Go implementation.

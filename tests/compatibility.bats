@@ -31,6 +31,7 @@ setup() {
   export USERLAND_MISE=$TEST_TMPDIR/bin/mise
   export USERLAND_CURL=$TEST_TMPDIR/bin/curl
   export MISE_CALLS=$TEST_TMPDIR/mise-calls
+  export MISE_CONFIG_CALLS=$TEST_TMPDIR/mise-config-calls
   export TEST_USERLAND_RELEASE_TAG=v9.9.9
   export USERLAND_VERSION=v0.2.3
   export TEST_USERLAND_RELEASE_COMMIT
@@ -42,6 +43,7 @@ setup() {
   printf '%s\n' \
     '#!/bin/sh' \
     'printf "%s\\n" "$*" >>"$MISE_CALLS"' \
+    'printf "%s|%s\\n" "${MISE_OVERRIDE_CONFIG_FILENAMES:-}" "$*" >>"$MISE_CONFIG_CALLS"' \
     'case "$*" in' \
     '  *bootstrap*packages*apply*) [ "${TEST_PACKAGES_FAIL:-0}" = 0 ] || exit 9 ;;' \
     '  *bootstrap*status*--missing*) exit 0 ;;' \
@@ -180,6 +182,22 @@ reset_machine_fixture() {
   diff -u "$TEST_TMPDIR/oracle.status" "$TEST_TMPDIR/port.status"
 }
 
+@test "the port isolates personal Mise configuration" {
+  export USERLAND_UI_MODE=plain NO_COLOR=1
+  : >"$MISE_CONFIG_CALLS"
+
+  "$USERLAND_GO_BIN" plan >/dev/null
+
+  [ -s "$MISE_CONFIG_CALLS" ]
+  while IFS='|' read -r config arguments; do
+    [ "$config" = mise.toml ]
+    case "$arguments" in
+      "-C $TEST_ROOT/cfg "*) ;;
+      *) false ;;
+    esac
+  done <"$MISE_CONFIG_CALLS"
+}
+
 @test "sync preserves bootstrap lock refusal" {
   mkdir -p "$USERLAND_DATA_DIR/bootstrap.lock"
   printf '%s\n' bootstrap-owner >"$USERLAND_DATA_DIR/bootstrap.lock/owner"
@@ -215,7 +233,11 @@ reset_machine_fixture() {
   cp "$MISE_CALLS" "$TEST_TMPDIR/port.calls"
 
   sed "s|$USERLAND_ORACLE_ROOT|<root>|g" "$TEST_TMPDIR/oracle.calls" >"$TEST_TMPDIR/oracle.calls.normalized"
-  sed "s|$TEST_ROOT|<root>|g" "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
+  sed \
+    -e "s|$TEST_ROOT/cfg|<root>|g" \
+    -e "s|$TEST_ROOT|<root>|g" \
+    -e 's/^-C <root> doctor$/doctor/' \
+    "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"
@@ -236,7 +258,10 @@ reset_machine_fixture() {
   cp "$MISE_CALLS" "$TEST_TMPDIR/port.calls"
 
   sed "s|$USERLAND_ORACLE_ROOT|<root>|g" "$TEST_TMPDIR/oracle.calls" >"$TEST_TMPDIR/oracle.calls.normalized"
-  sed "s|$TEST_ROOT|<root>|g" "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
+  sed \
+    -e "s|$TEST_ROOT/cfg|<root>|g" \
+    -e "s|$TEST_ROOT|<root>|g" \
+    "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"
   diff -u "$TEST_TMPDIR/oracle.normalized" "$TEST_TMPDIR/port.normalized"

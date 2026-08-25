@@ -174,6 +174,10 @@ func run(c *Context, name string, args ...string) platform.Result {
 	return platform.Run(c.Context, c.Env.List, nil, name, args...)
 }
 
+func runMise(c *Context, args ...string) platform.Result {
+	return c.Env.RunMise(c.Context, nil, args...)
+}
+
 func runWith(c *Context, environ []string, stdin io.Reader, name string, args ...string) platform.Result {
 	return platform.Run(c.Context, environ, stdin, name, args...)
 }

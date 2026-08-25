@@ -144,8 +144,8 @@ validate_checkout_identity() {
     die "$checkout_path main has no upstream"
   [ "$upstream" = origin/main ] || die "$checkout_path main does not track origin/main"
 
-  [ -f "$checkout_path/mise.toml" ] && [ ! -L "$checkout_path/mise.toml" ] ||
-    die "$checkout_path/mise.toml is not a regular file"
+  [ -f "$checkout_path/cfg/mise.toml" ] && [ ! -L "$checkout_path/cfg/mise.toml" ] ||
+    die "$checkout_path/cfg/mise.toml is not a regular file"
   [ -f "$checkout_path/cmd/userland/main.go" ] && [ ! -L "$checkout_path/cmd/userland/main.go" ] ||
     die "$checkout_path/cmd/userland/main.go is not a regular file"
 }
@@ -252,8 +252,8 @@ validate_materialized_checkout() {
     die "$materialized_path has no regular userland command"
   [ -x "$materialized_path/bin/mise" ] && [ ! -L "$materialized_path/bin/mise" ] ||
     die "$materialized_path has no regular mise launcher"
-  [ -f "$materialized_path/mise.toml" ] && [ ! -L "$materialized_path/mise.toml" ] ||
-    die "$materialized_path/mise.toml is not a regular file"
+  [ -f "$materialized_path/cfg/mise.toml" ] && [ ! -L "$materialized_path/cfg/mise.toml" ] ||
+    die "$materialized_path/cfg/mise.toml is not a regular file"
   [ -z "$(find "$release_dir" -type l -print -quit 2>/dev/null)" ] ||
     die "release archives with symlinks are not supported"
   [ -z "$(find "$materialized_path" -type l -print -quit 2>/dev/null)" ] ||
@@ -474,7 +474,7 @@ fi
 install_current_release_link
 cleanup_stale_current_links
 install_command_link "$release_dir/bin/userland"
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/mise.toml" >/dev/null
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/cfg/mise.toml" >/dev/null
 
 if [ -L "$repo_dir" ]; then
   die "$repo_dir must not be a symlink"
@@ -507,7 +507,7 @@ else
   repo_created=1
 fi
 
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
 materialize_checkout_command() {
   mkdir -p "$repo_dir/bin"
   checkout_command_tmp=$repo_dir/bin/.userland.$$
@@ -601,7 +601,7 @@ if [ ! -d "$repo_dir/.git" ]; then
 fi
 
 validate_checkout "$repo_dir"
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/mise.toml" >/dev/null
+MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
 install_command_link "$repo_dir/bin/userland"
 
 if [ "$sync_status" -eq 2 ]; then

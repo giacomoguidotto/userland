@@ -19,7 +19,7 @@ func androidSDK(c *Context, action Action) int {
 	sdkmanager, sdkOK := commandPath(c, "USERLAND_SDKMANAGER", "sdkmanager")
 	java := ""
 	if c.Env.Mise != "" && executable(c.Env.Mise) {
-		result := run(c, c.Env.Mise, "-C", c.Env.Root, "where", "java")
+		result := runMise(c, "where", "java")
 		if result.Code == 0 {
 			java = firstLine(result.Output)
 		}

@@ -48,7 +48,7 @@ func JSON(ctx context.Context, environ []string) ([]byte, bool) {
 	machine := platform.NewEnvironment(environ)
 
 	versionStatus, version := probeVersion(ctx, root, env, environ)
-	miseStatus, bootstrapStatus := probeMise(ctx, root, env, environ)
+	miseStatus, bootstrapStatus := probeMise(ctx, machine)
 	adapterResult := adapters.Run(ctx, machine, adapters.Doctor, nil, false, nil)
 	adapterStatus := "healthy"
 	if adapterResult.Code != 0 {
@@ -137,8 +137,8 @@ func localCommit(ctx context.Context, root string, environ []string) string {
 	return line
 }
 
-func probeMise(ctx context.Context, root string, env map[string]string, environ []string) (string, string) {
-	mise := env["USERLAND_MISE"]
+func probeMise(ctx context.Context, env platform.Environment) (string, string) {
+	mise := env.Mise
 	if mise == "" {
 		return "missing", "unknown"
 	}
@@ -146,7 +146,7 @@ func probeMise(ctx context.Context, root string, env map[string]string, environ 
 	if err != nil || info.Mode()&0o111 == 0 {
 		return "missing", "unknown"
 	}
-	if _, ok := run(ctx, environ, mise, "-C", root, "bootstrap", "status", "--missing"); ok {
+	if result := env.RunMise(ctx, nil, "bootstrap", "status", "--missing"); result.Code == 0 {
 		return "present", "healthy"
 	}
 	return "present", "drift"
@@ -188,11 +188,11 @@ func Human(ctx context.Context, environ []string, out io.Writer, embedded bool) 
 		}
 	}
 	render.Section("Toolchain")
-	if !doctorTask(ctx, machine, render, "Toolchain", machine.Mise, "doctor") {
+	if !miseTask(ctx, machine, render, "Toolchain", "doctor") {
 		code = 1
 	}
 	render.Section("Machine state")
-	if !doctorTask(ctx, machine, render, "Machine state", machine.Mise, "-C", machine.Root, "bootstrap", "status", "--missing") {
+	if !miseTask(ctx, machine, render, "Machine state", "bootstrap", "status", "--missing") {
 		code = 1
 	}
 	render.Section("Personal state")
@@ -234,11 +234,11 @@ func Human(ctx context.Context, environ []string, out io.Writer, embedded bool) 
 	return code
 }
 
-func doctorTask(ctx context.Context, env platform.Environment, render tui.Renderer, label, name string, args ...string) bool {
+func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, label string, args ...string) bool {
 	if !render.Rich() {
 		render.Status(tui.StatusInfo, label)
 	}
-	result := platform.Run(ctx, env.List, nil, name, args...)
+	result := env.RunMise(ctx, nil, args...)
 	file, _ := os.OpenFile(env.State+"/last-run.log", os.O_APPEND|os.O_WRONLY, 0o600)
 	if file != nil {
 		_, _ = fmt.Fprintf(file, "\n## %s\n", label)

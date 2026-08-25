@@ -1,0 +1,36 @@
+min_version = "2026.8.9"
+
+[settings]
+lockfile = true
+jobs = 4
+
+[tool_config]
+locked = true
+
+[tools]
+go = "1.26.1"
+node = "24.19.0"
+python = "3.14.7"
+"aqua:bats-core/bats-core" = "1.14.0"
+"aqua:koalaman/shellcheck" = "0.11.0"
+"aqua:mvdan/sh" = "3.13.1"
+
+[tasks.test]
+description = "Run userland behavior and release tests"
+run = [
+  "go test ./...",
+  "bats tests",
+  "tests/release-delivery.sh",
+  "npm ci --ignore-scripts --prefix release/cloudflare",
+  "tests/release-cloudflare.sh",
+]
+
+[tasks.lint]
+description = "Check Go, bootstrap shell, and repository formatting"
+run = [
+  "test -z \"$(gofmt -l .)\"",
+  "go vet ./...",
+  "shellcheck --severity=warning release/*.sh release/bootstrap-template.sh tests/release-*.sh",
+  "shfmt -d -i 2 -ci release tests/*.bats tests/release-*.sh",
+  "git diff --check",
+]

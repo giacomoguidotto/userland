@@ -99,7 +99,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		return 1
 	}
 	render.Section("Apply packages")
-	if code := commandTask(ctx, env, render, stdout, runLog, "Install missing rolling packages", env.Mise, "-C", env.Root, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, "Install missing rolling packages", "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	var upgrades []string
@@ -109,16 +109,16 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		}
 	}
 	if len(upgrades) != 0 {
-		args := append([]string{"-C", env.Root, "bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
-		if code := commandTask(ctx, env, render, stdout, runLog, "Upgrade installed rolling packages", env.Mise, args...); code != 0 {
+		args := append([]string{"bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
+		if code := miseTask(ctx, env, render, stdout, runLog, "Upgrade installed rolling packages", args...); code != 0 {
 			return code
 		}
 	}
 	render.Section("Apply machine state")
-	if code := commandTask(ctx, env, render, stdout, runLog, "Install pinned development tools", env.Mise, "-C", env.Root, "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, "Install pinned development tools", "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
-	if code := commandTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", env.Mise, "-C", env.Root, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 		return code
 	}
 	render.Section("Apply personal state")
@@ -266,13 +266,13 @@ func preflight(ctx context.Context, env platform.Environment) error {
 	return nil
 }
 
-func commandTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog, label, name string, args ...string) int {
+func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog, label string, args ...string) int {
 	if render.Rich() {
 		render.BeginTask(label)
 	} else {
 		render.Status(tui.StatusInfo, label)
 	}
-	result := platform.Run(ctx, env.List, nil, name, args...)
+	result := env.RunMise(ctx, nil, args...)
 	if render.Rich() {
 		render.ClearTask()
 	} else if len(result.Output) != 0 {

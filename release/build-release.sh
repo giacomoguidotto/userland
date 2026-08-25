@@ -39,7 +39,7 @@ esac
 
 release_tree=$work/tree/userland-$version
 mkdir -p "$release_tree/bin"
-git archive --format=tar "$commit" LICENSE cmd completions cfg go.mod go.sum internal plan userland.go mise.lock mise.toml |
+git archive --format=tar "$commit" LICENSE cmd completions cfg go.mod go.sum internal plan userland.go |
   tar -xf - -C "$release_tree"
 
 if [ -f .gitmodules ]; then

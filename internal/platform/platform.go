@@ -25,6 +25,17 @@ type Environment struct {
 	Mise   string
 }
 
+type Invocation struct {
+	Environ []string
+	Name    string
+	Args    []string
+}
+
+func (i Invocation) WithEnvironment(values ...string) Invocation {
+	i.Environ = (Environment{List: i.Environ}).With(values...)
+	return i
+}
+
 func NewEnvironment(environ []string) Environment {
 	values := make(map[string]string, len(environ))
 	for _, entry := range environ {
@@ -75,6 +86,14 @@ func (e Environment) With(values ...string) []string {
 		result = append(filtered, prefix+values[i+1])
 	}
 	return result
+}
+
+func (e Environment) MiseInvocation(args ...string) Invocation {
+	return Invocation{
+		Environ: e.With("MISE_OVERRIDE_CONFIG_FILENAMES", "mise.toml"),
+		Name:    e.Mise,
+		Args:    append([]string{"-C", filepath.Join(e.Root, "cfg")}, args...),
+	}
 }
 
 func (e Environment) Prepare() error {
@@ -129,6 +148,14 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, name string, ar
 		return Result{Output: output.Bytes(), Code: exit.ExitCode()}
 	}
 	return Result{Output: output.Bytes(), Code: 1, Err: err}
+}
+
+func RunInvocation(ctx context.Context, stdin io.Reader, invocation Invocation) Result {
+	return Run(ctx, invocation.Environ, stdin, invocation.Name, invocation.Args...)
+}
+
+func (e Environment) RunMise(ctx context.Context, stdin io.Reader, args ...string) Result {
+	return RunInvocation(ctx, stdin, e.MiseInvocation(args...))
 }
 
 func LookPath(environ []string, name string) (string, bool) {

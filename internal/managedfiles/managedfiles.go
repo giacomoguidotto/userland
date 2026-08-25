@@ -135,7 +135,7 @@ func (m Manager) Apply(ctx context.Context) int {
 	if err := m.Recover(); err != nil || m.Prune() != nil {
 		return 1
 	}
-	result := platform.Run(ctx, m.Env.List, nil, m.Env.Mise, "-C", m.Env.Root, "bootstrap", "dotfiles", "status", "--json")
+	result := m.Env.RunMise(ctx, nil, "bootstrap", "dotfiles", "status", "--json")
 	if result.Code != 0 {
 		return result.Code
 	}
@@ -155,11 +155,11 @@ func (m Manager) Apply(ctx context.Context) int {
 		code = 1
 	}
 	if code == 0 {
-		result = platform.Run(ctx, m.Env.List, nil, m.Env.Mise, "-C", m.Env.Root, "bootstrap", "dotfiles", "apply", "--yes", "--force")
+		result = m.Env.RunMise(ctx, nil, "bootstrap", "dotfiles", "apply", "--yes", "--force")
 		code = result.Code
 	}
 	if code == 0 {
-		result = platform.Run(ctx, m.Env.List, nil, m.Env.Mise, "-C", m.Env.Root, "bootstrap", "dotfiles", "status", "--json")
+		result = m.Env.RunMise(ctx, nil, "bootstrap", "dotfiles", "status", "--json")
 		var after status
 		if result.Code != 0 || json.Unmarshal(result.Output, &after) != nil || !statusApplied(after) {
 			code = result.Code

@@ -79,7 +79,7 @@ func shellCache(c *Context, action Action) int {
 			return result.Code
 		}
 		output.Write(result.Output)
-		which := run(c, c.Env.Mise, "-C", c.Env.Root, "which", "pitchfork")
+		which := runMise(c, "which", "pitchfork")
 		pitchfork := firstLine(which.Output)
 		if which.Code == 0 && executable(pitchfork) {
 			result = run(c, pitchfork, "activate", "zsh")
@@ -115,7 +115,7 @@ func shellFingerprint(c *Context) string {
 	if executable(c.Env.Mise) {
 		result := run(c, c.Env.Mise, "--version")
 		fmt.Fprintf(hash, "mise\t%s\t%s\n", c.Env.Mise, firstLine(result.Output))
-		which := run(c, c.Env.Mise, "-C", c.Env.Root, "which", "pitchfork")
+		which := runMise(c, "which", "pitchfork")
 		if path := firstLine(which.Output); which.Code == 0 && executable(path) {
 			version := run(c, path, "--version")
 			fmt.Fprintf(hash, "pitchfork\t%s\t%s\n", path, firstLine(version.Output))

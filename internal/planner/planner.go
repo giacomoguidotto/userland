@@ -96,19 +96,19 @@ func execute(ctx context.Context, environ []string, out io.Writer, standalone bo
 	}
 
 	value := plan.New()
-	output, err := r.taskOutput("Inspecting applications and resources", mise, "-C", r.root, "bootstrap", "plan", "--json")
+	output, err := r.miseOutput("Inspecting applications and resources", "bootstrap", "plan", "--json")
 	if err != nil {
 		return err
 	}
 	if err := importResources(value, output); err != nil {
 		return errors.New("mise returned an unreadable plan; no approval was requested")
 	}
-	output, err = r.taskOutput("Inspecting rolling package upgrades", mise, "-C", r.root, "bootstrap", "packages", "upgrade", "--dry-run", "--yes", "--jobs", jobs(env))
+	output, err = r.miseOutput("Inspecting rolling package upgrades", "bootstrap", "packages", "upgrade", "--dry-run", "--yes", "--jobs", jobs(env))
 	if err != nil {
 		return err
 	}
 	importRolling(value, output)
-	output, err = r.taskOutput("Inspecting managed files", mise, "-C", r.root, "bootstrap", "dotfiles", "status", "--json")
+	output, err = r.miseOutput("Inspecting managed files", "bootstrap", "dotfiles", "status", "--json")
 	if err != nil {
 		return err
 	}
@@ -116,7 +116,7 @@ func execute(ctx context.Context, environ []string, out io.Writer, standalone bo
 		return errors.New("mise returned unreadable managed-path status; no approval was requested")
 	}
 	if isMacOS(env) {
-		output, err = r.taskOutput("Inspecting macOS settings", mise, "-C", r.root, "bootstrap", "macos", "defaults", "status", "--json")
+		output, err = r.miseOutput("Inspecting macOS settings", "bootstrap", "macos", "defaults", "status", "--json")
 		if err != nil {
 			return err
 		}
@@ -196,9 +196,10 @@ func (r *runner) task(label string, command *exec.Cmd) error {
 	return nil
 }
 
-func (r *runner) taskOutput(label, name string, args ...string) ([]byte, error) {
-	command := exec.CommandContext(r.ctx, name, args...)
-	command.Env = r.environ
+func (r *runner) miseOutput(label string, args ...string) ([]byte, error) {
+	invocation := r.machine.MiseInvocation(args...)
+	command := exec.CommandContext(r.ctx, invocation.Name, invocation.Args...)
+	command.Env = invocation.Environ
 	if !r.render.Rich() {
 		r.render.Status(tui.StatusInfo, label)
 	} else {

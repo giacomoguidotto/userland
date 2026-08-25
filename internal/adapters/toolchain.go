@@ -87,8 +87,9 @@ func toolchain(c *Context, action Action) int {
 			continue
 		}
 		c.Log(Changed, "reinstalling affected pinned tool: "+probe.id)
-		environ := c.Env.With("MISE_QUIET", "true")
-		if result := runWith(c, environ, nil, c.Env.Mise, "-C", c.Env.Root, "install", "--force", "--yes", probe.id); result.Code != 0 {
+		invocation := c.Env.MiseInvocation("install", "--force", "--yes", probe.id)
+		invocation = invocation.WithEnvironment("MISE_QUIET", "true")
+		if result := platform.RunInvocation(c.Context, nil, invocation); result.Code != 0 {
 			return result.Code
 		}
 		if !probePinned(c, probe) {
@@ -115,7 +116,7 @@ func toolProbes(c *Context) ([]toolProbe, bool) {
 		probes = append(probes, toolProbe{row[0], row[1], strings.Fields(row[2])})
 		probed = append(probed, row[0])
 	}
-	declared, err := declaredTools(filepath.Join(c.Env.Root, "mise.toml"))
+	declared, err := declaredTools(filepath.Join(c.Env.Root, "cfg", "mise.toml"))
 	if err != nil {
 		return probes, false
 	}
@@ -191,9 +192,10 @@ func toolPublicMiseCurrent(c *Context) bool {
 }
 
 func probePinned(c *Context, probe toolProbe) bool {
-	args := append([]string{"-C", c.Env.Root, "exec", "--", probe.command}, probe.args...)
-	environ := c.Env.With("MISE_QUIET", "true")
-	return runWith(c, environ, nil, c.Env.Mise, args...).Code == 0
+	args := append([]string{"exec", "--", probe.command}, probe.args...)
+	invocation := c.Env.MiseInvocation(args...)
+	invocation = invocation.WithEnvironment("MISE_QUIET", "true")
+	return platform.RunInvocation(c.Context, nil, invocation).Code == 0
 }
 
 func probeGlobal(c *Context, probe toolProbe) bool {

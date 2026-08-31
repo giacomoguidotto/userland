@@ -24,7 +24,7 @@ func realms(c *Context, action Action) int {
 	if action == Apply {
 		findings, err = manager.Reconcile(c.Context)
 	} else {
-		findings, err = manager.Inspect()
+		findings, err = manager.Inspect(c.Context)
 	}
 	if err != nil {
 		c.Log(Attention, err.Error())

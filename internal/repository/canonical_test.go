@@ -108,3 +108,13 @@ func TestRefreshCheckoutRestoresCanonicalUserlandMain(t *testing.T) {
 		t.Fatalf("ignored environment changed: %q, %v", contents, err)
 	}
 }
+
+func TestCanonicalRemoteOperationHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result := runCanonicalRemote(ctx, platform.NewEnvironment(os.Environ()), t.TempDir(), "status")
+	if !errors.Is(result.Err, context.Canceled) {
+		t.Fatalf("remote operation did not preserve cancellation: %#v", result)
+	}
+}

@@ -183,7 +183,7 @@ func (m Manager) Remove(ctx context.Context, target string) (Result, error) {
 	return Result{Name: selected.Name, Mount: mount, Changed: true}, nil
 }
 
-func (m Manager) Inspect() ([]Finding, error) {
+func (m Manager) Inspect(ctx context.Context) ([]Finding, error) {
 	attachments, err := m.loadAttachments()
 	if err != nil {
 		return nil, err
@@ -225,7 +225,7 @@ func (m Manager) Inspect() ([]Finding, error) {
 			}
 			continue
 		}
-		canonical := repositorycatalog.InspectCanonical(context.Background(), m.Env, mount, declared.Repository, declared.Branch)
+		canonical := repositorycatalog.InspectCanonical(ctx, m.Env, mount, declared.Repository, declared.Branch)
 		if canonical.Status == repositorycatalog.CanonicalAttention {
 			findings = append(findings, Finding{Attention, attached.Name + " realm " + canonical.Message})
 		}
@@ -233,7 +233,7 @@ func (m Manager) Inspect() ([]Finding, error) {
 			findings = append(findings, Finding{Change, attached.Name + " realm " + canonical.Message})
 		}
 		active = append(active, attached)
-		repositories, repositoryErr := repositorycatalog.InspectDeclarations(context.Background(), m.Env, mount)
+		repositories, repositoryErr := repositorycatalog.InspectDeclarations(ctx, m.Env, mount)
 		if repositoryErr != nil {
 			findings = append(findings, Finding{Attention, attached.Name + " realm repository taxonomy is invalid: " + repositoryErr.Error()})
 			continue

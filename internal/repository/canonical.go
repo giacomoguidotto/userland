@@ -7,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
+
+const canonicalRemoteTimeout = 10 * time.Second
 
 // CanonicalStatus describes whether a primary checkout matches its declaration.
 type CanonicalStatus string
@@ -73,7 +76,7 @@ func ReconcileCanonical(ctx context.Context, env platform.Environment, target, r
 		return result
 	}
 	tracking := "refs/remotes/origin/" + branch
-	fetch := platform.Run(ctx, env.List, nil, "git", "-C", target, "fetch", "--quiet", "origin", "+refs/heads/"+branch+":"+tracking)
+	fetch := runCanonicalRemote(ctx, env, target, "fetch", "--quiet", "origin", "+refs/heads/"+branch+":"+tracking)
 	if fetch.Code != 0 {
 		return CanonicalResult{CanonicalAttention, "could not fetch origin/" + branch}
 	}
@@ -108,7 +111,7 @@ func validateCanonicalCheckout(ctx context.Context, env platform.Environment, ta
 }
 
 func remoteBranchRevision(ctx context.Context, env platform.Environment, target, branch string) (string, bool) {
-	result := platform.Run(ctx, env.List, nil, "git", "-C", target, "ls-remote", "--exit-code", "--refs", "origin", "refs/heads/"+branch)
+	result := runCanonicalRemote(ctx, env, target, "ls-remote", "--exit-code", "--refs", "origin", "refs/heads/"+branch)
 	if result.Code != 0 {
 		return "", false
 	}
@@ -117,4 +120,10 @@ func remoteBranchRevision(ctx context.Context, env platform.Environment, target,
 		return "", false
 	}
 	return fields[0], true
+}
+
+func runCanonicalRemote(ctx context.Context, env platform.Environment, target string, args ...string) platform.Result {
+	remoteContext, cancel := context.WithTimeout(ctx, canonicalRemoteTimeout)
+	defer cancel()
+	return platform.Run(remoteContext, env.With("GIT_TERMINAL_PROMPT", "0"), nil, "git", append([]string{"-C", target}, args...)...)
 }

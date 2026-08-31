@@ -190,7 +190,7 @@ func TestInspectIgnoresOptionalRealmsUntilThisMachineOptsIn(t *testing.T) {
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
 		"name,repository,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,main,optional\n", 0o600)
 
-	findings, err := New(fixture.env()).Inspect()
+	findings, err := New(fixture.env()).Inspect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestInspectBlocksAnUnmanagedEnvrc(t *testing.T) {
 		"name,repository,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,main,optional\n", 0o600)
 	writeFile(t, filepath.Join(fixture.state, "realms.csv"), "name,path\nwork,~/dev/work\n", 0o600)
 
-	findings, err := New(fixture.env()).Inspect()
+	findings, err := New(fixture.env()).Inspect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestInspectReportsRepositoryTaxonomyDriftWithoutTouchingTheCheckout(t *test
 		t.Fatal(err)
 	}
 
-	findings, err := manager.Inspect()
+	findings, err := manager.Inspect(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

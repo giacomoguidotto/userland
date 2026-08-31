@@ -1,2 +1,3 @@
-name,repository,default_path,mode
-work,git@life-github:giacomoguidotto/userland-work.git,~/dev/work,optional
+name,repository,default_path,branch,mode
+danfoss,git@life-github:giacomoguidotto/userland-work.git,~/dev/danfoss,main,optional
+trellis,git@github.com:trellis-tech/trellis.git,~/dev/trellis,main,optional

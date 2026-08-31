@@ -49,11 +49,12 @@ loads the realm's `mise.toml` once through the existing direnv hook. An optional
 the mounted path.
 
 A realm can declare its repository taxonomy in
-`.userland/repositories.csv` with `repository,path` columns. Plan and doctor
-validate each checkout and its raw origin. Sync clones only missing checkouts
-and maintains local Git exclusions in the realm control repository. It never
-pulls, switches, resets, stages, cleans, or deletes an existing child checkout,
-and declarations do not own branches or revisions.
+`.userland/repositories.csv` with `repository,path,branch` columns. Plan and
+doctor validate each checkout, its raw origin, and its declared canonical
+branch. Sync clones missing checkouts and resets existing primary checkouts to
+the declared remote branch while preserving ignored files. Feature work belongs
+in linked worktrees. Userland also maintains local Git exclusions in the realm
+control repository and never deletes an undeclared child checkout.
 
 `realm remove` revokes direnv authorization and removes only Userland-generated
 activation. The checkout, private files, and optional catalog entry remain.
@@ -88,7 +89,7 @@ the Go implementation.
 
 Userland owns only the personal state declared here. Private realm contents, credentials, browser profiles, histories, caches, application databases, and machine-local authentication stay out of the public repository.
 
-Sync never stashes, resets, cleans, or edits another repository. It does not prune unmanaged packages, applications, files, Dock items, login items, or browser extensions. Dotfile conflicts stop the run; supported legacy migrations preserve undeclared children.
+Sync never stashes or edits an undeclared repository. Declared primary checkouts are canonical remote-branch mirrors: sync discards their tracked changes and untracked, non-ignored files while preserving ignored local state such as dotenv files. It does not prune unmanaged packages, applications, files, Dock items, login items, or browser extensions. Dotfile conflicts stop the run; supported legacy migrations preserve undeclared children.
 
 ## Manual gates
 

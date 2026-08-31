@@ -117,18 +117,12 @@ func RefreshCheckout(ctx context.Context, env platform.Environment) RefreshResul
 	if status.Code != 0 {
 		return RefreshResult{Notice: "Could not inspect the userland checkout; continuing with the local version"}
 	}
-	if strings.TrimSpace(string(status.Output)) != "" {
-		return RefreshResult{Notice: "userland has local changes; skipped checkout refresh"}
-	}
 	branch := run("branch", "--show-current")
 	if branch.Code != 0 {
 		return RefreshResult{Notice: "Could not inspect the userland branch; continuing with the local version"}
 	}
 	branchName := strings.TrimSpace(string(branch.Output))
-	if branchName != "main" {
-		return RefreshResult{Notice: "checkout is on " + branchName + "; automatic refresh is limited to main"}
-	}
-	if run("fetch", "--quiet", "--tags", "origin", "main").Code != 0 {
+	if run("fetch", "--quiet", "--tags", "origin", "+refs/heads/main:refs/remotes/origin/main").Code != 0 {
 		return RefreshResult{Notice: "Could not reach origin; continuing with the local checkout"}
 	}
 	head, remote := run("rev-parse", "HEAD"), run("rev-parse", "origin/main")
@@ -142,14 +136,16 @@ func RefreshCheckout(ctx context.Context, env platform.Environment) RefreshResul
 		_ = os.Remove(logPath)
 		return ""
 	}
-	if strings.TrimSpace(string(head.Output)) == strings.TrimSpace(string(remote.Output)) {
+	needsUpdate := branchName != "main" || strings.TrimSpace(string(status.Output)) != "" ||
+		strings.TrimSpace(string(head.Output)) != strings.TrimSpace(string(remote.Output))
+	if !needsUpdate {
 		return RefreshResult{Notice: refreshSubmodules()}
 	}
-	if run("merge-base", "--is-ancestor", "HEAD", "origin/main").Code != 0 {
-		return RefreshResult{Notice: "local and remote main diverged; refused to update"}
+	if run("checkout", "--quiet", "-f", "-B", "main", "origin/main").Code != 0 {
+		return RefreshResult{Notice: "Could not restore the canonical userland main checkout"}
 	}
-	if run("merge", "--ff-only", "--quiet", "origin/main").Code != 0 {
-		return RefreshResult{Notice: "Could not fast-forward userland; continuing with the local version"}
+	if run("clean", "-fd", "--quiet").Code != 0 {
+		return RefreshResult{Notice: "Could not clean the canonical userland checkout"}
 	}
 	notice := refreshSubmodules()
 	if notice != "" {
@@ -162,7 +158,7 @@ func repositoryRoots(env platform.Environment) []string {
 	if value := env.Get("USERLAND_REPO_ROOTS"); value != "" {
 		return filepath.SplitList(value)
 	}
-	return []string{filepath.Join(env.Home, "dev", "life"), filepath.Join(env.Home, "dev", "uni")}
+	return []string{filepath.Join(env.Home, "dev", "life"), filepath.Join(env.Home, "dev", "research")}
 }
 
 func atomicWrite(path string, contents []byte, mode os.FileMode) error {

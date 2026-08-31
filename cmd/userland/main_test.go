@@ -13,7 +13,7 @@ func TestRuntimeEnvironmentFindsCanonicalCheckoutForStandaloneCommand(t *testing
 	if err := os.MkdirAll(filepath.Join(checkout, "cfg"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(checkout, "cfg", "schema-version"), []byte("1\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(checkout, "cfg", "schema-version"), []byte("2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	executable := filepath.Join(home, ".local", "bin", "userland")

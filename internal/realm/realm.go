@@ -45,7 +45,7 @@ type Manager struct {
 func New(env platform.Environment) Manager { return Manager{Env: env} }
 
 type declaration struct {
-	Name, Repository, Path, Mode string
+	Name, Repository, Path, Branch, Mode string
 }
 
 type attachment struct {
@@ -70,7 +70,11 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
-	declared := declaration{Name: name, Repository: repository, Path: declaredPath, Mode: "optional"}
+	branch, err := m.resolveBranch(repository, declaredPath)
+	if err != nil {
+		return Result{}, err
+	}
+	declared := declaration{Name: name, Repository: repository, Path: declaredPath, Branch: branch, Mode: "optional"}
 	if err := m.validateDeclaration(declared); err != nil {
 		return Result{}, err
 	}
@@ -221,6 +225,13 @@ func (m Manager) Inspect() ([]Finding, error) {
 			}
 			continue
 		}
+		canonical := repositorycatalog.InspectCanonical(context.Background(), m.Env, mount, declared.Repository, declared.Branch)
+		if canonical.Status == repositorycatalog.CanonicalAttention {
+			findings = append(findings, Finding{Attention, attached.Name + " realm " + canonical.Message})
+		}
+		if canonical.Status == repositorycatalog.CanonicalChange {
+			findings = append(findings, Finding{Change, attached.Name + " realm " + canonical.Message})
+		}
 		active = append(active, attached)
 		repositories, repositoryErr := repositorycatalog.InspectDeclarations(context.Background(), m.Env, mount)
 		if repositoryErr != nil {
@@ -276,12 +287,17 @@ func (m Manager) Reconcile(ctx context.Context) ([]Finding, error) {
 			findings = append(findings, Finding{Attention, checkoutErr.Error()})
 			continue
 		}
+		canonical := repositorycatalog.ReconcileCanonical(ctx, m.Env, mount, declared.Repository, declared.Branch)
+		if canonical.Status == repositorycatalog.CanonicalAttention {
+			findings = append(findings, Finding{Attention, attached.Name + " realm " + canonical.Message})
+			continue
+		}
 		changed, activationErr := m.ensureActivation(mount, attached.Name)
 		if activationErr != nil {
 			findings = append(findings, Finding{Attention, activationErr.Error()})
 			continue
 		}
-		activationChanged := changed || cloned
+		activationChanged := changed || cloned || canonical.Status == repositorycatalog.CanonicalChange
 		if activationChanged {
 			if err := m.allow(ctx, filepath.Join(mount, ".envrc")); err != nil {
 				findings = append(findings, Finding{Attention, err.Error()})
@@ -369,7 +385,7 @@ func (m Manager) ensureCheckout(ctx context.Context, declared declaration, mount
 		if err := os.MkdirAll(filepath.Dir(mount), 0o700); err != nil {
 			return false, err
 		}
-		result := platform.Run(ctx, m.Env.List, nil, "git", "clone", "--", declared.Repository, mount)
+		result := platform.Run(ctx, m.Env.List, nil, "git", "clone", "--branch", declared.Branch, "--", declared.Repository, mount)
 		if result.Code != 0 {
 			return false, fmt.Errorf("could not clone %s realm", declared.Name)
 		}
@@ -479,7 +495,7 @@ func (m Manager) ensureDeclaration(candidate declaration) (bool, error) {
 	declarations = append(declarations, candidate)
 	rows := make([][]string, 0, len(declarations))
 	for _, item := range declarations {
-		rows = append(rows, []string{item.Name, item.Repository, item.Path, item.Mode})
+		rows = append(rows, []string{item.Name, item.Repository, item.Path, item.Branch, item.Mode})
 	}
 	return true, csvfile.Write(m.catalogPath(), realmHeader, rows, 0o600)
 }
@@ -494,10 +510,10 @@ func (m Manager) loadDeclarations() ([]declaration, error) {
 	}
 	result := make([]declaration, 0, len(rows))
 	for _, row := range rows {
-		if !realmName.MatchString(row[0]) || row[3] != "optional" {
+		if !realmName.MatchString(row[0]) || !validBranch(row[3]) || row[4] != "optional" {
 			return nil, fmt.Errorf("invalid realm declaration in %s", m.catalogPath())
 		}
-		result = append(result, declaration{Name: row[0], Repository: row[1], Path: row[2], Mode: row[3]})
+		result = append(result, declaration{Name: row[0], Repository: row[1], Path: row[2], Branch: row[3], Mode: row[4]})
 	}
 	return result, nil
 }
@@ -626,6 +642,25 @@ func (m Manager) resolveName(repository, path string) (string, error) {
 	return repositoryName(repository)
 }
 
+func (m Manager) resolveBranch(repository, path string) (string, error) {
+	declarations, err := m.loadDeclarations()
+	if err != nil {
+		return "", err
+	}
+	for _, declared := range declarations {
+		if declared.Path == path && sameRepository(declared.Repository, repository) {
+			return declared.Branch, nil
+		}
+	}
+	return "main", nil
+}
+
+func validBranch(branch string) bool {
+	return branch != "" && !strings.HasPrefix(branch, "-") && !strings.ContainsAny(branch, " ~^:?*[\\") &&
+		!strings.Contains(branch, "..") && !strings.Contains(branch, "//") && !strings.HasSuffix(branch, "/") &&
+		!strings.HasSuffix(branch, ".") && !strings.HasSuffix(branch, ".lock")
+}
+
 func sameRepository(left, right string) bool {
 	normalize := func(value string) string {
 		return strings.TrimSuffix(strings.TrimRight(strings.TrimSpace(value), "/"), ".git")
@@ -692,5 +727,5 @@ func gitValue(value string) string {
 	return value
 }
 
-var realmHeader = []string{"name", "repository", "default_path", "mode"}
+var realmHeader = []string{"name", "repository", "default_path", "branch", "mode"}
 var attachmentHeader = []string{"name", "path"}

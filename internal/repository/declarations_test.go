@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
-func TestReconcileDeclarationsClonesOnlyMissingRepositories(t *testing.T) {
+func TestReconcileDeclarationsMakesDeclaredCheckoutsCanonical(t *testing.T) {
 	fixture := newDeclarationFixture(t)
 	existingRemote := fixture.bareRepository(t, "existing")
 	missingRemote := fixture.bareRepository(t, "missing")
@@ -22,20 +23,21 @@ func TestReconcileDeclarationsClonesOnlyMissingRepositories(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(existing, "dirty.txt"), []byte("keep me\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fixture.writeManifest(t, [][]string{{existingRemote, "existing"}, {missingRemote, "nested/missing"}})
+	fixture.writeManifest(t, [][]string{{existingRemote, "existing", "main"}, {missingRemote, "nested/missing", "main"}})
 
 	findings, err := ReconcileDeclarations(context.Background(), fixture.env, fixture.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(findings) != 1 || findings[0].State != DeclarationChange || !strings.Contains(findings[0].Message, "cloned nested/missing") {
+	if len(findings) != 2 || findings[0].State != DeclarationChange || findings[1].State != DeclarationChange ||
+		!strings.Contains(findings[0].Message, "synchronized") || !strings.Contains(findings[1].Message, "cloned") {
 		t.Fatalf("unexpected findings: %#v", findings)
 	}
-	if branch := repositoryGitOutput(t, existing, "branch", "--show-current"); branch != "keep-branch" {
+	if branch := repositoryGitOutput(t, existing, "branch", "--show-current"); branch != "main" {
 		t.Fatalf("existing branch changed to %q", branch)
 	}
-	if contents, err := os.ReadFile(filepath.Join(existing, "dirty.txt")); err != nil || string(contents) != "keep me\n" {
-		t.Fatalf("existing dirty file changed: %q, %v", contents, err)
+	if _, err := os.Stat(filepath.Join(existing, "dirty.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("untracked primary-checkout file remains: %v", err)
 	}
 	if origin := repositoryGitOutput(t, filepath.Join(fixture.root, "nested", "missing"), "config", "--local", "--get", "remote.origin.url"); origin != missingRemote {
 		t.Fatalf("missing repository origin = %q", origin)
@@ -55,7 +57,7 @@ func TestInspectDeclarationsReportsConflictsWithoutChangingThem(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(target, "keep.txt"), []byte("keep\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fixture.writeManifest(t, [][]string{{"git@example.test:team/conflict.git", "conflict"}})
+	fixture.writeManifest(t, [][]string{{"git@example.test:team/conflict.git", "conflict", "main"}})
 
 	findings, err := InspectDeclarations(context.Background(), fixture.env, fixture.root)
 	if err != nil {
@@ -85,7 +87,7 @@ func TestReconcileDeclarationsNeverDeletesAnUndeclaredCheckout(t *testing.T) {
 
 func TestInspectDeclarationsRejectsPathsOutsideTheRealm(t *testing.T) {
 	fixture := newDeclarationFixture(t)
-	fixture.writeManifest(t, [][]string{{"git@example.test:team/repo.git", "../outside"}})
+	fixture.writeManifest(t, [][]string{{"git@example.test:team/repo.git", "../outside", "main"}})
 
 	_, err := InspectDeclarations(context.Background(), fixture.env, fixture.root)
 	if err == nil || !strings.Contains(err.Error(), "invalid repository declaration") {
@@ -116,7 +118,7 @@ func (f declarationFixture) bareRepository(t *testing.T, name string) string {
 	if err := os.MkdirAll(source, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	runRepositoryGit(t, source, "init")
+	runRepositoryGit(t, source, "init", "-b", "main")
 	if err := os.WriteFile(filepath.Join(source, "README.md"), []byte(name+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}

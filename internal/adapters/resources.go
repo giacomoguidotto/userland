@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/giacomoguidotto/userland/internal/platform"
+	repositorycatalog "github.com/giacomoguidotto/userland/internal/repository"
 )
 
 func personalRepositories(c *Context, action Action) int {
@@ -20,26 +21,27 @@ func personalRepositories(c *Context, action Action) int {
 	if path == "" {
 		path = filepath.Join(c.Env.Root, "cfg", "repositories.csv")
 	}
-	rows, err := readCSV(path, "github_repository", "home_relative_path")
+	rows, err := readCSV(path, "repository", "home_relative_path", "branch")
 	if err != nil {
 		c.Log(Attention, err.Error())
 		return 1
 	}
-	missing := false
+	drift := false
 	for _, row := range rows {
 		target := filepath.Join(c.Env.Home, row[1])
-		if exists(filepath.Join(target, ".git")) {
+		result := repositorycatalog.InspectCanonical(c.Context, c.Env, target, row[0], row[2])
+		if result.Status == repositorycatalog.CanonicalCurrent {
 			continue
 		}
-		missing = true
-		if exists(target) {
-			c.Log(Attention, target+" exists and is not a Git checkout")
-		} else {
-			c.Log(Change, row[0]+" is missing at "+target)
+		drift = true
+		level := Change
+		if result.Status == repositorycatalog.CanonicalAttention {
+			level = Attention
 		}
+		c.Log(level, row[1]+" "+result.Message)
 	}
 	if action == Plan || action == Doctor {
-		if !missing {
+		if !drift {
 			level := Current
 			if action == Doctor {
 				level = Healthy
@@ -49,34 +51,21 @@ func personalRepositories(c *Context, action Action) int {
 		}
 		return 2
 	}
-	if !missing {
+	if !drift {
 		return 0
-	}
-	gh, ok := commandPath(c, "", "gh")
-	if !ok {
-		c.Log(Attention, "GitHub CLI is unavailable")
-		return 2
-	}
-	if run(c, gh, "auth", "status", "--hostname", "github.com").Code != 0 {
-		c.Log(Manual, "authenticate GitHub with: gh auth login --hostname github.com --git-protocol https")
-		return 2
 	}
 	for _, row := range rows {
 		target := filepath.Join(c.Env.Home, row[1])
-		if exists(filepath.Join(target, ".git")) {
+		inspected := repositorycatalog.InspectCanonical(c.Context, c.Env, target, row[0], row[2])
+		if inspected.Status == repositorycatalog.CanonicalCurrent {
 			continue
 		}
-		if exists(target) {
-			c.Log(Attention, "refused to replace "+target)
-			continue
+		result := repositorycatalog.ReconcileCanonical(c.Context, c.Env, target, row[0], row[2])
+		if result.Status == repositorycatalog.CanonicalAttention {
+			c.Log(Attention, row[1]+" "+result.Message)
+			return 2
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return 1
-		}
-		if result := run(c, gh, "repo", "clone", row[0], target, "--", "--filter=blob:none"); result.Code != 0 {
-			return result.Code
-		}
-		c.Log(Changed, "cloned "+row[0])
+		c.Log(Changed, row[1]+" "+result.Message)
 	}
 	return 0
 }
@@ -237,7 +226,7 @@ func repositorySnapshotFresh(env platform.Environment) bool {
 	meta := filepath.Join(env.Cache, "repositories.meta")
 	roots := env.Get("USERLAND_REPO_ROOTS")
 	if roots == "" {
-		roots = filepath.Join(env.Home, "dev", "life") + ":" + filepath.Join(env.Home, "dev", "uni")
+		roots = filepath.Join(env.Home, "dev", "life") + ":" + filepath.Join(env.Home, "dev", "research")
 	}
 	contents, err := os.ReadFile(meta)
 	if err != nil || firstLine(contents) != "v2 "+roots {

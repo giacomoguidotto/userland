@@ -27,7 +27,7 @@ func TestAddAdoptsExistingCheckoutAndCreatesPathScopedActivation(t *testing.T) {
 	}
 
 	catalog := readFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"))
-	wantDeclaration := "work," + fixture.repository + ",~/dev/work,optional\n"
+	wantDeclaration := "work," + fixture.repository + ",~/dev/work,main,optional\n"
 	if !strings.Contains(catalog, wantDeclaration) {
 		t.Fatalf("catalog omitted %q: %q", wantDeclaration, catalog)
 	}
@@ -79,7 +79,7 @@ func TestAddKeepsTheDeclaredRealmNameWhenRepositoryNameDiffers(t *testing.T) {
 	initRepository(t, mount, repository)
 	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
-		"name,repository,default_path,mode\nwork,"+repository+",~/dev/work,optional\n", 0o600)
+		"name,repository,default_path,branch,mode\nwork,"+repository+",~/dev/work,main,optional\n", 0o600)
 
 	result, err := New(fixture.env()).Add(context.Background(), repository, mount)
 	if err != nil {
@@ -188,7 +188,7 @@ func TestRemoveDetachesWithoutDeletingCheckoutOrDeclaration(t *testing.T) {
 func TestInspectIgnoresOptionalRealmsUntilThisMachineOptsIn(t *testing.T) {
 	fixture := newFixture(t)
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
-		"name,repository,default_path,mode\nwork,"+fixture.repository+",~/dev/work,optional\n", 0o600)
+		"name,repository,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,main,optional\n", 0o600)
 
 	findings, err := New(fixture.env()).Inspect()
 	if err != nil {
@@ -205,7 +205,7 @@ func TestInspectBlocksAnUnmanagedEnvrc(t *testing.T) {
 	initRepository(t, mount, fixture.repository)
 	writeFile(t, filepath.Join(mount, ".envrc"), "export KEEP_ME=1\n", 0o600)
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
-		"name,repository,default_path,mode\nwork,"+fixture.repository+",~/dev/work,optional\n", 0o600)
+		"name,repository,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,main,optional\n", 0o600)
 	writeFile(t, filepath.Join(fixture.state, "realms.csv"), "name,path\nwork,~/dev/work\n", 0o600)
 
 	findings, err := New(fixture.env()).Inspect()
@@ -223,7 +223,7 @@ func TestInspectReportsRepositoryTaxonomyDriftWithoutTouchingTheCheckout(t *test
 	initRepository(t, mount, fixture.repository)
 	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
 	writeFile(t, filepath.Join(mount, ".userland", "repositories.csv"),
-		"repository,path\ngit@example.test:private/missing.git,services/missing\n", 0o600)
+		"repository,path,branch\ngit@example.test:private/missing.git,services/missing,main\n", 0o600)
 	manager := New(fixture.env())
 	if _, err := manager.Add(context.Background(), fixture.repository, mount); err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func initRepository(t *testing.T, path, remote string) {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	runGit(t, path, "init", "-q")
+	runGit(t, path, "init", "-q", "-b", "main")
 	if remote != "" {
 		runGit(t, path, "remote", "add", "origin", remote)
 	}

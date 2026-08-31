@@ -17,9 +17,13 @@ A machine-local opt-in that binds a realm declaration to its directory tree.
 _Avoid_: Installation, checkout
 
 **Repository declaration**:
-A desired Git checkout at a realm-relative path without ownership of its branch or revision.
+A desired canonical Git checkout at a realm-relative path on an explicitly owned branch.
 _Avoid_: Submodule, project
 
 **Repository taxonomy**:
 The hierarchy formed by repository declaration paths inside a realm.
 _Avoid_: Submodule tree, workspace layout
+
+**Canonical checkout**:
+The primary checkout owned by Userland. It is an exact, clean copy of a declared remote branch; feature work belongs in linked worktrees.
+_Avoid_: Working copy, development checkout

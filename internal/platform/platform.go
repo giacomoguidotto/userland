@@ -114,7 +114,7 @@ func (e Environment) Validate() error {
 	if err != nil {
 		return errors.New("state schema is missing")
 	}
-	if strings.TrimSpace(string(contents)) != "1" {
+	if strings.TrimSpace(string(contents)) != "2" {
 		return errors.New("state schema " + strings.TrimSpace(string(contents)) + " requires a different userland release")
 	}
 	if info, err := os.Stat(e.Mise); e.Mise == "" || err != nil || info.Mode()&0o111 == 0 {

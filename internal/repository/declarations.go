@@ -28,9 +28,10 @@ type DeclarationFinding struct {
 type checkoutDeclaration struct {
 	repository string
 	path       string
+	branch     string
 }
 
-var repositoryDeclarationHeader = []string{"repository", "path"}
+var repositoryDeclarationHeader = []string{"repository", "path", "branch"}
 
 // InspectDeclarations reports drift in a realm's optional repository taxonomy.
 func InspectDeclarations(ctx context.Context, env platform.Environment, root string) ([]DeclarationFinding, error) {
@@ -58,21 +59,13 @@ func ReconcileDeclarations(ctx context.Context, env platform.Environment, root s
 	}
 	findings := inspectDeclarations(ctx, env, root, declarations)
 	for index, finding := range findings {
-		if finding.State != DeclarationChange || !strings.HasSuffix(finding.Message, " repository is missing") {
+		if finding.State != DeclarationChange {
 			continue
 		}
 		declared := declarations[index]
 		target := filepath.Join(root, filepath.FromSlash(declared.path))
-		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-			findings[index] = DeclarationFinding{DeclarationAttention, fmt.Sprintf("could not prepare %s repository: %v", declared.path, err)}
-			continue
-		}
-		result := platform.Run(ctx, env.List, nil, "git", "clone", "--", declared.repository, target)
-		if result.Code != 0 {
-			findings[index] = DeclarationFinding{DeclarationAttention, declared.path + " repository could not be cloned"}
-			continue
-		}
-		findings[index] = DeclarationFinding{DeclarationChange, "cloned " + declared.path + " repository"}
+		result := ReconcileCanonical(ctx, env, target, declared.repository, declared.branch)
+		findings[index] = declarationResult(declared.path, result)
 	}
 	if err := writeExclusions(ctx, env, root, declarations); err != nil {
 		return findings, err
@@ -94,14 +87,15 @@ func loadDeclarations(root string) ([]checkoutDeclaration, bool, error) {
 	for index, row := range rows {
 		repository := strings.TrimSpace(row[0])
 		path := filepath.ToSlash(filepath.Clean(strings.TrimSpace(row[1])))
-		if repository == "" || path == "." || !filepath.IsLocal(filepath.FromSlash(path)) {
+		branch := strings.TrimSpace(row[2])
+		if repository == "" || path == "." || !filepath.IsLocal(filepath.FromSlash(path)) || !validBranch(branch) {
 			return nil, true, fmt.Errorf("invalid repository declaration at record %d in %s", index+2, filepath.Join(root, ".userland", "repositories.csv"))
 		}
 		if _, exists := seen[path]; exists {
 			return nil, true, fmt.Errorf("duplicate repository path %s", path)
 		}
 		seen[path] = struct{}{}
-		declarations = append(declarations, checkoutDeclaration{repository: repository, path: path})
+		declarations = append(declarations, checkoutDeclaration{repository: repository, path: path, branch: branch})
 	}
 	return declarations, true, nil
 }
@@ -110,30 +104,26 @@ func inspectDeclarations(ctx context.Context, env platform.Environment, root str
 	findings := make([]DeclarationFinding, 0, len(declarations))
 	for _, declared := range declarations {
 		target := filepath.Join(root, filepath.FromSlash(declared.path))
-		if _, err := os.Lstat(target); errors.Is(err, os.ErrNotExist) {
-			findings = append(findings, DeclarationFinding{DeclarationChange, declared.path + " repository is missing"})
-			continue
-		} else if err != nil {
-			findings = append(findings, DeclarationFinding{DeclarationAttention, declared.path + " repository cannot be inspected"})
-			continue
-		}
-		inside := platform.Run(ctx, env.List, nil, "git", "-C", target, "rev-parse", "--is-inside-work-tree")
-		if inside.Code != 0 || strings.TrimSpace(string(inside.Output)) != "true" {
-			findings = append(findings, DeclarationFinding{DeclarationAttention, declared.path + " exists and is not a Git checkout"})
-			continue
-		}
-		origin := platform.Run(ctx, env.List, nil, "git", "-C", target, "config", "--local", "--get", "remote.origin.url")
-		if origin.Code != 0 {
-			findings = append(findings, DeclarationFinding{DeclarationAttention, declared.path + " repository has no origin remote"})
-			continue
-		}
-		if !sameRemote(string(origin.Output), declared.repository) {
-			findings = append(findings, DeclarationFinding{DeclarationAttention, declared.path + " repository origin does not match its declaration"})
-			continue
-		}
-		findings = append(findings, DeclarationFinding{DeclarationCurrent, declared.path + " repository matches"})
+		findings = append(findings, declarationResult(declared.path, InspectCanonical(ctx, env, target, declared.repository, declared.branch)))
 	}
 	return findings
+}
+
+func declarationResult(path string, result CanonicalResult) DeclarationFinding {
+	state := DeclarationCurrent
+	switch result.Status {
+	case CanonicalChange:
+		state = DeclarationChange
+	case CanonicalAttention:
+		state = DeclarationAttention
+	}
+	return DeclarationFinding{state, path + " " + result.Message}
+}
+
+func validBranch(branch string) bool {
+	return branch != "" && !strings.HasPrefix(branch, "-") && !strings.ContainsAny(branch, " ~^:?*[\\") &&
+		!strings.Contains(branch, "..") && !strings.Contains(branch, "//") && !strings.HasSuffix(branch, "/") &&
+		!strings.HasSuffix(branch, ".") && !strings.HasSuffix(branch, ".lock")
 }
 
 func summarizeDeclarations(findings []DeclarationFinding) []DeclarationFinding {
@@ -156,7 +146,18 @@ func summarizeDeclarations(findings []DeclarationFinding) []DeclarationFinding {
 
 func sameRemote(left, right string) bool {
 	normalize := func(value string) string {
-		return strings.TrimSuffix(strings.TrimRight(strings.TrimSpace(value), "/"), ".git")
+		value = strings.TrimSuffix(strings.TrimRight(strings.TrimSpace(value), "/"), ".git")
+		for _, marker := range []string{"github.com/", "github.com:"} {
+			if _, suffix, ok := strings.Cut(value, marker); ok {
+				return strings.TrimPrefix(suffix, "/")
+			}
+		}
+		if strings.HasPrefix(value, "git@") {
+			if _, suffix, ok := strings.Cut(value, ":"); ok {
+				return strings.TrimPrefix(suffix, "/")
+			}
+		}
+		return value
 	}
 	return normalize(left) == normalize(right)
 }

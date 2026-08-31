@@ -13,8 +13,12 @@ A portable record that a realm exists and may be attached on a machine.
 _Avoid_: Workspace configuration, mount
 
 **Realm attachment**:
-A machine-local opt-in that binds a realm declaration to its directory tree.
+A machine-local opt-in that binds a realm declaration to its directory tree and enables its projections.
 _Avoid_: Installation, checkout
+
+**Realm projection**:
+Machine-local generated configuration derived from an attached realm, such as a path-scoped Git identity or SSH alias.
+_Avoid_: Global configuration, copied configuration
 
 **Repository declaration**:
 A desired canonical Git checkout at a realm-relative path on an explicitly owned branch.

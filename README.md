@@ -46,7 +46,9 @@ cleans an existing repository. Userland then creates an excluded `.envrc` that
 loads the realm's `mise.toml` once through the existing direnv hook. An optional
 `.userland/envrc` can provide additional private exports. If the realm contains
 `.gitconfig`, Userland generates a native Git `includeIf` for repositories below
-the mounted path.
+the mounted path. Optional SSH templates in `cfg/realms/<name>/ssh.config` are
+materialized only while that realm is attached, with its actual mount path
+substituted into the generated configuration.
 
 A realm can declare its repository taxonomy in
 `.userland/repositories.csv` with `repository,path,branch` columns. Plan and
@@ -56,8 +58,9 @@ the declared remote branch while preserving ignored files. Feature work belongs
 in linked worktrees. Userland also maintains local Git exclusions in the realm
 control repository and never deletes an undeclared child checkout.
 
-`realm remove` revokes direnv authorization and removes only Userland-generated
-activation. The checkout, private files, and optional catalog entry remain.
+`realm remove` revokes direnv authorization and removes Userland-generated
+activation and realm projections. The checkout, private files, and optional
+catalog entry remain.
 Passwords, tokens, and private keys should still live in a credential store,
 not merely in a private Git repository.
 

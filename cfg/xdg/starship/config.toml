@@ -32,6 +32,9 @@ format = '[$symbol$version]($style) '
 [golang]
 format = '[$symbol$version]($style) '
 
+[gcloud]
+detect_env_vars = ['CLOUDSDK_ROOT_DIR']
+
 [nix_shell]
 format = '[$symbol]($style) '
 symbol = "❄️ "

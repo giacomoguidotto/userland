@@ -32,6 +32,13 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | `userland realm remove <name-or-path>` | Detach a realm without deleting its checkout or portable declaration. |
 | `userland completions <shell>` | Print completions for Bash, Fish, Nushell, or Zsh. Zsh is wired in automatically by sync. |
 
+Userland generates a static Zsh environment containing direct binary paths for
+only the tools declared in `cfg/mise.toml`. The shared Mise shim directory is
+not placed on the global `PATH`, so a tool installed for one project does not
+appear active elsewhere. Realm activation adds its own project tools through
+direnv, and explicit automation can use `mise -C <realm> exec` without changing
+the ambient shell.
+
 ## Realms
 
 A realm applies a private operational identity below one directory. The

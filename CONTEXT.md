@@ -20,6 +20,10 @@ _Avoid_: Installation, checkout
 Machine-local generated configuration derived from an attached realm, such as a path-scoped Git identity or SSH alias.
 _Avoid_: Global configuration, copied configuration
 
+**Global tool projection**:
+The static shell environment generated from Userland's global Mise declaration. It contains direct paths only for globally declared tools and excludes shared shims for project-only tools.
+_Avoid_: Global shim directory, runtime activation hook
+
 **Repository declaration**:
 A desired canonical Git checkout at a realm-relative path on an explicitly owned branch.
 _Avoid_: Submodule, project

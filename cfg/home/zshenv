@@ -15,7 +15,12 @@ export STARSHIP_CONFIG="$HOME/.config/starship/config.toml"
 export DOCKER_HOST="unix://$HOME/.config/colima/docker.sock"
 
 export ANDROID_HOME="$HOME/Library/Android/sdk"
-export JAVA_HOME="$HOME/.local/share/mise/installs/java/temurin-21.0.12+8.0.LTS"
+# Keep stock recovery tools and package managers available without exposing
+# project-only mise shims globally.
+export PATH="$HOME/.local/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-# Keep stock recovery tools, package managers, and userland shims available.
-export PATH="$HOME/.local/share/mise/shims:$HOME/.local/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+# Userland generates direct paths for only the tools declared globally. Realm
+# activation adds project tools such as gcloud separately through direnv.
+if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh" ]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh"
+fi

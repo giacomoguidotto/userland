@@ -43,7 +43,7 @@ func toolchain(c *Context, action Action) int {
 			case "reinstall":
 				addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: problem.command, Detail: "reinstall only the corrupted pinned tool " + problem.id, Proof: "toolchain:reinstall:" + problem.id})
 			case "activate":
-				addPlan(c.Plan, plan.Item{Area: plan.AreaFS, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: problem.command + " shim", Detail: "activate pinned " + problem.id + " in clean global shells", Proof: "toolchain:activate:" + problem.id})
+				addPlan(c.Plan, plan.Item{Area: plan.AreaFS, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: problem.command + " path", Detail: "activate pinned " + problem.id + " in clean global shells", Proof: "toolchain:activate:" + problem.id})
 			case "review":
 				addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "review", Handling: plan.Blocked, Ownership: "declared", Target: "tool probe manifest", Detail: "add one executable probe for every pinned mise tool", Proof: "toolchain:probe-manifest"})
 			}
@@ -61,7 +61,7 @@ func toolchain(c *Context, action Action) int {
 			case "reinstall":
 				c.Log(Attention, problem.command+" cannot execute; pinned "+problem.id+" needs reinstall")
 			case "activate":
-				c.Log(Attention, problem.command+" is not executable through the clean global shim")
+				c.Log(Attention, problem.command+" is not executable through the static global tool path")
 			case "review":
 				c.Log(Attention, "tool probe manifest does not cover every pinned mise tool")
 			}
@@ -81,7 +81,6 @@ func toolchain(c *Context, action Action) int {
 		c.Log(Attention, "tool probe manifest is incomplete")
 		return 1
 	}
-	reinstalled := false
 	for _, probe := range probes {
 		if probePinned(c, probe) {
 			continue
@@ -96,11 +95,6 @@ func toolchain(c *Context, action Action) int {
 			c.Log(Attention, probe.command+" still cannot execute after targeted reinstall")
 			return 1
 		}
-		reinstalled = true
-	}
-	if reinstalled {
-		environ := c.Env.With("MISE_QUIET", "true")
-		return runWith(c, environ, nil, c.Env.Mise, "reshim").Code
 	}
 	return 0
 }
@@ -171,13 +165,14 @@ func toolProblems(c *Context, probes []toolProbe, complete bool) []toolProblem {
 	if !complete {
 		return append(result, toolProblem{"probe-manifest", "review", "tool-probes"})
 	}
+	binPaths, _ := miseBinPaths(c)
 	problems := make([]*toolProblem, len(probes))
 	parallelReadOnly(c, len(probes), func(index int) {
 		probe := probes[index]
 		if !probePinned(c, probe) {
 			problem := toolProblem{probe.id, "reinstall", probe.command}
 			problems[index] = &problem
-		} else if globalReady && !probeGlobal(c, probe) {
+		} else if globalReady && !probeGlobal(c, probe, binPaths) {
 			problem := toolProblem{probe.id, "activate", probe.command}
 			problems[index] = &problem
 		}
@@ -214,16 +209,18 @@ func probePinned(c *Context, probe toolProbe) bool {
 	return runInvocation(c, nil, invocation).Code == 0
 }
 
-func probeGlobal(c *Context, probe toolProbe) bool {
-	shim := homePath(c, ".local", "share", "mise", "shims", probe.command)
-	if !executable(shim) {
+func probeGlobal(c *Context, probe toolProbe, binPaths []string) bool {
+	declaredPath := strings.Join(binPaths, ":")
+	command, ok := platform.LookPath([]string{"PATH=" + declaredPath}, probe.command)
+	if !ok {
 		return false
 	}
+	basePaths := []string{homePath(c, ".local", "bin"), "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/local/sbin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"}
 	environ := c.Env.With(
 		"HOME", c.Env.Home,
-		"PATH", strings.Join([]string{homePath(c, ".local", "share", "mise", "shims"), homePath(c, ".local", "bin"), "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/local/sbin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"}, ":"),
+		"PATH", strings.Join(append(append([]string(nil), binPaths...), basePaths...), ":"),
 	)
-	return runWith(c, environ, nil, shim, probe.args...).Code == 0
+	return runWith(c, environ, nil, command, probe.args...).Code == 0
 }
 
 func promoteMise(c *Context) int {

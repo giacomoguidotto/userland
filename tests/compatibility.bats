@@ -57,6 +57,8 @@ setup() {
     'printf "%s\\n" "$*" >>"$MISE_CALLS"' \
     'printf "%s|%s\\n" "${MISE_OVERRIDE_CONFIG_FILENAMES:-}" "$*" >>"$MISE_CONFIG_CALLS"' \
     'case "$*" in' \
+    '  *bin-paths*) : ;;' \
+    '  *env*--json*) printf "%s\\n" '\''{}'\'' ;;' \
     '  *bootstrap*packages*apply*) [ "${TEST_PACKAGES_FAIL:-0}" = 0 ] || exit 9 ;;' \
     '  *bootstrap*status*--missing*) exit 0 ;;' \
     '  *bootstrap*plan*--json*) printf "%s\\n" '\''{"resources":[],"summary":{"create":0,"update":0,"remove":0,"unchanged":0,"unknown":0}}'\'' ;;' \
@@ -274,6 +276,9 @@ reset_machine_fixture() {
     -e "s|$TEST_ROOT/cfg|<root>|g" \
     -e "s|$TEST_ROOT|<root>|g" \
     -e 's/^-C <root> doctor$/doctor/' \
+    -e 's/^-C <root> --version$/--version/' \
+    -e '/^-C <root> bin-paths$/d' \
+    -e '/^-C <root> env --json$/d' \
     "$TEST_TMPDIR/port.calls" >"$TEST_TMPDIR/port.calls.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/oracle.stdout" --legacy-ui >"$TEST_TMPDIR/oracle.normalized"
   python3 "$TEST_ROOT/tests/compat/normalize.py" "$TEST_TMPDIR/port.stdout" >"$TEST_TMPDIR/port.normalized"

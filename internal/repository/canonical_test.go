@@ -118,3 +118,12 @@ func TestCanonicalRemoteOperationHonorsCancellation(t *testing.T) {
 		t.Fatalf("remote operation did not preserve cancellation: %#v", result)
 	}
 }
+
+func TestRemoteBranchRevisionIgnoresSSHWarnings(t *testing.T) {
+	output := []byte("warning: agent refused an unrelated identity\n232fe340cc0b4f760c51b8d90612965f79c09bc9\trefs/heads/main\n")
+
+	revision, ok := parseRemoteBranchRevision(output, "refs/heads/main")
+	if !ok || revision != "232fe340cc0b4f760c51b8d90612965f79c09bc9" {
+		t.Fatalf("revision = %q, %v", revision, ok)
+	}
+}

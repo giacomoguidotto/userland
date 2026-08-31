@@ -115,11 +115,17 @@ func remoteBranchRevision(ctx context.Context, env platform.Environment, target,
 	if result.Code != 0 {
 		return "", false
 	}
-	fields := strings.Fields(string(result.Output))
-	if len(fields) < 2 || fields[0] == "" {
-		return "", false
+	return parseRemoteBranchRevision(result.Output, "refs/heads/"+branch)
+}
+
+func parseRemoteBranchRevision(output []byte, reference string) (string, bool) {
+	for line := range strings.SplitSeq(string(output), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[1] == reference && fields[0] != "" {
+			return fields[0], true
+		}
 	}
-	return fields[0], true
+	return "", false
 }
 
 func runCanonicalRemote(ctx context.Context, env platform.Environment, target string, args ...string) platform.Result {

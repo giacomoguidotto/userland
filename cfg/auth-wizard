@@ -189,7 +189,7 @@ agent_socket="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.so
 check_personal_auth() {
   local missing=()
   [[ -S "$agent_socket" ]] || missing+=("1Password SSH agent")
-  if ! ssh -o BatchMode=yes -o ConnectTimeout=8 -T life-github 2>&1 | grep -q "successfully authenticated"; then
+  if ! { ssh -o BatchMode=yes -o ConnectTimeout=8 -T life-github 2>&1 || true; } | grep -q "successfully authenticated"; then
     missing+=("personal GitHub SSH access")
   fi
   command -v gh >/dev/null 2>&1 && gh auth status --hostname github.com >/dev/null 2>&1 || missing+=("GitHub CLI")
@@ -216,7 +216,7 @@ open -a "1Password" >/dev/null 2>&1 || true
 pause "Press Enter after the SSH agent is enabled."
 
 stage "Personal GitHub SSH key"
-if ssh -o BatchMode=yes -o ConnectTimeout=8 -T life-github 2>&1 | grep -q "successfully authenticated"; then
+if { ssh -o BatchMode=yes -o ConnectTimeout=8 -T life-github 2>&1 || true; } | grep -q "successfully authenticated"; then
   say "The life-github SSH identity already works."
 else
   say "The public half of your personal SSH key will be copied to the clipboard."

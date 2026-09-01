@@ -3,12 +3,14 @@ package adapters
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
+	realmstate "github.com/giacomoguidotto/userland/internal/realm"
 )
 
 const (
@@ -19,17 +21,51 @@ const (
 
 type brewIssue struct{ state, kind, name string }
 
+type brewSource struct {
+	owner string
+	path  string
+}
+
 func homebrew(c *Context, action Action) int {
+	source := brewSource{owner: "personal", path: filepath.Join(c.Env.Root, "cfg", "brewfile")}
+	return reconcileHomebrew(c, action, []brewSource{source}, true)
+}
+
+func realmHomebrew(c *Context, action Action) int {
+	sources, err := realmBrewSources(c)
+	if err != nil {
+		c.Log(Attention, err.Error())
+		return 1
+	}
+	if len(sources) == 0 {
+		if action == Plan {
+			c.Log(Current, "selected realms declare no Homebrew applications")
+		} else if action == Doctor {
+			c.Log(Healthy, "selected realms declare no Homebrew applications")
+		}
+		return 0
+	}
+	return reconcileHomebrew(c, action, sources, false)
+}
+
+func reconcileHomebrew(c *Context, action Action, sources []brewSource, installManager bool) int {
 	if !c.Env.IsMacOS() {
 		return 0
 	}
 	brew, present := brewCommand(c)
-	declarations, err := brewDeclarations(filepath.Join(c.Env.Root, "cfg", "brewfile"))
+	declarations, err := brewSourceDeclarations(sources)
 	if err != nil {
+		c.Log(Attention, err.Error())
+		return 1
+	}
+	if err := validateBrewOwnership(c); err != nil {
+		c.Log(Attention, err.Error())
 		return 1
 	}
 	if action == Plan && !present {
-		addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "install", Handling: plan.Automatic, Ownership: "declared", Target: "Homebrew", Detail: "install from the pinned Homebrew installer", Proof: "homebrew:missing:Homebrew"})
+		if installManager {
+			addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "install", Handling: plan.Automatic, Ownership: "declared", Target: "Homebrew", Detail: "install from the pinned Homebrew installer", Proof: "homebrew:missing:Homebrew"})
+		}
 		for _, declaration := range declarations {
 			kind := map[string]string{"tap": "Tap", "brew": "Formula", "cask": "Cask", "mas": "App"}[declaration[0]]
 			brewPlan(c, brewIssue{"missing", kind, declaration[1]})
@@ -37,10 +73,18 @@ func homebrew(c *Context, action Action) int {
 		return 0
 	}
 	if action == Doctor && !present {
-		c.Log(Attention, "Homebrew is missing")
+		if installManager {
+			c.Log(Attention, "Homebrew is missing")
+		} else {
+			c.Log(Attention, "realm applications require Homebrew")
+		}
 		return 2
 	}
 	if action == Apply && !present {
+		if !installManager {
+			c.Log(Attention, "realm applications require Homebrew")
+			return 1
+		}
 		if code := installHomebrew(c); code != 0 {
 			return code
 		}
@@ -49,7 +93,7 @@ func homebrew(c *Context, action Action) int {
 			return 1
 		}
 	}
-	issues := collectBrewIssues(c, brew, declarations)
+	issues := collectBrewIssues(c, brew, declarations, sources)
 	if action == Plan {
 		if len(issues) == 0 {
 			c.Log(Current, "declared Homebrew applications are installed and current")
@@ -70,38 +114,99 @@ func homebrew(c *Context, action Action) int {
 		}
 		return 2
 	}
-	brewfile := filepath.Join(c.Env.Root, "cfg", "brewfile")
-	if result := brewRun(c, brew, "bundle", "--file", brewfile, "--no-upgrade"); result.Code != 0 {
-		return result.Code
+	progress := newBrewProgress(c, issues)
+	for _, source := range sources {
+		bundleNames := brewBundleProgressNames(issues, source.path)
+		observer := newBrewOutputProgress(progress, bundleNames)
+		result := brewRunObserved(c, observer, brew, "bundle", "--file", source.path, "--no-upgrade", "--verbose")
+		observer.Flush()
+		if result.Code != 0 {
+			return result.Code
+		}
+		for name := range bundleNames {
+			progress.Report(name)
+		}
 	}
-	var formulae, casks []string
 	for _, issue := range issues {
 		switch issue.state + ":" + issue.kind {
 		case "outdated:brew":
-			formulae = append(formulae, issue.name)
+			progress.Report(issue.name)
+			if result := brewRun(c, brew, "upgrade", issue.name); result.Code != 0 {
+				return result.Code
+			}
 		case "outdated:cask":
-			casks = append(casks, issue.name)
+			progress.Report(issue.name)
+			if result := brewRun(c, brew, "upgrade", "--cask", issue.name); result.Code != 0 {
+				return result.Code
+			}
 		case "untrusted-unused:Tap":
 			if !containsBrewIssue(collectBrewTapIssues(c, brew, declarations), issue) {
 				c.Log(Attention, "refusing to untap "+issue.name+" because its ownership changed")
 				return 1
 			}
+			progress.Report(issue.name)
 			if result := brewRun(c, brew, "untap", issue.name); result.Code != 0 {
 				return result.Code
 			}
 		}
 	}
-	if len(formulae) != 0 {
-		if result := brewRun(c, brew, append([]string{"upgrade"}, formulae...)...); result.Code != 0 {
-			return result.Code
-		}
-	}
-	if len(casks) != 0 {
-		if result := brewRun(c, brew, append([]string{"upgrade", "--cask"}, casks...)...); result.Code != 0 {
-			return result.Code
-		}
-	}
 	return 0
+}
+
+func realmBrewSources(c *Context) ([]brewSource, error) {
+	configurations, err := realmstate.New(c.Env).Configurations()
+	if err != nil {
+		return nil, err
+	}
+	var sources []brewSource
+	for _, configuration := range configurations {
+		path := filepath.Join(configuration.Root, ".userland", "brewfile")
+		info, statErr := os.Stat(path)
+		if os.IsNotExist(statErr) {
+			continue
+		}
+		if statErr != nil || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("%s realm Homebrew declaration is not a regular file", configuration.Name)
+		}
+		sources = append(sources, brewSource{owner: configuration.Name + " realm", path: path})
+	}
+	return sources, nil
+}
+
+func brewSourceDeclarations(sources []brewSource) ([][2]string, error) {
+	var declarations [][2]string
+	for _, source := range sources {
+		items, err := brewDeclarations(source.path)
+		if err != nil {
+			return nil, fmt.Errorf("invalid %s Homebrew declarations: %w", source.owner, err)
+		}
+		declarations = append(declarations, items...)
+	}
+	return declarations, nil
+}
+
+func validateBrewOwnership(c *Context) error {
+	sources := []brewSource{{owner: "personal", path: filepath.Join(c.Env.Root, "cfg", "brewfile")}}
+	realmSources, err := realmBrewSources(c)
+	if err != nil {
+		return err
+	}
+	sources = append(sources, realmSources...)
+	owners := make(map[string]string)
+	for _, source := range sources {
+		declarations, err := brewDeclarations(source.path)
+		if err != nil {
+			return fmt.Errorf("invalid %s Homebrew declarations: %w", source.owner, err)
+		}
+		for _, declaration := range declarations {
+			key := declaration[0] + ":" + declaration[1]
+			if owner, exists := owners[key]; exists {
+				return fmt.Errorf("Homebrew declaration %s is owned by both %s and %s", declaration[1], owner, source.owner)
+			}
+			owners[key] = source.owner
+		}
+	}
+	return nil
 }
 
 func brewCommand(c *Context) (string, bool) {
@@ -117,6 +222,11 @@ func brewCommand(c *Context) (string, bool) {
 func brewRun(c *Context, brew string, args ...string) platform.Result {
 	environ := c.Env.With("HOMEBREW_NO_AUTO_UPDATE", "1", "HOMEBREW_NO_ANALYTICS", "1", "HOMEBREW_NO_ENV_HINTS", "1", "HOMEBREW_NO_COLOR", "1")
 	return runWith(c, environ, nil, brew, args...)
+}
+
+func brewRunObserved(c *Context, observer io.Writer, brew string, args ...string) platform.Result {
+	environ := c.Env.With("HOMEBREW_NO_AUTO_UPDATE", "1", "HOMEBREW_NO_ANALYTICS", "1", "HOMEBREW_NO_ENV_HINTS", "1", "HOMEBREW_NO_COLOR", "1")
+	return runWithObserved(c, environ, nil, observer, brew, args...)
 }
 
 func brewDeclarations(path string) ([][2]string, error) {
@@ -147,23 +257,26 @@ func brewDeclarations(path string) ([][2]string, error) {
 	return result, nil
 }
 
-func collectBrewIssues(c *Context, brew string, declarations [][2]string) []brewIssue {
-	brewfile := filepath.Join(c.Env.Root, "cfg", "brewfile")
-	var bundle, outdated platform.Result
+func collectBrewIssues(c *Context, brew string, declarations [][2]string, sources []brewSource) []brewIssue {
+	bundles := make([]platform.Result, len(sources))
+	var outdated platform.Result
 	var tapIssues []brewIssue
-	parallelReadOnly(c, 3, func(index int) {
+	parallelReadOnly(c, len(sources)+2, func(index int) {
 		switch index {
-		case 0:
-			bundle = brewRun(c, brew, "bundle", "check", "--file", brewfile, "--no-upgrade", "--verbose")
-		case 1:
+		case len(sources):
 			outdated = brewRun(c, brew, "outdated", "--json=v2")
-		case 2:
+		case len(sources) + 1:
 			tapIssues = collectBrewTapIssues(c, brew, declarations)
+		default:
+			bundles[index] = brewRun(c, brew, "bundle", "check", "--file", sources[index].path, "--no-upgrade", "--verbose")
 		}
 	})
 
 	var issues []brewIssue
-	if bundle.Code != 0 {
+	for _, bundle := range bundles {
+		if bundle.Code == 0 {
+			continue
+		}
 		for _, line := range strings.Split(string(bundle.Output), "\n") {
 			line = strings.TrimPrefix(strings.TrimPrefix(line, "→ "), "-> ")
 			suffix := " needs to be installed."
@@ -188,6 +301,89 @@ func collectBrewIssues(c *Context, brew string, declarations [][2]string) []brew
 	issues = append(issues, brewOutdated(outdated.Output, declarations)...)
 	issues = append(issues, tapIssues...)
 	return issues
+}
+
+type brewProgress struct {
+	context *Context
+	total   int
+	current int
+	pending map[string]bool
+}
+
+func newBrewProgress(c *Context, issues []brewIssue) *brewProgress {
+	pending := make(map[string]bool, len(issues))
+	for _, issue := range issues {
+		pending[issue.name] = true
+	}
+	return &brewProgress{context: c, total: len(pending), pending: pending}
+}
+
+func (p *brewProgress) Report(name string) {
+	if p == nil || !p.pending[name] {
+		return
+	}
+	delete(p.pending, name)
+	p.current++
+	p.context.ReportProgress(p.current, p.total, name)
+}
+
+type brewOutputProgress struct {
+	progress *brewProgress
+	allowed  map[string]bool
+	pending  string
+}
+
+func newBrewOutputProgress(progress *brewProgress, allowed map[string]bool) *brewOutputProgress {
+	return &brewOutputProgress{progress: progress, allowed: allowed}
+}
+
+func (p *brewOutputProgress) Write(value []byte) (int, error) {
+	p.pending += strings.ReplaceAll(string(value), "\r", "\n")
+	for {
+		line, rest, found := strings.Cut(p.pending, "\n")
+		if !found {
+			break
+		}
+		p.observe(line)
+		p.pending = rest
+	}
+	return len(value), nil
+}
+
+func (p *brewOutputProgress) Flush() {
+	if p.pending != "" {
+		p.observe(p.pending)
+		p.pending = ""
+	}
+}
+
+func (p *brewOutputProgress) observe(line string) {
+	fields := strings.Fields(strings.TrimSpace(line))
+	if len(fields) < 2 || fields[0] != "Installing" && fields[0] != "Using" && fields[0] != "Upgrading" {
+		return
+	}
+	name := strings.Trim(fields[1], "`")
+	if p.allowed[name] {
+		p.progress.Report(name)
+	}
+}
+
+func brewBundleProgressNames(issues []brewIssue, path string) map[string]bool {
+	declared, err := brewDeclarations(path)
+	if err != nil {
+		return nil
+	}
+	owned := make(map[string]bool, len(declared))
+	for _, declaration := range declared {
+		owned[declaration[1]] = true
+	}
+	result := make(map[string]bool)
+	for _, issue := range issues {
+		if owned[issue.name] && (issue.state == "missing" || issue.state == "adoptable") {
+			result[issue.name] = true
+		}
+	}
+	return result
 }
 
 func brewCaskAdoptable(c *Context, brew, name string) bool {

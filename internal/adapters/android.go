@@ -29,7 +29,8 @@ func androidSDK(c *Context, action Action) int {
 		environ := c.Env.With("JAVA_HOME", java, "PATH", filepath.Join(java, "bin")+":"+c.Env.Get("PATH"))
 		runtimeOK = runWith(c, environ, nil, sdkmanager, "--version").Code == 0
 	}
-	complete := androidComplete(home)
+	missing := androidMissingPackages(home)
+	complete := len(missing) == 0
 	if action == Plan {
 		if !runtimeOK {
 			c.Log(Change, "Android sdkmanager will use pinned Java 21 and JAVA_HOME")
@@ -72,30 +73,35 @@ func androidSDK(c *Context, action Action) int {
 	if result := runWith(c, environ, c.Stdin, sdkmanager, "--licenses"); result.Code != 0 {
 		return result.Code
 	}
-	if result := runWith(c, environ, c.Stdin, sdkmanager, androidPackages...); result.Code != 0 {
-		return result.Code
+	for index, sdkPackage := range missing {
+		c.ReportProgress(index+1, len(missing), sdkPackage)
+		if result := runWith(c, environ, c.Stdin, sdkmanager, sdkPackage); result.Code != 0 {
+			return result.Code
+		}
 	}
 	c.Log(Changed, "installed Android command-line development packages")
 	return 0
 }
 
 func androidComplete(home string) bool {
+	return len(androidMissingPackages(home)) == 0
+}
+
+func androidMissingPackages(home string) []string {
 	checks := []string{
 		filepath.Join(home, "platform-tools", "adb"),
 		filepath.Join(home, "emulator", "emulator"),
 		filepath.Join(home, "platforms", "android-36"),
 		filepath.Join(home, "build-tools", "36.0.0"),
 	}
+	var missing []string
 	for index, path := range checks {
 		info, err := os.Stat(path)
-		if err != nil {
-			return false
-		}
-		if index < 2 && info.Mode()&0o111 == 0 || index >= 2 && !info.IsDir() {
-			return false
+		if err != nil || index < 2 && info.Mode()&0o111 == 0 || index >= 2 && !info.IsDir() {
+			missing = append(missing, androidPackages[index])
 		}
 	}
-	return true
+	return missing
 }
 
 func splitWords(value string) []string { return strings.Fields(value) }

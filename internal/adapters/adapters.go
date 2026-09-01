@@ -49,11 +49,18 @@ type Context struct {
 	Events   []Event
 	Plan     *plan.Plan
 	Terminal bool
+	Progress func(current, total int, detail string)
 	commands chan struct{}
 }
 
 func (c *Context) Log(level Level, message string) {
 	c.Events = append(c.Events, Event{Level: level, Message: message})
+}
+
+func (c *Context) ReportProgress(current, total int, detail string) {
+	if c.Progress != nil {
+		c.Progress(current, total, detail)
+	}
 }
 
 type adapter struct {
@@ -75,6 +82,8 @@ var registry = []adapter{
 	{name: "personal-repos", label: "Personal repositories", area: plan.AreaFS, action: "clone", attention: plan.Blocked, run: personalRepositories},
 	{name: "realm-selection", label: "Realm selection", area: plan.AreaFS, action: "configure", attention: plan.Attended, run: realmSelection, enabled: machineClosureEnabled, directApply: true},
 	{name: "realms", label: "Realms", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: realms, enabled: realmsEnabled},
+	{name: "realm-homebrew-apps", label: "Realm applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: realmHomebrew, enabled: realmsEnabled},
+	{name: "realm-toolchains", label: "Realm toolchains", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: realmToolchains, enabled: realmsEnabled},
 	{name: "realm-auth", label: "Realm authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: realmAuthentication, enabled: realmAuthenticationEnabled, directApply: true},
 	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions},
 	{name: "file-handlers", label: "File handlers", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: fileHandlers},
@@ -104,26 +113,28 @@ func Run(ctx context.Context, env platform.Environment, action Action, stdin io.
 
 type Observer func(label string, events []Event, code int)
 
+type ProgressObserver func(label string, current, total int, detail string)
+
 func RunObserved(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, observer Observer) Result {
 	return runRegistry(ctx, env, action, stdin, terminal, nil, nil, observer)
 }
 
-func RunTasks(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, begin func(string), end Observer) Result {
-	return runRegistryOutput(ctx, env, action, stdin, output, terminal, nil, begin, end)
+func RunTasks(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, begin func(string), progress ProgressObserver, end Observer) Result {
+	return runRegistryOutput(ctx, env, action, stdin, output, terminal, nil, begin, progress, end)
 }
 
 func runRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
-	return runRegistryOutput(ctx, env, action, stdin, io.Discard, terminal, value, begin, observer)
+	return runRegistryOutput(ctx, env, action, stdin, io.Discard, terminal, value, begin, nil, observer)
 }
 
-func runRegistryOutput(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+func runRegistryOutput(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), progress ProgressObserver, observer Observer) Result {
 	if action != Apply {
 		return runReadOnlyRegistry(ctx, env, action, stdin, output, terminal, value, begin, observer)
 	}
-	return runSerialRegistry(ctx, env, action, stdin, output, terminal, value, begin, observer)
+	return runSerialRegistry(ctx, env, action, stdin, output, terminal, value, begin, progress, observer)
 }
 
-func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), progress ProgressObserver, observer Observer) Result {
 	result := Result{}
 	for _, item := range registry {
 		if item.enabled != nil && !item.enabled(env) {
@@ -133,6 +144,11 @@ func runSerialRegistry(ctx context.Context, env platform.Environment, action Act
 			begin(item.label)
 		}
 		invocation := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Plan: value, Terminal: terminal}
+		if progress != nil {
+			invocation.Progress = func(current, total int, detail string) {
+				progress(item.label, current, total, detail)
+			}
+		}
 		code := item.run(invocation, action)
 		if observer != nil {
 			observer(item.label, invocation.Events, code)
@@ -293,9 +309,21 @@ func runWith(c *Context, environ []string, stdin io.Reader, name string, args ..
 	})
 }
 
+func runWithObserved(c *Context, environ []string, stdin io.Reader, observer io.Writer, name string, args ...string) platform.Result {
+	return limitedRun(c, func() platform.Result {
+		return platform.RunObserved(c.Context, environ, stdin, observer, name, args...)
+	})
+}
+
 func runInvocation(c *Context, stdin io.Reader, invocation platform.Invocation) platform.Result {
 	return limitedRun(c, func() platform.Result {
 		return platform.RunInvocation(c.Context, stdin, invocation)
+	})
+}
+
+func runInvocationObserved(c *Context, stdin io.Reader, observer io.Writer, invocation platform.Invocation) platform.Result {
+	return limitedRun(c, func() platform.Result {
+		return platform.RunInvocationObserved(c.Context, stdin, observer, invocation)
 	})
 }
 

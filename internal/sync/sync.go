@@ -112,7 +112,8 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		return 1
 	}
 	render.Section("Apply packages")
-	if code := miseTask(ctx, env, render, stdout, runLog, "Install missing rolling packages", "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
+	missingPackages := planTargets(approved, "mise:package:brew:", "install")
+	if code := miseTask(ctx, env, render, stdout, runLog, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	var upgrades []string
@@ -123,15 +124,15 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	if len(upgrades) != 0 {
 		args := append([]string{"bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
-		if code := miseTask(ctx, env, render, stdout, runLog, "Upgrade installed rolling packages", args...); code != 0 {
+		if code := miseTask(ctx, env, render, stdout, runLog, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
 			return code
 		}
 	}
 	render.Section("Apply machine state")
-	if code := miseTask(ctx, env, render, stdout, runLog, "Install pinned development tools", "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
-	if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 		return code
 	}
 	if !env.Bool("USERLAND_TESTING") {
@@ -150,6 +151,13 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 				render.BeginTask(label)
 			} else {
 				render.Status(tui.StatusInfo, label)
+			}
+		}, func(label string, current, total int, detail string) {
+			message := fmt.Sprintf("%d/%d · %s", current, total, detail)
+			if render.Rich() {
+				render.UpdateTask(message)
+			} else {
+				render.Status(tui.StatusInfo, label+" "+message)
 			}
 		},
 		func(label string, events []adapters.Event, code int) {
@@ -287,13 +295,13 @@ func preflight(ctx context.Context, env platform.Environment) error {
 	return nil
 }
 
-func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog, label string, args ...string) int {
+func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog, label string, progressTargets []string, args ...string) int {
 	if render.Rich() {
 		render.BeginTask(label)
 	} else {
 		render.Status(tui.StatusInfo, label)
 	}
-	progress := newPackageProgress(render, args)
+	progress := newPackageProgress(render, progressTargets)
 	result := env.RunMiseObserved(ctx, nil, progress, args...)
 	progress.Flush()
 	if render.Rich() {
@@ -322,11 +330,10 @@ type packageProgress struct {
 	pending  string
 }
 
-func newPackageProgress(render tui.Renderer, args []string) *packageProgress {
+func newPackageProgress(render tui.Renderer, targets []string) *packageProgress {
 	positions := make(map[string]int)
-	for _, argument := range args {
-		name, ok := strings.CutPrefix(argument, "brew:")
-		if !ok || name == "" {
+	for _, name := range targets {
+		if name == "" {
 			continue
 		}
 		if _, exists := positions[name]; !exists {
@@ -364,15 +371,37 @@ func (p *packageProgress) observe(line string) {
 	if len(fields) < 2 || fields[0] != "mise" {
 		return
 	}
-	name, ok := strings.CutPrefix(fields[1], "brew:")
-	if !ok {
-		return
+	name := strings.TrimPrefix(fields[1], "brew:")
+	if marker := strings.LastIndexByte(name, '@'); marker > 0 {
+		name = name[:marker]
 	}
 	position, declared := p.position[name]
 	if !declared {
 		return
 	}
 	p.render.UpdateTask(fmt.Sprintf("%d/%d · %s", position, p.total, name))
+}
+
+func planTargets(value *plan.Plan, proofPrefix string, action plan.Action) []string {
+	var result []string
+	for _, item := range value.Items() {
+		if action != "" && item.Action != action {
+			continue
+		}
+		name, ok := strings.CutPrefix(item.Proof, proofPrefix)
+		if ok && name != "" {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
+func trimPrefixes(values []string, prefix string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		result = append(result, strings.TrimPrefix(value, prefix))
+	}
+	return result
 }
 
 func nativeTask(render tui.Renderer, label string, operation func() int) int {

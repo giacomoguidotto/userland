@@ -348,7 +348,7 @@ func TestRealmSSHConfigurationFollowsAttachmentLifecycle(t *testing.T) {
 	initRepository(t, mount, fixture.repository)
 	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\ngcloud = \"latest\"\n", 0o600)
 	writeFile(t, filepath.Join(mount, "ssh.config"),
-		"Host realm-remote\n  ProxyCommand \"{{USERLAND_HOME}}/.local/bin/mise\" -C \"{{USERLAND_REALM_ROOT}}\" exec -- gcloud tunnel\n", 0o600)
+		"Host realm-remote\n  ProxyCommand \"{{USERLAND_HOME}}/.local/bin/mise\" -C \"{{USERLAND_REALM_ROOT}}\" exec -- gcloud tunnel\nInclude \"{{USERLAND_STATE_DIR}}/realm-runtime.config\"\n", 0o600)
 	manager := New(fixture.env())
 
 	if _, err := manager.Add(context.Background(), fixture.repository, mount); err != nil {
@@ -357,7 +357,8 @@ func TestRealmSSHConfigurationFollowsAttachmentLifecycle(t *testing.T) {
 	sshRealms := filepath.Join(fixture.home, ".ssh", "userland-realms.config")
 	attached := readFile(t, sshRealms)
 	if !strings.Contains(attached, "Host realm-remote") ||
-		!strings.Contains(attached, `"`+filepath.Join(fixture.home, ".local", "bin", "mise")+`" -C "`+mount+`" exec -- gcloud`) {
+		!strings.Contains(attached, `"`+filepath.Join(fixture.home, ".local", "bin", "mise")+`" -C "`+mount+`" exec -- gcloud`) ||
+		!strings.Contains(attached, `Include "`+filepath.Join(fixture.state, "realm-runtime.config")+`"`) {
 		t.Fatalf("attached realm SSH projection is incomplete: %q", attached)
 	}
 

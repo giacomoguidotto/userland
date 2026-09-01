@@ -69,7 +69,11 @@ A realm can project private files into its attached checkout with
 clean relative paths confined to the realm configuration and attachment roots.
 Sync restores the declared bytes and permissions atomically. Realm-specific
 login items may be declared in `.userland/login-items.csv`; applications that
-are not installed are intentionally ignored. An executable
+are not installed are intentionally ignored. Realm-owned Homebrew applications
+may be declared in `.userland/brewfile`; Userland rejects duplicate ownership
+between personal and attached-realm Brewfiles. The realm's `mise.toml` toolchain
+and Homebrew applications are installed with item progress before authentication
+begins. An executable
 `.userland/auth-wizard` is checked by plan and doctor, and is run interactively
 by sync when authentication cannot be restored from the private configuration.
 

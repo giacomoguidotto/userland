@@ -862,6 +862,7 @@ func (m Manager) sshRealmsContents(attachments []attachment) (string, error) {
 		rendered := strings.ReplaceAll(string(template), "{{USERLAND_REALM_ROOT}}", mount)
 		rendered = strings.ReplaceAll(rendered, "{{USERLAND_REALM_CONFIG_ROOT}}", configurationRoot)
 		rendered = strings.ReplaceAll(rendered, "{{USERLAND_HOME}}", m.Env.Home)
+		rendered = strings.ReplaceAll(rendered, "{{USERLAND_STATE_DIR}}", m.Env.State)
 		if strings.Contains(rendered, "{{USERLAND_") {
 			return "", fmt.Errorf("unsupported placeholder in %s realm SSH configuration", item.Name)
 		}

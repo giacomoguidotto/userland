@@ -134,8 +134,14 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 		return code
 	}
+	if !env.Bool("USERLAND_TESTING") {
+		render.Section("Apply managed files")
+		if code := nativeTask(render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
+			return code
+		}
+	}
 	render.Section("Apply personal state")
-	result := adapters.RunTasks(ctx, env, adapters.Apply, stdin, terminal,
+	result := adapters.RunTasks(ctx, env, adapters.Apply, stdin, stdout, terminal,
 		func(label string) {
 			if adapters.DirectApply(label) {
 				return
@@ -174,9 +180,11 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		render.Summary(tui.StatusError, "Stopped at the failed step. Fix it, then rerun sync.")
 		return result.Code
 	}
-	render.Section("Apply managed files")
-	if code := nativeTask(render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
-		return code
+	if env.Bool("USERLAND_TESTING") {
+		render.Section("Apply managed files")
+		if code := nativeTask(render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
+			return code
+		}
 	}
 	render.Section("Verify")
 	if doctor.Human(ctx, environ, stdout, true) == 0 {

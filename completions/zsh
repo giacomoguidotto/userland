@@ -20,9 +20,9 @@ _userland() {
     doctor) _arguments '1:option:(--json)' ;;
     realm)
       if (( CURRENT == 3 )); then
-        _arguments '1:action:(add remove)'
+        _arguments '1:action:(list add remove)'
       elif [[ ${words[3]} == add ]]; then
-        _arguments '2:repository:' '3:mount path:_directories'
+        _arguments '2:name or repository:' '3:mount path:_directories'
       elif [[ ${words[3]} == remove ]]; then
         _arguments '2:name or mount path:_directories'
       fi

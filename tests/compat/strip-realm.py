@@ -7,6 +7,9 @@ import sys
 
 def without_help_additions(data: bytes) -> bytes:
     omitted = (
+        b"realm list",
+        b"List declared optional configuration",
+        b"realm add <name>",
         b"realm add <repository> <path>",
         b"Attach optional private configuration",
         b"realm remove <name-or-path>",

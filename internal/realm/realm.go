@@ -38,11 +38,119 @@ type Result struct {
 	Changed    bool
 }
 
+type Option struct {
+	Name, Repository, DefaultPath string
+}
+
+type AuthenticationScript struct {
+	Name, Path, Mount, ConfigurationRoot string
+}
+
+type Configuration struct {
+	Name, Mount, Root string
+}
+
 type Manager struct {
 	Env platform.Environment
 }
 
 func New(env platform.Environment) Manager { return Manager{Env: env} }
+
+func (m Manager) Options() ([]Option, error) {
+	declarations, err := m.loadDeclarations()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Option, 0, len(declarations))
+	for _, declared := range declarations {
+		if declared.Mode == "optional" {
+			result = append(result, Option{declared.Name, declared.Repository, declared.Path})
+		}
+	}
+	return result, nil
+}
+
+func (m Manager) SelectionPending() bool {
+	if _, err := os.Stat(m.selectionPath()); err == nil {
+		return false
+	}
+	if _, err := os.Stat(m.selectionProgressPath()); err == nil {
+		return true
+	}
+	_, err := os.Stat(m.attachmentsPath())
+	return errors.Is(err, os.ErrNotExist)
+}
+
+func (m Manager) BeginSelection() error {
+	return atomicWrite(m.selectionProgressPath(), []byte("in-progress\n"), 0o600)
+}
+
+func (m Manager) AddByName(ctx context.Context, name string) (Result, error) {
+	declarations, err := m.loadDeclarations()
+	if err != nil {
+		return Result{}, err
+	}
+	for _, declared := range declarations {
+		if declared.Name == name {
+			return m.Add(ctx, declared.Repository, declared.Path)
+		}
+	}
+	return Result{}, fmt.Errorf("realm is not declared: %s", name)
+}
+
+func (m Manager) RecordSelection() error {
+	attachments, err := m.loadAttachments()
+	if err != nil {
+		return err
+	}
+	if err := m.writeAttachments(attachments); err != nil {
+		return err
+	}
+	return atomicWrite(m.selectionPath(), []byte("complete\n"), 0o600)
+}
+
+func (m Manager) AuthenticationScripts() ([]AuthenticationScript, error) {
+	configurations, err := m.Configurations()
+	if err != nil {
+		return nil, err
+	}
+	var result []AuthenticationScript
+	for _, configuration := range configurations {
+		script := filepath.Join(configuration.Root, ".userland", "auth-wizard")
+		if info, statErr := os.Stat(script); statErr == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+			result = append(result, AuthenticationScript{configuration.Name, script, configuration.Mount, configuration.Root})
+		}
+	}
+	return result, nil
+}
+
+func (m Manager) Configurations() ([]Configuration, error) {
+	attachments, err := m.loadAttachments()
+	if err != nil {
+		return nil, err
+	}
+	declarations, err := m.declarationsByName()
+	if err != nil {
+		return nil, err
+	}
+	var result []Configuration
+	for _, attached := range attachments {
+		declared, ok := declarations[attached.Name]
+		if !ok {
+			continue
+		}
+		mount, expandErr := m.expandPath(attached.Path)
+		if expandErr != nil {
+			return nil, expandErr
+		}
+		configurationRoot, expandErr := m.expandPath(declared.ConfigurationPath)
+		if expandErr != nil {
+			return nil, expandErr
+		}
+		result = append(result, Configuration{attached.Name, mount, configurationRoot})
+	}
+	return result, nil
+}
 
 type declaration struct {
 	Name, Repository, ConfigurationPath, Path, Branch, Mode string
@@ -127,6 +235,9 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 		return Result{}, err
 	}
 	if err := m.allow(ctx, filepath.Join(absMount, ".envrc")); err != nil {
+		return Result{}, err
+	}
+	if _, err := m.reconcileFileProjections(configurationRoot, absMount, true); err != nil {
 		return Result{}, err
 	}
 	if attachmentChanged {
@@ -274,6 +385,12 @@ func (m Manager) Inspect(ctx context.Context) ([]Finding, error) {
 			continue
 		}
 		findings = appendRealmRepositories(findings, attached.Name, m.portablePath(mount), repositories)
+		projectionFindings, projectionErr := m.reconcileFileProjections(configurationRoot, mount, false)
+		if projectionErr != nil {
+			findings = append(findings, Finding{Attention, attached.Name + " realm file projections are invalid: " + projectionErr.Error()})
+			continue
+		}
+		findings = append(findings, prefixFindings(attached.Name+" realm: ", projectionFindings)...)
 	}
 	expected, err := m.gitRealmsContents(active)
 	if err != nil {
@@ -365,12 +482,25 @@ func (m Manager) Reconcile(ctx context.Context) ([]Finding, error) {
 		} else {
 			findings = appendRealmRepositories(findings, attached.Name, m.portablePath(mount), repositories)
 		}
+		projectionFindings, projectionErr := m.reconcileFileProjections(configurationRoot, mount, true)
+		if projectionErr != nil {
+			findings = append(findings, Finding{Attention, attached.Name + " realm file projections could not be reconciled: " + projectionErr.Error()})
+			continue
+		}
+		findings = append(findings, prefixFindings(attached.Name+" realm: ", projectionFindings)...)
 		active = append(active, attached)
 	}
 	if err := m.writeRealmConfigurations(active); err != nil {
 		return findings, err
 	}
 	return findings, nil
+}
+
+func prefixFindings(prefix string, findings []Finding) []Finding {
+	for index := range findings {
+		findings[index].Message = prefix + findings[index].Message
+	}
+	return findings
 }
 
 func appendRealmRepositories(findings []Finding, name, mount string, repositories []repositorycatalog.DeclarationFinding) []Finding {
@@ -763,6 +893,12 @@ func (m Manager) catalogPath() string {
 }
 
 func (m Manager) attachmentsPath() string { return filepath.Join(m.Env.State, "realms.csv") }
+
+func (m Manager) selectionPath() string { return filepath.Join(m.Env.State, "realm-selection") }
+
+func (m Manager) selectionProgressPath() string {
+	return filepath.Join(m.Env.State, "realm-selection-in-progress")
+}
 func (m Manager) gitRealmsPath() string {
 	if path := m.Env.Get("USERLAND_GIT_REALMS"); path != "" {
 		return path

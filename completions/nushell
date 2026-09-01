@@ -22,9 +22,11 @@ export extern "userland doctor" [
 ]
 
 export extern "userland realm add" [
-    repository: string
-    path: path
+    name_or_repository: string
+    path?: path
 ]
+
+export extern "userland realm list" []
 
 export extern "userland realm remove" [
     name_or_path: string

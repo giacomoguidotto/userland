@@ -85,17 +85,36 @@ func Run(ctx context.Context, invocation Invocation) ExitCode {
 
 func runRealm(ctx context.Context, invocation Invocation) ExitCode {
 	if len(invocation.Args) < 2 {
-		return usageError(invocation, "realm expects add or remove")
+		return usageError(invocation, "realm expects list, add, or remove")
 	}
 	manager := realm.New(platform.NewEnvironment(invocation.Environ))
 	render := tui.New(invocation.Stdout, invocation.Environ)
 	switch invocation.Args[1] {
+	case "list":
+		if len(invocation.Args) != 2 {
+			return usageError(invocation, "realm list does not accept arguments")
+		}
+		options, err := manager.Options()
+		if err != nil {
+			tui.New(invocation.Stderr, invocation.Environ).Status(tui.StatusError, err.Error())
+			return ExitFailure
+		}
+		for _, option := range options {
+			fmt.Fprintf(invocation.Stdout, "%s\t%s\t%s\n", option.Name, option.DefaultPath, option.Repository)
+		}
+		return ExitSuccess
 	case "add":
-		if len(invocation.Args) != 4 {
-			return usageError(invocation, "realm add expects a repository and mount path")
+		if len(invocation.Args) != 3 && len(invocation.Args) != 4 {
+			return usageError(invocation, "realm add expects a declared name, or a repository and mount path")
 		}
 		render.Command("realm add", "Attach private configuration to a directory tree.")
-		result, err := manager.Add(ctx, invocation.Args[2], invocation.Args[3])
+		var result realm.Result
+		var err error
+		if len(invocation.Args) == 3 {
+			result, err = manager.AddByName(ctx, invocation.Args[2])
+		} else {
+			result, err = manager.Add(ctx, invocation.Args[2], invocation.Args[3])
+		}
 		if err != nil {
 			tui.New(invocation.Stderr, invocation.Environ).Status(tui.StatusError, err.Error())
 			return ExitFailure
@@ -119,7 +138,7 @@ func runRealm(ctx context.Context, invocation Invocation) ExitCode {
 		render.Status(tui.StatusOK, result.Name+" realm detached; checkout preserved at "+portableHome(result.Mount, invocation.Environ))
 		return ExitSuccess
 	default:
-		return usageError(invocation, "realm expects add or remove")
+		return usageError(invocation, "realm expects list, add, or remove")
 	}
 }
 

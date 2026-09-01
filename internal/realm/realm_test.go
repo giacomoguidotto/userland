@@ -114,6 +114,57 @@ func TestAddClonesAMissingRealmWithoutPullingExistingOnes(t *testing.T) {
 	}
 }
 
+func TestFileProjectionRestoresContentsAndMode(t *testing.T) {
+	fixture := newFixture(t)
+	mount := filepath.Join(fixture.home, "dev", "work")
+	initRepository(t, mount, fixture.repository)
+	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
+	writeFile(t, filepath.Join(mount, ".userland", "files.csv"), "source,target,mode\nfiles/project.env,.env,0600\n", 0o600)
+	source := filepath.Join(mount, "files", "project.env")
+	writeFile(t, source, "TOKEN=private\n", 0o644)
+	manager := New(fixture.env())
+	if _, err := manager.Add(context.Background(), fixture.repository, mount); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(mount, ".env")
+	if got := readFile(t, target); got != "TOKEN=private\n" {
+		t.Fatalf("projected contents = %q", got)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("projected mode is not 0600: %v %v", info, err)
+	}
+	if info, err := os.Stat(source); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("projection source mode is not 0600: %v %v", info, err)
+	}
+	writeFile(t, target, "TOKEN=drifted\n", 0o644)
+	findings, err := manager.Inspect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsFinding(findings, Change, "file projection") {
+		t.Fatalf("projection drift was not reported: %#v", findings)
+	}
+	if _, err := manager.reconcileFileProjections(mount, mount, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, target); got != "TOKEN=private\n" {
+		t.Fatalf("reconciled contents = %q", got)
+	}
+	if info, err := os.Stat(target); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("reconciled mode is not 0600: %v %v", info, err)
+	}
+}
+
+func TestFileProjectionRejectsTraversal(t *testing.T) {
+	fixture := newFixture(t)
+	configurationRoot := filepath.Join(fixture.home, "realm")
+	mount := filepath.Join(fixture.home, "product")
+	writeFile(t, filepath.Join(configurationRoot, ".userland", "files.csv"), "source,target,mode\n../secret,.env,0600\n", 0o600)
+	if _, err := loadFileProjections(configurationRoot, mount); err == nil {
+		t.Fatal("traversing projection source was accepted")
+	}
+}
+
 func TestAddProjectsASeparateConfigurationCheckoutOntoAnExistingRepository(t *testing.T) {
 	fixture := newFixture(t)
 	source := filepath.Join(fixture.base, "trellis-configuration-source")
@@ -463,4 +514,13 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(contents)
+}
+
+func containsFinding(findings []Finding, state State, text string) bool {
+	for _, finding := range findings {
+		if finding.State == state && strings.Contains(finding.Message, text) {
+			return true
+		}
+	}
+	return false
 }

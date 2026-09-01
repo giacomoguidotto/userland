@@ -1,4 +1,3 @@
-Include ~/.ssh/config.local
 Include ~/.ssh/userland-realms.config
 
 Include ~/.config/colima/ssh_config
@@ -9,5 +8,11 @@ Host *
 Host life-github
   HostName github.com
   User git
+  IdentityFile ~/.ssh/life-auth.pub
+  IdentitiesOnly yes
+
+Host nicagi-store01
+  HostName nicagi-store01
+  User nicagiMaster
   IdentityFile ~/.ssh/life-auth.pub
   IdentitiesOnly yes

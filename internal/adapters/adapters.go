@@ -45,6 +45,7 @@ type Context struct {
 	Context  context.Context
 	Env      platform.Environment
 	Stdin    io.Reader
+	Output   io.Writer
 	Events   []Event
 	Plan     *plan.Plan
 	Terminal bool
@@ -70,15 +71,25 @@ var registry = []adapter{
 	{name: "toolchain-health", label: "Toolchain health", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: toolchain},
 	{name: "homebrew-apps", label: "Homebrew applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: homebrew},
 	{name: "android-sdk", label: "Android development tools", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: androidSDK, directApply: true},
+	{name: "personal-auth", label: "Personal authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: personalAuthentication, enabled: machineClosureEnabled, directApply: true},
 	{name: "personal-repos", label: "Personal repositories", area: plan.AreaFS, action: "clone", attention: plan.Blocked, run: personalRepositories},
+	{name: "realm-selection", label: "Realm selection", area: plan.AreaFS, action: "configure", attention: plan.Attended, run: realmSelection, enabled: machineClosureEnabled, directApply: true},
 	{name: "realms", label: "Realms", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: realms, enabled: realmsEnabled},
+	{name: "realm-auth", label: "Realm authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: realmAuthentication, enabled: realmAuthenticationEnabled, directApply: true},
 	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions},
 	{name: "file-handlers", label: "File handlers", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: fileHandlers},
+	{name: "login-items", label: "Login items", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: loginItems, enabled: machineClosureEnabled},
 	{name: "raycast", label: "Raycast configuration", area: plan.AreaApps, action: "configure", attention: plan.Blocked, run: raycast, directApply: true},
 	{name: "shell-cache", label: "Shell cache", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: shellCache},
 	{name: "manual-apps", label: "Manual applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: manualApps},
 	{name: "repository-snapshot", label: "Repository snapshot", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: repositorySnapshot},
 	{name: "security-health", label: "Security health", area: plan.AreaOS, action: "set", attention: plan.Blocked, run: securityHealth},
+}
+
+func machineClosureEnabled(env platform.Environment) bool { return !env.Bool("USERLAND_TESTING") }
+
+func realmAuthenticationEnabled(env platform.Environment) bool {
+	return machineClosureEnabled(env) && realmsEnabled(env)
 }
 
 type Result struct {
@@ -97,18 +108,22 @@ func RunObserved(ctx context.Context, env platform.Environment, action Action, s
 	return runRegistry(ctx, env, action, stdin, terminal, nil, nil, observer)
 }
 
-func RunTasks(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, begin func(string), end Observer) Result {
-	return runRegistry(ctx, env, action, stdin, terminal, nil, begin, end)
+func RunTasks(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, begin func(string), end Observer) Result {
+	return runRegistryOutput(ctx, env, action, stdin, output, terminal, nil, begin, end)
 }
 
 func runRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
-	if action != Apply {
-		return runReadOnlyRegistry(ctx, env, action, stdin, terminal, value, begin, observer)
-	}
-	return runSerialRegistry(ctx, env, action, stdin, terminal, value, begin, observer)
+	return runRegistryOutput(ctx, env, action, stdin, io.Discard, terminal, value, begin, observer)
 }
 
-func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+func runRegistryOutput(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+	if action != Apply {
+		return runReadOnlyRegistry(ctx, env, action, stdin, output, terminal, value, begin, observer)
+	}
+	return runSerialRegistry(ctx, env, action, stdin, output, terminal, value, begin, observer)
+}
+
+func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
 	result := Result{}
 	for _, item := range registry {
 		if item.enabled != nil && !item.enabled(env) {
@@ -117,7 +132,7 @@ func runSerialRegistry(ctx context.Context, env platform.Environment, action Act
 		if begin != nil {
 			begin(item.label)
 		}
-		invocation := &Context{Context: ctx, Env: env, Stdin: stdin, Plan: value, Terminal: terminal}
+		invocation := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Plan: value, Terminal: terminal}
 		code := item.run(invocation, action)
 		if observer != nil {
 			observer(item.label, invocation.Events, code)
@@ -146,7 +161,7 @@ type adapterExecution struct {
 	code       int
 }
 
-func runReadOnlyRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
+func runReadOnlyRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
 	items := make([]adapter, 0, len(registry))
 	for _, item := range registry {
 		if item.enabled == nil || item.enabled(env) {
@@ -174,7 +189,7 @@ func runReadOnlyRegistry(ctx context.Context, env platform.Environment, action A
 					localPlan = plan.New()
 				}
 				invocation := &Context{
-					Context: ctx, Env: env, Stdin: stdin, Plan: localPlan,
+					Context: ctx, Env: env, Stdin: stdin, Output: output, Plan: localPlan,
 					Terminal: terminal, commands: commands,
 				}
 				executions[index] = adapterExecution{item: item, invocation: invocation, code: item.run(invocation, action)}

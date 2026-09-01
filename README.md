@@ -28,6 +28,8 @@ The installer verifies the release checksum and prepares `~/.userland` before sh
 | `userland plan` | Show what would change without changing the machine. |
 | `userland sync` | Apply declared state, guide attended steps, then run the doctor. Safe to rerun after an interruption. |
 | `userland doctor` | Report drift and machine health without changing anything. Use `--json` for structured output. |
+| `userland realm list` | List the optional private realms declared by this configuration. |
+| `userland realm add <name>` | Attach a declared private realm at its default path. |
 | `userland realm add <repository> <path>` | Attach optional private configuration to a directory tree on this Mac. |
 | `userland realm remove <name-or-path>` | Detach a realm without deleting its checkout or portable declaration. |
 | `userland completions <shell>` | Print completions for Bash, Fish, Nushell, or Zsh. Zsh is wired in automatically by sync. |
@@ -43,9 +45,11 @@ the ambient shell.
 
 A realm applies a private operational identity below one directory. The
 portable, optional catalog lives in `cfg/realms.csv`; the attachment map for
-the current Mac lives in Userland state and is not committed. A new Mac can
-therefore discover a realm without cloning or activating it until `realm add`
-is run explicitly.
+the current Mac lives in Userland state and is not committed. On the first
+sync, Userland asks which declared realms should be attached and records the
+selection, including a selection of none. Later runs converge only those
+realms. The same choices are also available through `realm list` and
+`realm add <name>`.
 
 `realm add` clones a missing realm configuration checkout or adopts an existing
 checkout whose raw origin matches the declaration. The configuration checkout
@@ -60,6 +64,15 @@ repositories below the attached path. An optional `ssh.config` is materialized
 only while the realm is attached, with its configuration and attachment paths
 substituted into the generated configuration.
 
+A realm can project private files into its attached checkout with
+`.userland/files.csv`, using `source,target,mode` columns. Both paths must be
+clean relative paths confined to the realm configuration and attachment roots.
+Sync restores the declared bytes and permissions atomically. Realm-specific
+login items may be declared in `.userland/login-items.csv`; applications that
+are not installed are intentionally ignored. An executable
+`.userland/auth-wizard` is checked by plan and doctor, and is run interactively
+by sync when authentication cannot be restored from the private configuration.
+
 A realm can declare its repository taxonomy in
 `.userland/repositories.csv` with `repository,path,branch` columns. Plan and
 doctor validate each checkout, its raw origin, and its declared canonical
@@ -72,9 +85,9 @@ attached repository and never deletes an undeclared child checkout.
 
 `realm remove` revokes direnv authorization and removes Userland-generated
 activation and realm projections. The configuration checkout, attached
-repository, private files, and optional catalog entry remain. Passwords, tokens,
-and private keys still belong in a credential store, not in a private Git
-repository.
+repository, private files, and optional catalog entry remain. A realm may
+explicitly snapshot credentials when its owner accepts the security tradeoff;
+otherwise its wizard should use the service's attended login flow.
 
 ## Repository map
 
@@ -102,13 +115,21 @@ the Go implementation.
 
 ## Ownership
 
-Userland owns only the personal state declared here. Private realm contents, credentials, browser profiles, histories, caches, application databases, and machine-local authentication stay out of the public repository.
+Userland owns only the personal state declared here. Work-domain configuration
+and any explicitly versioned credentials stay in private realms. Browser
+profiles, histories, caches, application databases, and machine-local
+authentication stay out of the public repository.
 
 Sync never stashes or edits an undeclared repository. Declared primary checkouts are canonical remote-branch mirrors: sync discards their tracked changes and untracked, non-ignored files while preserving ignored local state such as dotenv files. It does not prune unmanaged packages, applications, files, Dock items, login items, or browser extensions. Dotfile conflicts stop the run; supported legacy migrations preserve undeclared children.
 
 ## Manual gates
 
-macOS and application security still require a person for some steps: App Store authentication, privacy approvals, licenses, browser extensions, Android SDK licenses, vendor-only installers, and Raycast's encrypted import. `userland sync` opens or explains each attended step and remains safe to rerun.
+macOS and application security still require a person for some steps: App Store
+authentication, privacy approvals, licenses, browser extensions, Android SDK
+licenses, vendor-only installers, and Raycast's encrypted import. Sync also
+runs the personal and selected-realm authentication wizards when their
+read-only checks fail. `userland sync` opens or explains each attended step and
+remains safe to rerun.
 
 ## Release integrity
 

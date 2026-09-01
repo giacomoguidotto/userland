@@ -7,15 +7,15 @@ import (
 	"testing"
 )
 
-func TestRealmCommandRequiresExplicitAddOrRemoveArguments(t *testing.T) {
+func TestRealmCommandRequiresExplicitArguments(t *testing.T) {
 	tests := []struct {
 		args    []string
 		message string
 	}{
-		{[]string{"realm"}, "realm expects add or remove"},
-		{[]string{"realm", "add", "repository-only"}, "realm add expects a repository and mount path"},
+		{[]string{"realm"}, "realm expects list, add, or remove"},
+		{[]string{"realm", "add"}, "realm add expects a declared name, or a repository and mount path"},
 		{[]string{"realm", "remove"}, "realm remove expects a name or mount path"},
-		{[]string{"realm", "unknown"}, "realm expects add or remove"},
+		{[]string{"realm", "unknown"}, "realm expects list, add, or remove"},
 	}
 	for _, test := range tests {
 		var stdout, stderr bytes.Buffer
@@ -39,6 +39,8 @@ func TestUsageIncludesRealmInterface(t *testing.T) {
 		t.Fatalf("help returned %d: %q", code, stderr.String())
 	}
 	for _, expected := range []string{
+		"realm list",
+		"realm add <name>",
 		"realm add <repository> <path>",
 		"realm remove <name-or-path>",
 	} {

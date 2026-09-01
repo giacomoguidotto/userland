@@ -26,6 +26,9 @@ def capture(command: str, environment: dict[str, str]) -> tuple[int, bytes]:
 
 def without_realm_help(data: bytes) -> bytes:
     omitted = (
+        b"realm list",
+        b"List declared optional configuration",
+        b"realm add <name>",
         b"realm add <repository> <path>",
         b"Attach optional private configuration",
         b"realm remove <name-or-path>",

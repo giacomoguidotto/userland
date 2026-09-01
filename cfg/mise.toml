@@ -78,6 +78,7 @@ python = "3.14.7"
 "~/.hushlogin" = { source = "home/hushlogin", mode = "symlink" }
 "~/.docker/cli-plugins" = { source = "docker/cli-plugins", mode = "symlink-each" }
 "~/.ssh/config" = { source = "home/ssh/config", mode = "symlink" }
+"~/.ssh/life-auth.pub" = { source = "home/ssh/life-auth.pub", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.claude/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.claude/settings.json" = { source = "agents/claude/settings.json", mode = "symlink" }

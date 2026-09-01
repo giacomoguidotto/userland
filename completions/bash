@@ -10,7 +10,7 @@ _userland_completion() {
       doctor) choices='--json' ;;
       realm)
         if [ "$COMP_CWORD" -eq 2 ]; then
-          choices='add remove'
+          choices='list add remove'
         fi
         ;;
       completions) choices='bash fish nushell zsh' ;;

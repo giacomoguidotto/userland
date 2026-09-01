@@ -9,8 +9,12 @@ An optional operational identity whose configuration applies throughout one dire
 _Avoid_: Workspace, environment, context
 
 **Realm declaration**:
-A portable record that a realm exists and may be attached on a machine.
+A portable record that a realm exists, where its configuration checkout belongs, and where it may be attached on a machine.
 _Avoid_: Workspace configuration, mount
+
+**Realm configuration checkout**:
+The canonical checkout of a private Git repository that owns one realm's portable configuration. It may coincide with the realm's directory tree or live separately.
+_Avoid_: Control repository, realm root
 
 **Realm attachment**:
 A machine-local opt-in that binds a realm declaration to its directory tree and enables its projections.

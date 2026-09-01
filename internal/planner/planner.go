@@ -62,7 +62,7 @@ func execute(ctx context.Context, environ []string, out io.Writer, standalone bo
 	if r.root == "" || r.cache == "" || r.state == "" {
 		return errors.New("Userland paths are not configured")
 	}
-	if contents, err := os.ReadFile(filepath.Join(r.root, "cfg", "schema-version")); err != nil || strings.TrimSpace(string(contents)) != "2" {
+	if contents, err := os.ReadFile(filepath.Join(r.root, "cfg", "schema-version")); err != nil || strings.TrimSpace(string(contents)) != "3" {
 		return errors.New("state schema is missing")
 	}
 	mise := env["USERLAND_MISE"]

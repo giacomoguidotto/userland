@@ -45,7 +45,7 @@ type Manager struct {
 func New(env platform.Environment) Manager { return Manager{Env: env} }
 
 type declaration struct {
-	Name, Repository, Path, Branch, Mode string
+	Name, Repository, ConfigurationPath, Path, Branch, Mode string
 }
 
 type attachment struct {
@@ -66,22 +66,21 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 		return Result{}, err
 	}
 	declaredPath := m.portablePath(absMount)
-	name, err := m.resolveName(repository, declaredPath)
+	declared, err := m.resolveDeclaration(repository, declaredPath)
 	if err != nil {
 		return Result{}, err
 	}
-	branch, err := m.resolveBranch(repository, declaredPath)
-	if err != nil {
-		return Result{}, err
-	}
-	declared := declaration{Name: name, Repository: repository, Path: declaredPath, Branch: branch, Mode: "optional"}
 	if err := m.validateDeclaration(declared); err != nil {
 		return Result{}, err
 	}
-	if err := m.validateActivation(absMount, name); err != nil {
+	configurationRoot, err := m.expandPath(declared.ConfigurationPath)
+	if err != nil {
 		return Result{}, err
 	}
-	cloned, err := m.ensureCheckout(ctx, declared, absMount)
+	if err := m.validateActivation(absMount, configurationRoot, declared.Name); err != nil {
+		return Result{}, err
+	}
+	cloned, err := m.ensureCheckout(ctx, declared, configurationRoot)
 	if err != nil {
 		return Result{}, err
 	}
@@ -95,17 +94,17 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 	}
 	attachmentChanged := true
 	for _, existing := range attachments {
-		if existing.Name == name {
+		if existing.Name == declared.Name {
 			if existing.Path != declaredPath {
-				return Result{}, fmt.Errorf("realm %s is already attached at %s", name, existing.Path)
+				return Result{}, fmt.Errorf("realm %s is already attached at %s", declared.Name, existing.Path)
 			}
 			attachmentChanged = false
 		}
 	}
 	if attachmentChanged {
-		attachments = append(attachments, attachment{Name: name, Path: declaredPath})
+		attachments = append(attachments, attachment{Name: declared.Name, Path: declaredPath})
 	}
-	activationChanged, err := m.ensureActivation(absMount, name)
+	activationChanged, err := m.ensureActivation(absMount, configurationRoot, declared.Name)
 	if err != nil {
 		return Result{}, err
 	}
@@ -121,7 +120,7 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 		return Result{}, err
 	}
 	return Result{
-		Name: name, Repository: repository, Mount: absMount,
+		Name: declared.Name, Repository: repository, Mount: absMount,
 		Changed: cloned || catalogChanged || attachmentChanged || activationChanged,
 	}, nil
 }
@@ -151,6 +150,20 @@ func (m Manager) Remove(ctx context.Context, target string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	configurationRoot := mount
+	declarations, declarationErr := m.loadDeclarations()
+	if declarationErr != nil {
+		return Result{}, declarationErr
+	}
+	for _, declared := range declarations {
+		if declared.Name == selected.Name && declared.Path == selected.Path {
+			configurationRoot, err = m.expandPath(declared.ConfigurationPath)
+			if err != nil {
+				return Result{}, err
+			}
+			break
+		}
+	}
 	link := filepath.Join(mount, ".envrc")
 	removeActivation := false
 	if info, statErr := os.Lstat(link); statErr == nil {
@@ -158,7 +171,7 @@ func (m Manager) Remove(ctx context.Context, target string) (Result, error) {
 			return Result{}, fmt.Errorf("refusing to remove unmanaged .envrc at %s", mount)
 		}
 		contents, readErr := os.ReadFile(link)
-		if readErr != nil || string(contents) != activationContents(selected.Name, mount) {
+		if readErr != nil || !managedActivationContents(string(contents), selected.Name, mount, configurationRoot) {
 			return Result{}, fmt.Errorf("refusing to remove unmanaged .envrc at %s", mount)
 		}
 		removeActivation = true
@@ -211,11 +224,15 @@ func (m Manager) Inspect(ctx context.Context) ([]Finding, error) {
 		if expandErr != nil {
 			return nil, expandErr
 		}
-		if err := m.checkCheckout(declared, mount); err != nil {
+		configurationRoot, expandErr := m.expandPath(declared.ConfigurationPath)
+		if expandErr != nil {
+			return nil, expandErr
+		}
+		if err := m.checkCheckout(declared, configurationRoot); err != nil {
 			findings = append(findings, Finding{Attention, err.Error()})
 			continue
 		}
-		if err := m.checkActivation(mount, attached.Name); err != nil {
+		if err := m.checkActivation(mount, configurationRoot, attached.Name); err != nil {
 			var conflict activationConflict
 			if errors.As(err, &conflict) {
 				findings = append(findings, Finding{Attention, err.Error()})
@@ -225,7 +242,7 @@ func (m Manager) Inspect(ctx context.Context) ([]Finding, error) {
 			}
 			continue
 		}
-		canonical := repositorycatalog.InspectCanonical(ctx, m.Env, mount, declared.Repository, declared.Branch)
+		canonical := repositorycatalog.InspectCanonical(ctx, m.Env, configurationRoot, declared.Repository, declared.Branch)
 		if canonical.Status == repositorycatalog.CanonicalAttention {
 			findings = append(findings, Finding{Attention, attached.Name + " realm " + canonical.Message})
 		}
@@ -233,7 +250,7 @@ func (m Manager) Inspect(ctx context.Context) ([]Finding, error) {
 			findings = append(findings, Finding{Change, attached.Name + " realm " + canonical.Message})
 		}
 		active = append(active, attached)
-		repositories, repositoryErr := repositorycatalog.InspectDeclarations(ctx, m.Env, mount)
+		repositories, repositoryErr := repositorycatalog.InspectDeclarations(ctx, m.Env, configurationRoot, mount)
 		if repositoryErr != nil {
 			findings = append(findings, Finding{Attention, attached.Name + " realm repository taxonomy is invalid: " + repositoryErr.Error()})
 			continue
@@ -293,17 +310,21 @@ func (m Manager) Reconcile(ctx context.Context) ([]Finding, error) {
 		if expandErr != nil {
 			return nil, expandErr
 		}
-		cloned, checkoutErr := m.ensureCheckout(ctx, declared, mount)
+		configurationRoot, expandErr := m.expandPath(declared.ConfigurationPath)
+		if expandErr != nil {
+			return nil, expandErr
+		}
+		cloned, checkoutErr := m.ensureCheckout(ctx, declared, configurationRoot)
 		if checkoutErr != nil {
 			findings = append(findings, Finding{Attention, checkoutErr.Error()})
 			continue
 		}
-		canonical := repositorycatalog.ReconcileCanonical(ctx, m.Env, mount, declared.Repository, declared.Branch)
+		canonical := repositorycatalog.ReconcileCanonical(ctx, m.Env, configurationRoot, declared.Repository, declared.Branch)
 		if canonical.Status == repositorycatalog.CanonicalAttention {
 			findings = append(findings, Finding{Attention, attached.Name + " realm " + canonical.Message})
 			continue
 		}
-		changed, activationErr := m.ensureActivation(mount, attached.Name)
+		changed, activationErr := m.ensureActivation(mount, configurationRoot, attached.Name)
 		if activationErr != nil {
 			findings = append(findings, Finding{Attention, activationErr.Error()})
 			continue
@@ -316,7 +337,7 @@ func (m Manager) Reconcile(ctx context.Context) ([]Finding, error) {
 			}
 			findings = append(findings, Finding{Change, attached.Name + " realm activation was refreshed"})
 		}
-		repositories, repositoryErr := repositorycatalog.ReconcileDeclarations(ctx, m.Env, mount)
+		repositories, repositoryErr := repositorycatalog.ReconcileDeclarations(ctx, m.Env, configurationRoot, mount)
 		if repositoryErr != nil {
 			findings = append(findings, Finding{Attention, attached.Name + " realm repository taxonomy could not be reconciled: " + repositoryErr.Error()})
 			continue
@@ -365,6 +386,9 @@ func (m Manager) validateDeclaration(candidate declaration) error {
 		if existing.Name == candidate.Name && existing != candidate {
 			return fmt.Errorf("realm %s is already declared with different settings", candidate.Name)
 		}
+		if existing.ConfigurationPath == candidate.ConfigurationPath && existing.Name != candidate.Name {
+			return fmt.Errorf("realm configuration path %s is already declared as %s", candidate.ConfigurationPath, existing.Name)
+		}
 		if existing.Path == candidate.Path && existing.Name != candidate.Name {
 			return fmt.Errorf("realm path %s is already declared as %s", candidate.Path, existing.Name)
 		}
@@ -372,7 +396,7 @@ func (m Manager) validateDeclaration(candidate declaration) error {
 	return nil
 }
 
-func (m Manager) validateActivation(mount, name string) error {
+func (m Manager) validateActivation(mount, configurationRoot, name string) error {
 	link := filepath.Join(mount, ".envrc")
 	info, err := os.Lstat(link)
 	if errors.Is(err, os.ErrNotExist) {
@@ -385,18 +409,18 @@ func (m Manager) validateActivation(mount, name string) error {
 		return activationConflict{fmt.Sprintf("refusing to replace unmanaged .envrc at %s", mount)}
 	}
 	contents, err := os.ReadFile(link)
-	if err != nil || string(contents) != activationContents(name, mount) {
+	if err != nil || !managedActivationContents(string(contents), name, mount, configurationRoot) {
 		return activationConflict{fmt.Sprintf("refusing to replace unmanaged .envrc at %s", mount)}
 	}
 	return nil
 }
 
-func (m Manager) ensureCheckout(ctx context.Context, declared declaration, mount string) (bool, error) {
-	if _, err := os.Stat(mount); errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(mount), 0o700); err != nil {
+func (m Manager) ensureCheckout(ctx context.Context, declared declaration, configurationRoot string) (bool, error) {
+	if _, err := os.Stat(configurationRoot); errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(filepath.Dir(configurationRoot), 0o700); err != nil {
 			return false, err
 		}
-		result := platform.Run(ctx, m.Env.List, nil, "git", "clone", "--branch", declared.Branch, "--", declared.Repository, mount)
+		result := platform.Run(ctx, m.Env.List, nil, "git", "clone", "--branch", declared.Branch, "--", declared.Repository, configurationRoot)
 		if result.Code != 0 {
 			return false, fmt.Errorf("could not clone %s realm", declared.Name)
 		}
@@ -404,18 +428,18 @@ func (m Manager) ensureCheckout(ctx context.Context, declared declaration, mount
 	} else if err != nil {
 		return false, err
 	}
-	if err := m.checkCheckout(declared, mount); err != nil {
+	if err := m.checkCheckout(declared, configurationRoot); err != nil {
 		return false, err
 	}
 	return false, nil
 }
 
-func (m Manager) checkCheckout(declared declaration, mount string) error {
-	info, err := os.Stat(filepath.Join(mount, ".git"))
+func (m Manager) checkCheckout(declared declaration, configurationRoot string) error {
+	info, err := os.Stat(filepath.Join(configurationRoot, ".git"))
 	if err != nil || !info.IsDir() {
-		return fmt.Errorf("realm path is not a Git checkout: %s", m.portablePath(mount))
+		return fmt.Errorf("realm configuration path is not a Git checkout: %s", m.portablePath(configurationRoot))
 	}
-	result := platform.Run(context.Background(), m.Env.List, nil, "git", "-C", mount, "config", "--local", "--get", "remote.origin.url")
+	result := platform.Run(context.Background(), m.Env.List, nil, "git", "-C", configurationRoot, "config", "--local", "--get", "remote.origin.url")
 	if result.Code != 0 {
 		return fmt.Errorf("%s realm has no origin remote", declared.Name)
 	}
@@ -426,11 +450,11 @@ func (m Manager) checkCheckout(declared declaration, mount string) error {
 	return nil
 }
 
-func (m Manager) ensureActivation(mount, name string) (bool, error) {
-	if err := m.validateActivation(mount, name); err != nil {
+func (m Manager) ensureActivation(mount, configurationRoot, name string) (bool, error) {
+	if err := m.validateActivation(mount, configurationRoot, name); err != nil {
 		return false, err
 	}
-	expected := activationContents(name, mount)
+	expected := activationContents(name, mount, configurationRoot)
 	changed := false
 	link := filepath.Join(mount, ".envrc")
 	if actual, err := os.ReadFile(link); err != nil || string(actual) != expected {
@@ -445,18 +469,40 @@ func (m Manager) ensureActivation(mount, name string) (bool, error) {
 	return changed, nil
 }
 
-func (m Manager) checkActivation(mount, name string) error {
-	if err := m.validateActivation(mount, name); err != nil {
+func (m Manager) checkActivation(mount, configurationRoot, name string) error {
+	if err := m.validateActivation(mount, configurationRoot, name); err != nil {
 		return err
 	}
 	actual, err := os.ReadFile(filepath.Join(mount, ".envrc"))
-	if err != nil || string(actual) != activationContents(name, mount) {
+	if err != nil || string(actual) != activationContents(name, mount, configurationRoot) {
 		return fmt.Errorf("%s realm activation needs regeneration", name)
 	}
 	return nil
 }
 
-func activationContents(name, mount string) string {
+func activationContents(name, mount, configurationRoot string) string {
+	custom := filepath.Join(configurationRoot, ".userland", "envrc")
+	contents := "# Generated by userland realm. Do not edit.\n" +
+		"export USERLAND_REALM=" + shellQuote(name) + "\n" +
+		"export USERLAND_REALM_ROOT=" + shellQuote(mount) + "\n" +
+		"export USERLAND_REALM_CONFIG_ROOT=" + shellQuote(configurationRoot) + "\n"
+	contents += miseActivation(configurationRoot)
+	if mount != configurationRoot {
+		contents += miseActivation(mount)
+	}
+	return contents +
+		"if [[ -f " + shellQuote(custom) + " ]]; then\n" +
+		"  watch_file " + shellQuote(custom) + "\n" +
+		"  source_env " + shellQuote(custom) + "\n" +
+		"fi\n"
+}
+
+func managedActivationContents(contents, name, mount, configurationRoot string) bool {
+	return contents == activationContents(name, mount, configurationRoot) ||
+		contents == legacyActivationContents(name, mount)
+}
+
+func legacyActivationContents(name, mount string) string {
 	mise := filepath.Join(mount, "mise.toml")
 	custom := filepath.Join(mount, ".userland", "envrc")
 	return "# Generated by userland realm. Do not edit.\n" +
@@ -471,6 +517,16 @@ func activationContents(name, mount string) string {
 		"if [[ -f " + shellQuote(custom) + " ]]; then\n" +
 		"  watch_file " + shellQuote(custom) + "\n" +
 		"  source_env " + shellQuote(custom) + "\n" +
+		"fi\n"
+}
+
+func miseActivation(root string) string {
+	mise := filepath.Join(root, "mise.toml")
+	return "if [[ -f " + shellQuote(mise) + " ]]; then\n" +
+		"  watch_file " + shellQuote(mise) + "\n" +
+		"  if command -v mise >/dev/null 2>&1; then\n" +
+		"    eval \"$(mise -C " + shellQuote(root) + " env -s bash)\"\n" +
+		"  fi\n" +
 		"fi\n"
 }
 
@@ -506,7 +562,7 @@ func (m Manager) ensureDeclaration(candidate declaration) (bool, error) {
 	declarations = append(declarations, candidate)
 	rows := make([][]string, 0, len(declarations))
 	for _, item := range declarations {
-		rows = append(rows, []string{item.Name, item.Repository, item.Path, item.Branch, item.Mode})
+		rows = append(rows, []string{item.Name, item.Repository, item.ConfigurationPath, item.Path, item.Branch, item.Mode})
 	}
 	return true, csvfile.Write(m.catalogPath(), realmHeader, rows, 0o600)
 }
@@ -521,10 +577,12 @@ func (m Manager) loadDeclarations() ([]declaration, error) {
 	}
 	result := make([]declaration, 0, len(rows))
 	for _, row := range rows {
-		if !realmName.MatchString(row[0]) || !validBranch(row[3]) || row[4] != "optional" {
+		if !realmName.MatchString(row[0]) || !validBranch(row[4]) || row[5] != "optional" {
 			return nil, fmt.Errorf("invalid realm declaration in %s", m.catalogPath())
 		}
-		result = append(result, declaration{Name: row[0], Repository: row[1], Path: row[2], Branch: row[3], Mode: row[4]})
+		result = append(result, declaration{
+			Name: row[0], Repository: row[1], ConfigurationPath: row[2], Path: row[3], Branch: row[4], Mode: row[5],
+		})
 	}
 	return result, nil
 }
@@ -590,16 +648,28 @@ func (m Manager) writeSSHRealms(attachments []attachment) error {
 }
 
 func (m Manager) gitRealmsContents(attachments []attachment) (string, error) {
+	declarations, err := m.declarationsByName()
+	if err != nil {
+		return "", err
+	}
 	copyOf := append([]attachment(nil), attachments...)
 	sort.Slice(copyOf, func(i, j int) bool { return copyOf[i].Name < copyOf[j].Name })
 	var contents strings.Builder
 	contents.WriteString("# Generated by userland realm. Do not edit.\n")
 	for _, item := range copyOf {
+		declared, ok := declarations[item.Name]
+		if !ok || declared.Path != item.Path {
+			continue
+		}
 		mount, err := m.expandPath(item.Path)
 		if err != nil {
 			return "", err
 		}
-		config := filepath.Join(mount, ".gitconfig")
+		configurationRoot, err := m.expandPath(declared.ConfigurationPath)
+		if err != nil {
+			return "", err
+		}
+		config := filepath.Join(configurationRoot, ".gitconfig")
 		if _, err := os.Stat(config); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
@@ -612,12 +682,24 @@ func (m Manager) gitRealmsContents(attachments []attachment) (string, error) {
 }
 
 func (m Manager) sshRealmsContents(attachments []attachment) (string, error) {
+	declarations, err := m.declarationsByName()
+	if err != nil {
+		return "", err
+	}
 	copyOf := append([]attachment(nil), attachments...)
 	sort.Slice(copyOf, func(i, j int) bool { return copyOf[i].Name < copyOf[j].Name })
 	var contents strings.Builder
 	contents.WriteString("# Generated by userland realm. Do not edit.\n")
 	for _, item := range copyOf {
-		source := filepath.Join(m.Env.Root, "cfg", "realms", item.Name, "ssh.config")
+		declared, ok := declarations[item.Name]
+		if !ok || declared.Path != item.Path {
+			continue
+		}
+		configurationRoot, err := m.expandPath(declared.ConfigurationPath)
+		if err != nil {
+			return "", err
+		}
+		source := filepath.Join(configurationRoot, "ssh.config")
 		template, err := os.ReadFile(source)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -630,6 +712,7 @@ func (m Manager) sshRealmsContents(attachments []attachment) (string, error) {
 			return "", err
 		}
 		rendered := strings.ReplaceAll(string(template), "{{USERLAND_REALM_ROOT}}", mount)
+		rendered = strings.ReplaceAll(rendered, "{{USERLAND_REALM_CONFIG_ROOT}}", configurationRoot)
 		rendered = strings.ReplaceAll(rendered, "{{USERLAND_HOME}}", m.Env.Home)
 		if strings.Contains(rendered, "{{USERLAND_") {
 			return "", fmt.Errorf("unsupported placeholder in %s realm SSH configuration", item.Name)
@@ -640,6 +723,18 @@ func (m Manager) sshRealmsContents(attachments []attachment) (string, error) {
 		}
 	}
 	return contents.String(), nil
+}
+
+func (m Manager) declarationsByName() (map[string]declaration, error) {
+	declarations, err := m.loadDeclarations()
+	if err != nil {
+		return nil, err
+	}
+	result := make(map[string]declaration, len(declarations))
+	for _, declared := range declarations {
+		result[declared.Name] = declared
+	}
+	return result, nil
 }
 
 func (m Manager) catalogPath() string {
@@ -697,30 +792,23 @@ func repositoryName(repository string) (string, error) {
 	return name, nil
 }
 
-func (m Manager) resolveName(repository, path string) (string, error) {
+func (m Manager) resolveDeclaration(repository, path string) (declaration, error) {
 	declarations, err := m.loadDeclarations()
 	if err != nil {
-		return "", err
+		return declaration{}, err
 	}
 	for _, declared := range declarations {
 		if declared.Path == path && sameRepository(declared.Repository, repository) {
-			return declared.Name, nil
+			return declared, nil
 		}
 	}
-	return repositoryName(repository)
-}
-
-func (m Manager) resolveBranch(repository, path string) (string, error) {
-	declarations, err := m.loadDeclarations()
+	name, err := repositoryName(repository)
 	if err != nil {
-		return "", err
+		return declaration{}, err
 	}
-	for _, declared := range declarations {
-		if declared.Path == path && sameRepository(declared.Repository, repository) {
-			return declared.Branch, nil
-		}
-	}
-	return "main", nil
+	return declaration{
+		Name: name, Repository: repository, ConfigurationPath: path, Path: path, Branch: "main", Mode: "optional",
+	}, nil
 }
 
 func validBranch(branch string) bool {
@@ -795,5 +883,5 @@ func gitValue(value string) string {
 	return value
 }
 
-var realmHeader = []string{"name", "repository", "default_path", "branch", "mode"}
+var realmHeader = []string{"name", "repository", "configuration_path", "default_path", "branch", "mode"}
 var attachmentHeader = []string{"name", "path"}

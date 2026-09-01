@@ -27,7 +27,7 @@ func TestAddAdoptsExistingCheckoutAndCreatesPathScopedActivation(t *testing.T) {
 	}
 
 	catalog := readFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"))
-	wantDeclaration := "work," + fixture.repository + ",~/dev/work,main,optional\n"
+	wantDeclaration := "work," + fixture.repository + ",~/dev/work,~/dev/work,main,optional\n"
 	if !strings.Contains(catalog, wantDeclaration) {
 		t.Fatalf("catalog omitted %q: %q", wantDeclaration, catalog)
 	}
@@ -45,6 +45,7 @@ func TestAddAdoptsExistingCheckoutAndCreatesPathScopedActivation(t *testing.T) {
 	for _, expected := range []string{
 		"export USERLAND_REALM='work'",
 		"export USERLAND_REALM_ROOT='" + mount + "'",
+		"export USERLAND_REALM_CONFIG_ROOT='" + mount + "'",
 		"watch_file '" + filepath.Join(mount, "mise.toml") + "'",
 		"mise -C '" + mount + "' env -s bash",
 	} {
@@ -79,7 +80,7 @@ func TestAddKeepsTheDeclaredRealmNameWhenRepositoryNameDiffers(t *testing.T) {
 	initRepository(t, mount, repository)
 	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\n", 0o600)
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
-		"name,repository,default_path,branch,mode\nwork,"+repository+",~/dev/work,main,optional\n", 0o600)
+		"name,repository,configuration_path,default_path,branch,mode\nwork,"+repository+",~/dev/work,~/dev/work,main,optional\n", 0o600)
 
 	result, err := New(fixture.env()).Add(context.Background(), repository, mount)
 	if err != nil {
@@ -110,6 +111,64 @@ func TestAddClonesAMissingRealmWithoutPullingExistingOnes(t *testing.T) {
 	}
 	if !result.Changed || gitOutput(t, mount, "remote", "get-url", "origin") != bare {
 		t.Fatalf("missing realm was not cloned: %#v", result)
+	}
+}
+
+func TestAddProjectsASeparateConfigurationCheckoutOntoAnExistingRepository(t *testing.T) {
+	fixture := newFixture(t)
+	source := filepath.Join(fixture.base, "trellis-configuration-source")
+	initRepository(t, source, "")
+	writeFile(t, filepath.Join(source, "mise.toml"), "[tools]\ngcloud = \"latest\"\n", 0o600)
+	writeFile(t, filepath.Join(source, ".gitconfig"), "[user]\n\temail = trellis@example.test\n", 0o600)
+	writeFile(t, filepath.Join(source, "ssh.config"),
+		"Host trellis-remote\n  ProxyCommand \"{{USERLAND_HOME}}/.local/bin/mise\" -C \"{{USERLAND_REALM_CONFIG_ROOT}}\" exec -- gcloud tunnel\n", 0o600)
+	runGit(t, source, "add", "mise.toml", ".gitconfig", "ssh.config")
+	runGit(t, source, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "initial")
+	bare := filepath.Join(fixture.base, "userland-trellis.git")
+	runGit(t, fixture.base, "clone", "--bare", source, bare)
+
+	mount := filepath.Join(fixture.home, "dev", "trellis")
+	productRepository := "git@example.test:product/trellis.git"
+	initRepository(t, mount, productRepository)
+	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\nnode = \"24\"\n", 0o600)
+	writeFile(t, filepath.Join(mount, ".envrc"), legacyActivationContents("trellis", mount), 0o600)
+	configurationRoot := filepath.Join(fixture.home, ".local", "share", "userland", "realms", "trellis")
+	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
+		"name,repository,configuration_path,default_path,branch,mode\n"+
+			"trellis,"+bare+",~/.local/share/userland/realms/trellis,~/dev/trellis,main,optional\n", 0o600)
+
+	result, err := New(fixture.env()).Add(context.Background(), bare, mount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed || result.Name != "trellis" {
+		t.Fatalf("unexpected add result: %#v", result)
+	}
+	if got := gitOutput(t, configurationRoot, "remote", "get-url", "origin"); got != bare {
+		t.Fatalf("configuration checkout remote = %q", got)
+	}
+	if got := gitOutput(t, mount, "remote", "get-url", "origin"); got != productRepository {
+		t.Fatalf("product checkout remote changed to %q", got)
+	}
+	activation := readFile(t, filepath.Join(mount, ".envrc"))
+	for _, expected := range []string{
+		"export USERLAND_REALM_ROOT='" + mount + "'",
+		"export USERLAND_REALM_CONFIG_ROOT='" + configurationRoot + "'",
+		"mise -C '" + configurationRoot + "' env -s bash",
+		"mise -C '" + mount + "' env -s bash",
+	} {
+		if !strings.Contains(activation, expected) {
+			t.Fatalf("activation omitted %q: %q", expected, activation)
+		}
+	}
+	gitRealms := readFile(t, filepath.Join(fixture.home, ".config", "git", "userland-realms.gitconfig"))
+	if !strings.Contains(gitRealms, `[includeIf "gitdir:`+mount+`/"]`) ||
+		!strings.Contains(gitRealms, "path = "+filepath.Join(configurationRoot, ".gitconfig")) {
+		t.Fatalf("separate Git realm projection is incomplete: %q", gitRealms)
+	}
+	sshRealms := readFile(t, filepath.Join(fixture.home, ".ssh", "userland-realms.config"))
+	if !strings.Contains(sshRealms, `-C "`+configurationRoot+`" exec -- gcloud`) {
+		t.Fatalf("separate SSH realm projection is incomplete: %q", sshRealms)
 	}
 }
 
@@ -190,7 +249,7 @@ func TestRealmSSHConfigurationFollowsAttachmentLifecycle(t *testing.T) {
 	mount := filepath.Join(fixture.home, "dev", "trellis")
 	initRepository(t, mount, fixture.repository)
 	writeFile(t, filepath.Join(mount, "mise.toml"), "[tools]\ngcloud = \"latest\"\n", 0o600)
-	writeFile(t, filepath.Join(fixture.root, "cfg", "realms", "work", "ssh.config"),
+	writeFile(t, filepath.Join(mount, "ssh.config"),
 		"Host realm-remote\n  ProxyCommand \"{{USERLAND_HOME}}/.local/bin/mise\" -C \"{{USERLAND_REALM_ROOT}}\" exec -- gcloud tunnel\n", 0o600)
 	manager := New(fixture.env())
 
@@ -216,7 +275,7 @@ func TestRealmSSHConfigurationFollowsAttachmentLifecycle(t *testing.T) {
 func TestInspectIgnoresOptionalRealmsUntilThisMachineOptsIn(t *testing.T) {
 	fixture := newFixture(t)
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
-		"name,repository,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,main,optional\n", 0o600)
+		"name,repository,configuration_path,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,~/dev/work,main,optional\n", 0o600)
 
 	findings, err := New(fixture.env()).Inspect(context.Background())
 	if err != nil {
@@ -233,7 +292,7 @@ func TestInspectBlocksAnUnmanagedEnvrc(t *testing.T) {
 	initRepository(t, mount, fixture.repository)
 	writeFile(t, filepath.Join(mount, ".envrc"), "export KEEP_ME=1\n", 0o600)
 	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
-		"name,repository,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,main,optional\n", 0o600)
+		"name,repository,configuration_path,default_path,branch,mode\nwork,"+fixture.repository+",~/dev/work,~/dev/work,main,optional\n", 0o600)
 	writeFile(t, filepath.Join(fixture.state, "realms.csv"), "name,path\nwork,~/dev/work\n", 0o600)
 
 	findings, err := New(fixture.env()).Inspect(context.Background())

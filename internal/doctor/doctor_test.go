@@ -19,7 +19,7 @@ func TestHumanGroupsMachineChecksWithoutRepeatedSections(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(root, "cfg", "schema-version"), []byte("2\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "cfg", "schema-version"), []byte("3\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, ".userland-release"), []byte(commit+"\n"), 0o600); err != nil {

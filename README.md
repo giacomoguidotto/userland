@@ -47,14 +47,17 @@ the current Mac lives in Userland state and is not committed. A new Mac can
 therefore discover a realm without cloning or activating it until `realm add`
 is run explicitly.
 
-`realm add` clones a missing checkout or adopts an existing checkout whose raw
-origin matches the declaration. It never pulls, resets, switches, stages, or
-cleans an existing repository. Userland then creates an excluded `.envrc` that
-loads the realm's `mise.toml` once through the existing direnv hook. An optional
-`.userland/envrc` can provide additional private exports. If the realm contains
-`.gitconfig`, Userland generates a native Git `includeIf` for repositories below
-the mounted path. Optional SSH templates in `cfg/realms/<name>/ssh.config` are
-materialized only while that realm is attached, with its actual mount path
+`realm add` clones a missing realm configuration checkout or adopts an existing
+checkout whose raw origin matches the declaration. The configuration checkout
+may be the attached directory itself, as it is for Danfoss, or a separate
+private checkout projected onto an existing product repository, as it is for
+Trellis. Userland never pulls, switches, stages, or cleans an existing checkout
+during attachment. It creates an excluded `.envrc` that loads the configuration
+checkout's `mise.toml` once through the existing direnv hook. An optional
+`.userland/envrc` can provide additional private exports. If the configuration
+checkout contains `.gitconfig`, Userland generates a native Git `includeIf` for
+repositories below the attached path. An optional `ssh.config` is materialized
+only while the realm is attached, with its configuration and attachment paths
 substituted into the generated configuration.
 
 A realm can declare its repository taxonomy in
@@ -62,14 +65,14 @@ A realm can declare its repository taxonomy in
 doctor validate each checkout, its raw origin, and its declared canonical
 branch. Sync clones missing checkouts and resets existing primary checkouts to
 the declared remote branch while preserving ignored files. Feature work belongs
-in linked worktrees. Userland also maintains local Git exclusions in the realm
-control repository and never deletes an undeclared child checkout.
+in linked worktrees. Userland also maintains local Git exclusions in the
+attached repository and never deletes an undeclared child checkout.
 
 `realm remove` revokes direnv authorization and removes Userland-generated
-activation and realm projections. The checkout, private files, and optional
-catalog entry remain.
-Passwords, tokens, and private keys should still live in a credential store,
-not merely in a private Git repository.
+activation and realm projections. The configuration checkout, attached
+repository, private files, and optional catalog entry remain. Passwords, tokens,
+and private keys still belong in a credential store, not in a private Git
+repository.
 
 ## Repository map
 

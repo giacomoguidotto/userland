@@ -34,13 +34,15 @@ type checkoutDeclaration struct {
 var repositoryDeclarationHeader = []string{"repository", "path", "branch"}
 
 // InspectDeclarations reports drift in a realm's optional repository taxonomy.
-func InspectDeclarations(ctx context.Context, env platform.Environment, root string) ([]DeclarationFinding, error) {
-	declarations, exists, err := loadDeclarations(root)
+// The declaration root owns the taxonomy while the checkout root owns the
+// declared repositories and their local Git exclusions.
+func InspectDeclarations(ctx context.Context, env platform.Environment, declarationRoot, checkoutRoot string) ([]DeclarationFinding, error) {
+	declarations, exists, err := loadDeclarations(declarationRoot)
 	if err != nil || !exists {
 		return nil, err
 	}
-	findings := inspectDeclarations(ctx, env, root, declarations)
-	exclusionsCurrent, err := exclusionsMatch(ctx, env, root, declarations)
+	findings := inspectDeclarations(ctx, env, checkoutRoot, declarations)
+	exclusionsCurrent, err := exclusionsMatch(ctx, env, checkoutRoot, declarations)
 	if err != nil {
 		return nil, err
 	}
@@ -52,22 +54,22 @@ func InspectDeclarations(ctx context.Context, env platform.Environment, root str
 
 // ReconcileDeclarations clones missing repositories and refreshes local excludes.
 // It never changes or deletes an existing checkout.
-func ReconcileDeclarations(ctx context.Context, env platform.Environment, root string) ([]DeclarationFinding, error) {
-	declarations, exists, err := loadDeclarations(root)
+func ReconcileDeclarations(ctx context.Context, env platform.Environment, declarationRoot, checkoutRoot string) ([]DeclarationFinding, error) {
+	declarations, exists, err := loadDeclarations(declarationRoot)
 	if err != nil || !exists {
 		return nil, err
 	}
-	findings := inspectDeclarations(ctx, env, root, declarations)
+	findings := inspectDeclarations(ctx, env, checkoutRoot, declarations)
 	for index, finding := range findings {
 		if finding.State != DeclarationChange {
 			continue
 		}
 		declared := declarations[index]
-		target := filepath.Join(root, filepath.FromSlash(declared.path))
+		target := filepath.Join(checkoutRoot, filepath.FromSlash(declared.path))
 		result := ReconcileCanonical(ctx, env, target, declared.repository, declared.branch)
 		findings[index] = declarationResult(declared.path, result)
 	}
-	if err := writeExclusions(ctx, env, root, declarations); err != nil {
+	if err := writeExclusions(ctx, env, checkoutRoot, declarations); err != nil {
 		return findings, err
 	}
 	return summarizeDeclarations(findings), nil

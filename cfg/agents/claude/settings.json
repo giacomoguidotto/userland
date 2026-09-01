@@ -6,6 +6,7 @@
     "swift-lsp@claude-plugins-official": true
   },
   "effortLevel": "medium",
+  "tui": "fullscreen",
   "autoMemoryEnabled": false,
   "theme": "dark-ansi"
 }

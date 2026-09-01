@@ -84,6 +84,24 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 	if err != nil {
 		return Result{}, err
 	}
+	primaryChanged := false
+	if configurationRoot != absMount {
+		if _, statErr := os.Stat(absMount); errors.Is(statErr, os.ErrNotExist) {
+			finding, found, reconcileErr := repositorycatalog.ReconcilePrimaryDeclaration(ctx, m.Env, configurationRoot, absMount)
+			if reconcileErr != nil {
+				return Result{}, reconcileErr
+			}
+			if !found {
+				return Result{}, fmt.Errorf("%s realm configuration does not declare its primary checkout", declared.Name)
+			}
+			if finding.State == repositorycatalog.DeclarationAttention {
+				return Result{}, fmt.Errorf("%s realm: %s", declared.Name, finding.Message)
+			}
+			primaryChanged = finding.State == repositorycatalog.DeclarationChange
+		} else if statErr != nil {
+			return Result{}, statErr
+		}
+	}
 	catalogChanged, err := m.ensureDeclaration(declared)
 	if err != nil {
 		return Result{}, err
@@ -121,7 +139,7 @@ func (m Manager) Add(ctx context.Context, repository, mount string) (Result, err
 	}
 	return Result{
 		Name: declared.Name, Repository: repository, Mount: absMount,
-		Changed: cloned || catalogChanged || attachmentChanged || activationChanged,
+		Changed: cloned || primaryChanged || catalogChanged || attachmentChanged || activationChanged,
 	}, nil
 }
 

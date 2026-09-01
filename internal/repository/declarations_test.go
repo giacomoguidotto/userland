@@ -120,6 +120,54 @@ func TestReconcileDeclarationsReadsTaxonomyFromASeparateConfigurationRoot(t *tes
 	}
 }
 
+func TestReconcileDeclarationsAllowsASeparateConfigurationRootToOwnThePrimaryCheckout(t *testing.T) {
+	fixture := newDeclarationFixture(t)
+	configurationRoot := filepath.Join(fixture.base, "configuration")
+	checkoutRoot := filepath.Join(fixture.base, "product")
+	remote := fixture.bareRepository(t, "primary")
+	if err := csvfile.Write(filepath.Join(configurationRoot, ".userland", "repositories.csv"),
+		repositoryDeclarationHeader, [][]string{{remote, ".", "main"}}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	findings, err := ReconcileDeclarations(context.Background(), fixture.env, configurationRoot, checkoutRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].State != DeclarationChange ||
+		!strings.Contains(findings[0].Message, "primary checkout cloned") {
+		t.Fatalf("unexpected findings: %#v", findings)
+	}
+	if got := repositoryGitOutput(t, checkoutRoot, "remote", "get-url", "origin"); got != remote {
+		t.Fatalf("primary checkout remote = %q", got)
+	}
+	if branch := repositoryGitOutput(t, checkoutRoot, "branch", "--show-current"); branch != "main" {
+		t.Fatalf("primary checkout branch = %q", branch)
+	}
+	exclude, err := os.ReadFile(filepath.Join(checkoutRoot, ".git", "info", "exclude"))
+	if err != nil || strings.Contains(string(exclude), exclusionsBegin) {
+		t.Fatalf("root declaration created an exclusion marker: %q, %v", exclude, err)
+	}
+
+	findings, err = InspectDeclarations(context.Background(), fixture.env, configurationRoot, checkoutRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(findings) != 1 || findings[0].State != DeclarationCurrent {
+		t.Fatalf("primary checkout did not become current: %#v", findings)
+	}
+}
+
+func TestInspectDeclarationsRejectsARootPathForColocatedConfiguration(t *testing.T) {
+	fixture := newDeclarationFixture(t)
+	fixture.writeManifest(t, [][]string{{"git@example.test:team/repo.git", ".", "main"}})
+
+	_, err := InspectDeclarations(context.Background(), fixture.env, fixture.root, fixture.root)
+	if err == nil || !strings.Contains(err.Error(), "invalid repository declaration") {
+		t.Fatalf("colocated root declaration was accepted: %v", err)
+	}
+}
+
 type declarationFixture struct {
 	base string
 	root string

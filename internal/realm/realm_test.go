@@ -172,6 +172,53 @@ func TestAddProjectsASeparateConfigurationCheckoutOntoAnExistingRepository(t *te
 	}
 }
 
+func TestAddProvisionsADeclaredPrimaryCheckoutForSeparateConfiguration(t *testing.T) {
+	fixture := newFixture(t)
+	productSource := filepath.Join(fixture.base, "trellis-product-source")
+	initRepository(t, productSource, "")
+	writeFile(t, filepath.Join(productSource, "README.md"), "product\n", 0o600)
+	runGit(t, productSource, "add", "README.md")
+	runGit(t, productSource, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "initial")
+	productRemote := filepath.Join(fixture.base, "trellis-product.git")
+	runGit(t, fixture.base, "clone", "--bare", productSource, productRemote)
+
+	configurationSource := filepath.Join(fixture.base, "trellis-configuration-source")
+	initRepository(t, configurationSource, "")
+	writeFile(t, filepath.Join(configurationSource, "mise.toml"), "[tools]\ngcloud = \"latest\"\n", 0o600)
+	writeFile(t, filepath.Join(configurationSource, ".userland", "repositories.csv"),
+		"repository,path,branch\n"+productRemote+",.,main\n", 0o600)
+	runGit(t, configurationSource, "add", "mise.toml", ".userland/repositories.csv")
+	runGit(t, configurationSource, "-c", "user.name=Test", "-c", "user.email=test@example.test", "commit", "-m", "initial")
+	configurationRemote := filepath.Join(fixture.base, "userland-trellis.git")
+	runGit(t, fixture.base, "clone", "--bare", configurationSource, configurationRemote)
+
+	mount := filepath.Join(fixture.home, "dev", "trellis")
+	configurationRoot := filepath.Join(fixture.home, ".local", "share", "userland", "realms", "trellis")
+	writeFile(t, filepath.Join(fixture.root, "cfg", "realms.csv"),
+		"name,repository,configuration_path,default_path,branch,mode\n"+
+			"trellis,"+configurationRemote+",~/.local/share/userland/realms/trellis,~/dev/trellis,main,optional\n", 0o600)
+
+	result, err := New(fixture.env()).Add(context.Background(), configurationRemote, mount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed || result.Name != "trellis" {
+		t.Fatalf("unexpected add result: %#v", result)
+	}
+	if got := gitOutput(t, configurationRoot, "remote", "get-url", "origin"); got != configurationRemote {
+		t.Fatalf("configuration checkout remote = %q", got)
+	}
+	if got := gitOutput(t, mount, "remote", "get-url", "origin"); got != productRemote {
+		t.Fatalf("primary checkout remote = %q", got)
+	}
+	if got := gitOutput(t, mount, "branch", "--show-current"); got != "main" {
+		t.Fatalf("primary checkout branch = %q", got)
+	}
+	if activation := readFile(t, filepath.Join(mount, ".envrc")); !strings.Contains(activation, "export USERLAND_REALM_CONFIG_ROOT='"+configurationRoot+"'") {
+		t.Fatalf("primary checkout activation is incomplete: %q", activation)
+	}
+}
+
 func TestAddRefusesToReplaceAnUnmanagedEnvrc(t *testing.T) {
 	fixture := newFixture(t)
 	mount := filepath.Join(fixture.home, "dev", "work")

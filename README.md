@@ -65,7 +65,9 @@ A realm can declare its repository taxonomy in
 doctor validate each checkout, its raw origin, and its declared canonical
 branch. Sync clones missing checkouts and resets existing primary checkouts to
 the declared remote branch while preserving ignored files. Feature work belongs
-in linked worktrees. Userland also maintains local Git exclusions in the
+in linked worktrees. When configuration lives in a separate checkout, path `.`
+declares the attached directory as the primary checkout and lets `realm add`
+provision it when missing. Userland also maintains local Git exclusions in the
 attached repository and never deletes an undeclared child checkout.
 
 `realm remove` revokes direnv authorization and removes Userland-generated

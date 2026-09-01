@@ -37,7 +37,7 @@ var repositoryDeclarationHeader = []string{"repository", "path", "branch"}
 // The declaration root owns the taxonomy while the checkout root owns the
 // declared repositories and their local Git exclusions.
 func InspectDeclarations(ctx context.Context, env platform.Environment, declarationRoot, checkoutRoot string) ([]DeclarationFinding, error) {
-	declarations, exists, err := loadDeclarations(declarationRoot)
+	declarations, exists, err := loadDeclarations(declarationRoot, separateRoots(declarationRoot, checkoutRoot))
 	if err != nil || !exists {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func InspectDeclarations(ctx context.Context, env platform.Environment, declarat
 // ReconcileDeclarations clones missing repositories and refreshes local excludes.
 // It never changes or deletes an existing checkout.
 func ReconcileDeclarations(ctx context.Context, env platform.Environment, declarationRoot, checkoutRoot string) ([]DeclarationFinding, error) {
-	declarations, exists, err := loadDeclarations(declarationRoot)
+	declarations, exists, err := loadDeclarations(declarationRoot, separateRoots(declarationRoot, checkoutRoot))
 	if err != nil || !exists {
 		return nil, err
 	}
@@ -75,7 +75,27 @@ func ReconcileDeclarations(ctx context.Context, env platform.Environment, declar
 	return summarizeDeclarations(findings), nil
 }
 
-func loadDeclarations(root string) ([]checkoutDeclaration, bool, error) {
+// ReconcilePrimaryDeclaration provisions the checkout root from a separate
+// realm configuration checkout. A root declaration is represented by path ".".
+func ReconcilePrimaryDeclaration(ctx context.Context, env platform.Environment, declarationRoot, checkoutRoot string) (DeclarationFinding, bool, error) {
+	if !separateRoots(declarationRoot, checkoutRoot) {
+		return DeclarationFinding{}, false, nil
+	}
+	declarations, exists, err := loadDeclarations(declarationRoot, true)
+	if err != nil || !exists {
+		return DeclarationFinding{}, false, err
+	}
+	for _, declared := range declarations {
+		if declared.path != "." {
+			continue
+		}
+		result := ReconcileCanonical(ctx, env, checkoutRoot, declared.repository, declared.branch)
+		return declarationResult(declared.path, result), true, nil
+	}
+	return DeclarationFinding{}, false, nil
+}
+
+func loadDeclarations(root string, allowRoot bool) ([]checkoutDeclaration, bool, error) {
 	path := filepath.Join(root, ".userland", "repositories.csv")
 	rows, err := csvfile.Read(path, repositoryDeclarationHeader)
 	if errors.Is(err, os.ErrNotExist) {
@@ -90,7 +110,7 @@ func loadDeclarations(root string) ([]checkoutDeclaration, bool, error) {
 		repository := strings.TrimSpace(row[0])
 		path := filepath.ToSlash(filepath.Clean(strings.TrimSpace(row[1])))
 		branch := strings.TrimSpace(row[2])
-		if repository == "" || path == "." || !filepath.IsLocal(filepath.FromSlash(path)) || !validBranch(branch) {
+		if repository == "" || (path == "." && !allowRoot) || !filepath.IsLocal(filepath.FromSlash(path)) || !validBranch(branch) {
 			return nil, true, fmt.Errorf("invalid repository declaration at record %d in %s", index+2, filepath.Join(root, ".userland", "repositories.csv"))
 		}
 		if _, exists := seen[path]; exists {
@@ -100,6 +120,10 @@ func loadDeclarations(root string) ([]checkoutDeclaration, bool, error) {
 		declarations = append(declarations, checkoutDeclaration{repository: repository, path: path, branch: branch})
 	}
 	return declarations, true, nil
+}
+
+func separateRoots(declarationRoot, checkoutRoot string) bool {
+	return filepath.Clean(declarationRoot) != filepath.Clean(checkoutRoot)
 }
 
 func inspectDeclarations(ctx context.Context, env platform.Environment, root string, declarations []checkoutDeclaration) []DeclarationFinding {
@@ -119,7 +143,11 @@ func declarationResult(path string, result CanonicalResult) DeclarationFinding {
 	case CanonicalAttention:
 		state = DeclarationAttention
 	}
-	return DeclarationFinding{state, path + " " + result.Message}
+	label := path
+	if path == "." {
+		label = "primary checkout"
+	}
+	return DeclarationFinding{state, label + " " + result.Message}
 }
 
 func validBranch(branch string) bool {
@@ -225,11 +253,17 @@ func exclusionsContents(current []byte, declarations []checkoutDeclaration) ([]b
 	if text != "" {
 		text += "\n"
 	}
-	if len(declarations) == 0 {
+	nested := make([]checkoutDeclaration, 0, len(declarations))
+	for _, declared := range declarations {
+		if declared.path != "." {
+			nested = append(nested, declared)
+		}
+	}
+	if len(nested) == 0 {
 		return []byte(text), nil
 	}
 	text += exclusionsBegin + "\n"
-	for _, declared := range declarations {
+	for _, declared := range nested {
 		text += "/" + escapeExcludePath(declared.path) + "/\n"
 	}
 	text += exclusionsEnd + "\n"

@@ -20,7 +20,6 @@ cask "paper", args: { adopt: true }
 cask "postman", args: { adopt: true }
 cask "raycast", args: { adopt: true }
 cask "shottr", args: { adopt: true }
-cask "signal", args: { adopt: true }
 cask "spotify", args: { adopt: true }
 cask "t3-code", args: { adopt: true }
 cask "typefully", args: { adopt: true }

@@ -17,6 +17,7 @@ gradle = "9.7.0"
 "aqua:koalaman/shellcheck" = "0.11.0"
 "aqua:mvdan/sh" = "3.13.1"
 "npm:@earendil-works/pi-coding-agent" = "0.84.2"
+"npm:@juliantanx/aiusage" = { version = "1.5.13", allow_builds = ["better-sqlite3"] }
 "npm:@openai/codex" = "0.148.0"
 "npm:eas-cli" = "22.0.0"
 "npm:tree-sitter-cli" = { version = "0.26.12", allow_builds = ["tree-sitter-cli"] }
@@ -109,6 +110,28 @@ python = "3.14.7"
 "~/.config/zellij" = { source = "xdg/zellij", mode = "symlink-each" }
 "~/.config/zed/keymap.json" = { source = "xdg/zed/keymap.json", mode = "symlink" }
 "~/.config/zed/settings.json" = { source = "xdg/zed/settings.json", mode = "symlink" }
+
+# aiusage ships prebuilt bundles: the server reads a single Codex and Claude
+# account, and the dashboard prefixes every reset time with an icon. Both patches
+# reapply after every tool install, which is when npm restores the stock files.
+[bootstrap.hooks.post-tools]
+run = [
+  "mise exec -- node bin/aiusage-accounts-patch.mjs",
+  "mise exec -- node bin/aiusage-reset-icon-patch.mjs",
+  "mise exec -- node bin/aiusage-quotas-ui-patch.mjs",
+]
+
+# Local AI usage dashboard on http://localhost:3847, restarted by launchd.
+[bootstrap.macos.launchd.agents.aiusage]
+program = "~/.local/share/mise/installs/npm-juliantanx-aiusage/1.5.13/node_modules/.bin/aiusage"
+args = ["serve"]
+run_at_load = true
+keep_alive = true
+working_directory = "~"
+# launchd does not expand ~ inside environment values, so node is absolute here.
+environment = { PATH = "/Users/giacomo/.local/share/mise/installs/node/24.19.0/bin:/opt/homebrew/bin:/usr/bin:/bin" }
+stdout_path = "~/Library/Logs/aiusage.log"
+stderr_path = "~/Library/Logs/aiusage.err.log"
 
 [bootstrap.macos.dock]
 autohide = true

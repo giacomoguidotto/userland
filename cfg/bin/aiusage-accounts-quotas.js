@@ -144,20 +144,82 @@ async function ulClaudeAccountQuota(account) {
   }
   return ulClaudeQuotaFromApi(id, cred.token);
 }
+function ulCodexTiers(body) {
+  // The stock reader stops at rate_limit's two windows. OpenAI also returns
+  // additional_rate_limits: per-model allowances, each with its own short and
+  // weekly window, which is the Codex counterpart of Claude's Fable row.
+  const tiers = [];
+  const push = (name, window) => {
+    if (!window || window.used_percent == null) return;
+    tiers.push({
+      name,
+      utilization: window.used_percent,
+      resetsAt: window.reset_at ? new Date(window.reset_at * 1e3).toISOString() : null
+    });
+  };
+  const rateLimit = body.rate_limit || {};
+  for (const key of ["primary_window", "secondary_window"]) {
+    const window = rateLimit[key];
+    if (!window) continue;
+    push(window.limit_window_seconds != null ? windowSecondsToTierName(window.limit_window_seconds) : "unknown", window);
+  }
+  for (const extra of body.additional_rate_limits || []) {
+    const name = extra.limit_name || extra.metered_feature || "additional";
+    const windows = extra.rate_limit || {};
+    push(name + " 5h", windows.primary_window);
+    push(name + " 7d", windows.secondary_window);
+  }
+  return tiers;
+}
+async function ulCodexQuotaFromApi(id, accessToken, accountId) {
+  const headers = {
+    "Authorization": `Bearer ${accessToken}`,
+    "User-Agent": "codex-cli",
+    "Accept": "application/json"
+  };
+  if (accountId) headers["ChatGPT-Account-Id"] = accountId;
+  let resp;
+  try {
+    resp = await fetch(CODEX_QUOTA_URL, { headers, signal: AbortSignal.timeout(1e4) });
+  } catch (e) {
+    return apiError(id, `Network error: ${e}`);
+  }
+  if (resp.status === 401 || resp.status === 403) {
+    return expiredError(id, `Authentication failed (HTTP ${resp.status}). Please re-login with Codex CLI.`);
+  }
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    return apiError(id, `API error (HTTP ${resp.status}): ${text}`);
+  }
+  let body;
+  try {
+    body = await resp.json();
+  } catch (e) {
+    return apiError(id, `Failed to parse API response: ${e}`);
+  }
+  return {
+    tool: id,
+    credentialStatus: "valid",
+    credentialMessage: null,
+    success: true,
+    tiers: ulCodexTiers(body),
+    error: null,
+    queriedAt: nowMs()
+  };
+}
 async function ulCodexAccountQuota(account) {
   const id = "codex:" + account.label;
   const cred = ulReadCodexCredentials(account.dir);
-  const label = (result) => ({ ...result, tool: id });
-  if (cred.status === "not_found") return label(notFound(id));
-  if (cred.status === "parse_error") return label(parseError(id, cred.message ?? "Failed to parse credentials"));
+  if (cred.status === "not_found") return notFound(id);
+  if (cred.status === "parse_error") return parseError(id, cred.message ?? "Failed to parse credentials");
   if (cred.status === "expired") {
     if (cred.token) {
-      const result = await callCodexQuotaApi(cred.token, cred.accountId);
-      if (result.success) return label(result);
+      const result = await ulCodexQuotaFromApi(id, cred.token, cred.accountId);
+      if (result.success) return result;
     }
-    return label(expiredError(id, cred.message ?? "Codex OAuth token may be stale"));
+    return expiredError(id, cred.message ?? "Codex OAuth token may be stale");
   }
-  return label(await callCodexQuotaApi(cred.token, cred.accountId));
+  return ulCodexQuotaFromApi(id, cred.token, cred.accountId);
 }
 async function queryAllQuotas() {
   // Copilot is deliberately absent: nothing here uses it, and the stock page

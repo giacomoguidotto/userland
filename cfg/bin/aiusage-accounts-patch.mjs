@@ -33,7 +33,7 @@ const ANCHOR = `async function queryAllQuotas() {
 // Identifiers the replacement borrows from the bundle's own module scope.
 const REQUIRED = [
   "createHash3", "readFromKeychain", "parseCodexCredJson", "parseClaudeCredJson",
-  "callCodexQuotaApi", "CLAUDE_QUOTA_URL",
+  "CLAUDE_QUOTA_URL", "CODEX_QUOTA_URL", "windowSecondsToTierName",
   "homedir3", "join4", "existsSync4", "readFileSync3",
   "notFound", "parseError", "expiredError", "apiError", "nowMs",
 ];

@@ -365,13 +365,6 @@ url = "https://nodejs.org/dist/v24.19.0/node-v24.19.0-win-x64.zip"
 version = "0.84.2"
 backend = "npm:@earendil-works/pi-coding-agent"
 
-[[tools."npm:@juliantanx/aiusage"]]
-version = "1.5.13"
-backend = "npm:@juliantanx/aiusage"
-
-[tools."npm:@juliantanx/aiusage".options]
-allow_builds = '["better-sqlite3"]'
-
 [[tools."npm:@openai/codex"]]
 version = "0.148.0"
 backend = "npm:@openai/codex"

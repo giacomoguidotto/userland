@@ -1,0 +1,198 @@
+#!/usr/bin/python3
+"""Keep SSH routing attached to the managed T3 service; never kill agents."""
+
+import argparse
+import fcntl
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+
+def server_base(argv, env, home):
+    if not argv or pathlib.Path(argv[0]).name not in ("node", "nodejs"):
+        return None
+    try:
+        serve = argv.index("serve")
+    except ValueError:
+        return None
+    if serve < 2 or not re.search(
+        r"/node_modules/(?:\.bin/t3|t3/dist/bin\.mjs)$", argv[serve - 1]
+    ):
+        return None
+    flags = argv[serve + 1 :]
+    base = env.get("T3CODE_HOME", str(home / ".t3"))
+    for i, arg in enumerate(flags):
+        if arg == "--base-dir":
+            if i + 1 >= len(flags):
+                return None
+            base = flags[i + 1]
+        elif arg.startswith("--base-dir="):
+            base = arg.split("=", 1)[1]
+    candidate = pathlib.Path(base).expanduser()
+    return candidate.resolve() if candidate.is_absolute() else None
+
+
+def choose_managed(servers):
+    managed = [s for s in servers if s["managed"]]
+    if len(managed) != 1:
+        raise RuntimeError(
+            f"Expected one managed T3 worker; found {len(managed)}. Routing unchanged."
+        )
+    return managed[0], [s["pid"] for s in servers if not s["managed"]]
+
+
+def atomic_text(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.read_text() == value:
+        return
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(value)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+
+
+def discover(base, home):
+    found = []
+    for p in pathlib.Path("/proc").iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            if p.stat().st_uid != os.getuid():
+                continue
+            argv = [a for a in (p / "cmdline").read_text().split("\0") if a]
+            # Read only the one environment variable needed to determine state ownership.
+            env = dict(
+                e.split("=", 1)
+                for e in (p / "environ").read_text().split("\0")
+                if e.startswith("T3CODE_HOME=")
+            )
+            if server_base(argv, env, home) != base:
+                continue
+            found.append(
+                {
+                    "pid": int(p.name),
+                    "managed": any(
+                        line.rstrip().endswith("/t3code.service")
+                        for line in (p / "cgroup").read_text().splitlines()
+                    ),
+                }
+            )
+        except (OSError, ValueError):
+            continue
+    return found
+
+
+def listening_ports(pid):
+    sockets = set()
+    for fd in pathlib.Path("/proc", str(pid), "fd").iterdir():
+        try:
+            match = re.fullmatch(r"socket:\[(\d+)\]", os.readlink(fd))
+            if match:
+                sockets.add(match[1])
+        except OSError:
+            pass
+    ports = set()
+    for row in pathlib.Path("/proc", str(pid), "net/tcp").read_text().splitlines()[1:]:
+        fields = row.split()
+        address, port = fields[1].split(":")
+        if fields[3] == "0A" and fields[9] in sockets and address == "0100007F":
+            ports.add(int(port, 16))
+    return ports
+
+
+def verified_port(pid, expected_id):
+    matches = []
+    for port in listening_ports(pid):
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/.well-known/t3/environment", timeout=3
+            ) as response:
+                data = json.load(response)
+            if data.get("environmentId") == expected_id:
+                matches.append(port)
+        except (OSError, ValueError):
+            continue
+    if len(matches) != 1:
+        raise RuntimeError(
+            "Managed worker has no unique healthy environment endpoint. Routing unchanged."
+        )
+    return matches[0]
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--check", action="store_true", help="Inspect without changing routing"
+    )
+    args = parser.parse_args()
+    if sys.platform != "linux":
+        raise RuntimeError("This guard belongs to the Linux VM only.")
+    os.umask(0o077)
+    home = pathlib.Path.home()
+    base = pathlib.Path(os.environ.get("T3_BASE_DIR", home / ".t3")).resolve()
+    with (base / ".singleton-guard.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return 0
+        service_pid = subprocess.check_output(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                "t3code.service",
+                "-p",
+                "MainPID",
+                "--value",
+            ],
+            text=True,
+        ).strip()
+        if not service_pid.isdigit() or int(service_pid) == 0:
+            raise RuntimeError("Managed T3 service is inactive. Routing unchanged.")
+        expected = (base / "userdata/environment-id").read_text().strip()
+        keeper, duplicates = choose_managed(discover(base, home))
+        port = verified_port(keeper["pid"], expected)
+        runtime = json.loads((base / "userdata/server-runtime.json").read_text())
+        if runtime.get("pid") != keeper["pid"] or runtime.get("port") != port:
+            raise RuntimeError(
+                "Runtime metadata disagrees with the managed worker. Routing unchanged; inspect duplicate servers."
+            )
+        result = {
+            "managedPid": keeper["pid"],
+            "backendPort": port,
+            "environmentId": expected,
+            "duplicatePids": duplicates,
+            "checkOnly": args.check,
+        }
+        if not args.check:
+            atomic_text(base / "stable-proxy/backend-port", str(port) + "\n")
+            for directory in (base / "ssh-launch").glob("*"):
+                if directory.is_dir():
+                    atomic_text(directory / "port", "3773\n")
+                    atomic_text(directory / "managed", "external\n")
+                    (directory / "pid").unlink(missing_ok=True)
+            atomic_text(
+                base / "userdata/singleton-guard-status.json",
+                json.dumps(result, indent=2) + "\n",
+            )
+        print(json.dumps(result))
+        # Ambiguous duplicates are observable failures, never guessed-safe kills.
+        return 2 if duplicates else 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as error:
+        print(json.dumps({"ok": False, "error": str(error)}), file=sys.stderr)
+        sys.exit(1)

@@ -24,7 +24,12 @@ run = [
   "npm ci --ignore-scripts --prefix release/cloudflare",
   "tests/release-cloudflare.sh",
   "mise run test-t3-threads",
+  "mise run test-t3-server",
 ]
+
+[tasks.test-t3-server]
+description = "Verify managed T3 server detection and routing safeguards"
+run = "python3 -m unittest discover -s cfg/t3-server -p 'test_*.py'"
 
 [tasks.test-t3-threads]
 description = "Verify T3 thread recovery and settings preservation"

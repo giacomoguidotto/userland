@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "localServer": "mac",
+  "servers": {
+    "mac": { "environmentId": "1d352b81-cb39-437f-9783-b39d53e92dcd", "transport": "local", "baseDir": "~/.t3" },
+    "vm": { "environmentId": "0700a3f1-3c3f-46fe-836f-96355b65269f", "transport": "ssh", "host": "trellis-remote-dev", "server": "vm" }
+  }
+}

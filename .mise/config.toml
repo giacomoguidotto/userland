@@ -23,7 +23,16 @@ run = [
   "tests/release-delivery.sh",
   "npm ci --ignore-scripts --prefix release/cloudflare",
   "tests/release-cloudflare.sh",
+  "mise run test-t3-threads",
 ]
+
+[tasks.test-t3-threads]
+description = "Verify T3 thread recovery and settings preservation"
+run = ["npm ci --ignore-scripts --prefix cfg/t3-thread", "npm test --prefix cfg/t3-thread"]
+
+[tasks.install-t3-threads]
+description = "Install the versioned T3 thread controller and skill on this Mac"
+run = "python3 cfg/t3-thread/install.py --profile mac"
 
 [tasks.lint]
 description = "Check Go, bootstrap shell, and repository formatting"

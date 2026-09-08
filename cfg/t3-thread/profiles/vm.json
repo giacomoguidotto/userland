@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "localServer": "vm",
+  "servers": {
+    "vm": { "environmentId": "0700a3f1-3c3f-46fe-836f-96355b65269f", "transport": "local", "baseDir": "~/.t3" }
+  }
+}

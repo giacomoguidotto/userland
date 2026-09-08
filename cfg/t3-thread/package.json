@@ -1,0 +1,14 @@
+{
+  "name": "userland-t3-thread",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": { "test": "node --test test/*.test.mjs" },
+  "overrides": { "effect": "4.0.0-beta.103", "@effect/platform-node-shared": "4.0.0-beta.103" },
+  "dependencies": {
+    "t3code-cli": "0.15.0",
+    "effect": "4.0.0-beta.103",
+    "@effect/platform-node": "4.0.0-beta.103"
+  }
+}

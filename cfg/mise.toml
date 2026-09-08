@@ -83,6 +83,9 @@ python = "3.14.7"
 "~/.ssh/life-auth.pub" = { source = "home/ssh/life-auth.pub", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.claude/skills" = { source = "agents/skills", mode = "symlink-each" }
+"~/.codex/skills/t3-code-threads" = { source = "agents/skills/t3-code-threads", mode = "symlink" }
+"~/.config/t3-thread/config.json" = { source = "t3-thread/profiles/mac.json", mode = "symlink" }
+"~/.local/bin/t3-thread" = { source = "t3-thread/bin/t3-thread", mode = "symlink" }
 "~/.claude/settings.json" = { source = "agents/claude/settings.json", mode = "symlink" }
 
 "~/.config/aerospace" = { source = "xdg/aerospace", mode = "symlink-each" }

@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+t3_install="${XDG_DATA_HOME:-$HOME/.local/share}/t3-thread"
+exec "$t3_install/node" "$t3_install/current/cli.mjs" "$@"

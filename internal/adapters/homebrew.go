@@ -329,6 +329,13 @@ func (p *brewProgress) Report(name string) {
 	p.context.ReportProgress(p.current, p.total, name)
 }
 
+func (p *brewProgress) Update(name, phase string) {
+	if p == nil {
+		return
+	}
+	p.context.ReportProgress(p.current, p.total, name+" · "+phase)
+}
+
 type brewOutputProgress struct {
 	progress *brewProgress
 	allowed  map[string]bool
@@ -360,14 +367,34 @@ func (p *brewOutputProgress) Flush() {
 }
 
 func (p *brewOutputProgress) observe(line string) {
-	fields := strings.Fields(strings.TrimSpace(line))
-	if len(fields) < 2 || fields[0] != "Installing" && fields[0] != "Using" && fields[0] != "Upgrading" {
+	line = strings.TrimSpace(line)
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
 		return
 	}
-	name := strings.Trim(fields[1], "`")
-	if p.allowed[name] {
-		p.progress.Report(name)
+	name := p.findName(line)
+	if name == "" {
+		return
 	}
+	switch fields[0] {
+	case "Installing":
+		p.progress.Report(name)
+	case "Using":
+		p.progress.Report(name)
+	case "Upgrading":
+		p.progress.Report(name)
+	case "Downloading", "Fetching":
+		p.progress.Update(name, strings.ToLower(fields[0]))
+	}
+}
+
+func (p *brewOutputProgress) findName(line string) string {
+	for name := range p.allowed {
+		if strings.Contains(line, name) {
+			return name
+		}
+	}
+	return ""
 }
 
 func brewBundleProgressNames(issues []brewIssue, path string) map[string]bool {

@@ -128,6 +128,9 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 				render.ClearTask()
 			}
 			result = adapters.AuthenticateHomebrew(ctx, env, taskStdin, stdout, terminal)
+			if render.Rich() {
+				clearInteractivePrompt(stdout)
+			}
 			return result.Code
 		})
 		appendBootstrapLog(runLog, "Authenticate macOS administrator access", result, "sudo -v")
@@ -556,6 +559,10 @@ func lastOutputLine(output []byte) string {
 		}
 	}
 	return ""
+}
+
+func clearInteractivePrompt(output io.Writer) {
+	_, _ = io.WriteString(output, "\r\x1b[2K")
 }
 
 func appendAdapterLog(path, label string, events []adapters.Event) {

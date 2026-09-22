@@ -115,9 +115,11 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		render.Status(tui.StatusError, err.Error())
 		return 1
 	}
+	taskStdin, closeTaskStdin := packageTaskInput(env, stdin)
+	defer closeTaskStdin()
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
-	if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	var upgrades []string
@@ -128,16 +130,16 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	if len(upgrades) != 0 {
 		args := append([]string{"bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
-		if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
+		if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
 			return code
 		}
 	}
 	render.Section("Apply machine state")
-	if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	if env.IsMacOS() {
-		if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
+		if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 			return code
 		}
 	}
@@ -214,6 +216,16 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	render.Summary(tui.StatusAttention, "Done with steps that need attention.")
 	return 2
+}
+
+func packageTaskInput(env platform.Environment, stdin io.Reader) (io.Reader, func()) {
+	if !env.IsMacOS() {
+		return stdin, func() {}
+	}
+	if terminal, err := os.Open("/dev/tty"); err == nil {
+		return terminal, func() { _ = terminal.Close() }
+	}
+	return stdin, func() {}
 }
 
 func requireBootstrapAccess(env platform.Environment) error {

@@ -122,7 +122,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	if env.IsMacOS() && len(missingPackages) != 0 {
 		var result platform.Result
 		code := nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
-			result = adapters.PrepareHomebrew(ctx, env, taskStdin, stdout)
+			result = adapters.PrepareHomebrew(ctx, env, taskStdin, stdout, terminal)
 			return result.Code
 		})
 		appendBootstrapLog(runLog, "Prepare Homebrew for Mise packages", result)

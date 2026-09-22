@@ -568,17 +568,24 @@ func installHomebrewResult(c *Context) platform.Result {
 	// Stream the installer output as well as retaining it in the result. The
 	// installer can spend several minutes installing Command Line Tools or
 	// waiting for sudo; hiding that output makes a healthy run look hung.
-	return runWithObserved(c, c.Env.List, c.Stdin, c.Output, "/bin/bash", installer)
+	environ := c.Env.List
+	if c.Terminal {
+		// The installer can receive a terminal-backed reader through a
+		// subprocess and still fail its stdin TTY check. Tell it explicitly to
+		// stay interactive; sudo will then prompt through /dev/tty.
+		environ = c.Env.With("INTERACTIVE", "1", "NONINTERACTIVE", "")
+	}
+	return runWithObserved(c, environ, c.Stdin, c.Output, "/bin/bash", installer)
 }
 
 // PrepareHomebrew ensures the manager used by Mise's brew backend exists.
 // Formula declarations and installation still go through Mise; this only
 // bootstraps the native manager that Mise needs on a fresh macOS account.
-func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer) platform.Result {
+func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer, terminal bool) platform.Result {
 	if !env.IsMacOS() {
 		return platform.Result{}
 	}
-	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output}
+	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Terminal: terminal}
 	if _, present := brewCommand(c); present {
 		return platform.Result{}
 	}

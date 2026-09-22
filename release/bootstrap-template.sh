@@ -11,29 +11,47 @@ platform_os=$(uname -s 2>/dev/null || printf unknown)
 platform_arch=$(uname -m 2>/dev/null || printf unknown)
 if [ -n "${USERLAND_PLATFORM:-}" ]; then
   case "$USERLAND_PLATFORM" in
-    darwin-arm64) platform_os=Darwin; platform_arch=arm64 ;;
-    linux-arm64) platform_os=Linux; platform_arch=aarch64 ;;
-    linux-x64) platform_os=Linux; platform_arch=x86_64 ;;
-    *) printf 'userland: invalid USERLAND_PLATFORM %s\n' "$USERLAND_PLATFORM" >&2; exit 1 ;;
+    darwin-arm64)
+      platform_os=Darwin
+      platform_arch=arm64
+      ;;
+    linux-arm64)
+      platform_os=Linux
+      platform_arch=aarch64
+      ;;
+    linux-x64)
+      platform_os=Linux
+      platform_arch=x86_64
+      ;;
+    *)
+      printf 'userland: invalid USERLAND_PLATFORM %s\n' "$USERLAND_PLATFORM" >&2
+      exit 1
+      ;;
   esac
 fi
 case "$platform_os:$platform_arch" in
-  Darwin:arm64|Darwin:aarch64)
+  Darwin:arm64 | Darwin:aarch64)
     platform=darwin-arm64
     archive="userland-$tag.tar.gz"
     archive_sha256=$archive_sha256_darwin_arm64
     ;;
-  Linux:arm64|Linux:aarch64|Linux:armv8l)
+  Linux:arm64 | Linux:aarch64 | Linux:armv8l)
     platform=linux-arm64
     archive="userland-$tag-linux-arm64.tar.gz"
     archive_sha256=$archive_sha256_linux_arm64
     ;;
-  Linux:x86_64|Linux:amd64)
+  Linux:x86_64 | Linux:amd64)
     platform=linux-x64
     archive="userland-$tag-linux-x64.tar.gz"
     archive_sha256=$archive_sha256_linux_x64
     ;;
-  *) die() { printf 'userland: unsupported platform %s/%s\n' "$platform_os" "$platform_arch" >&2; exit 1; }; die ;;
+  *)
+    die() {
+      printf 'userland: unsupported platform %s/%s\n' "$platform_os" "$platform_arch" >&2
+      exit 1
+    }
+    die
+    ;;
 esac
 release_url="https://github.com/giacomoguidotto/userland/releases/download/$tag/$archive"
 data_dir=${USERLAND_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/userland}
@@ -579,10 +597,16 @@ recover_stale_lock() {
   case "$stale_owner" in
     .bootstrap.[A-Za-z0-9]*)
       case "$stale_pid" in
-        '' | *[!0-9]*) stale_owner=; stale_pid= ;;
+        '' | *[!0-9]*)
+          stale_owner=
+          stale_pid=
+          ;;
       esac
       ;;
-    *) stale_owner=; stale_pid= ;;
+    *)
+      stale_owner=
+      stale_pid=
+      ;;
   esac
 
   # The lock directory is created before its metadata. If the process dies in

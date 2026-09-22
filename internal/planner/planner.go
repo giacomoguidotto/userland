@@ -249,9 +249,11 @@ func importResources(value *plan.Plan, encoded []byte) error {
 			_ = value.Add(plan.Item{Area: plan.AreaCleanup, Action: "remove", Handling: plan.Automatic, Ownership: "declared", Target: resource.ID.Name, Detail: current + " to absent", Proof: proof})
 		case "create", "update":
 			if resource.ID.Kind == "package" {
-				action, detail := plan.Action("upgrade"), "upgrade with Homebrew"
+				manager, _, _ := strings.Cut(resource.ID.Name, ":")
+				detail := "upgrade through Mise's " + manager + " package backend"
+				action := plan.Action("upgrade")
 				if resource.Action == "create" {
-					action, detail = "install", "migrate to Homebrew"
+					action, detail = "install", "install through Mise's "+manager+" package backend"
 				}
 				_ = value.Add(plan.Item{Area: plan.AreaApps, Action: action, Handling: plan.Automatic, Ownership: "declared", Target: strings.TrimPrefix(resource.ID.Name, "brew:"), Detail: detail, Proof: proof})
 			} else if resource.ID.Kind == "file" || resource.ID.Kind == "directory" {

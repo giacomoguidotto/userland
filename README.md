@@ -17,7 +17,7 @@ On Termux, install `git`, `curl`, `tar`, `zsh`, and the current `mise` package f
 
 ## What the default sync installs
 
-Mise is the one installer and version source. On every supported Unix it installs pinned versions of Node, 1Password CLI, Codex CLI, Atuin, bat, btop, eza, fd, fzf, GitHub CLI, delta, jq, Neovim, ripgrep, Starship, and zoxide. Git itself comes from the host package manager on Linux and Homebrew on macOS because it is needed before Mise can bootstrap the checkout.
+Mise is the one installer and version source for the portable toolchain. On every supported Unix it installs pinned versions of Node, 1Password CLI, Codex CLI, Atuin, bat, btop, eza, fd, fzf, GitHub CLI, delta, jq, Neovim, ripgrep, Starship, and zoxide. Git itself comes from the host package manager on Linux and from the pinned Homebrew bootstrap on macOS because it is needed before the checkout can bootstrap.
 
 macOS applications are limited to 1Password, Ghostty, Helium, Raycast, Shottr, Spotify, T3 Code, Wispr Flow, and JetBrains Mono Nerd Font. Raycast, Shottr, and Wispr Flow remain login items. Browser extension prompts are limited to 1Password and Raycast Companion in Helium. No Chrome, Zed, Docker, Colima, Kubernetes, Android SDK, Java, Gradle, mobile SDK, DaVinci Resolve, OpenScreen, or hardware utility is part of the default.
 
@@ -26,6 +26,8 @@ Hardware integrations are deliberately absent from the public baseline. Add a de
 The default repository catalog is empty. Sync does not clone personal repositories or overwrite existing work. Add a repository declaration locally when a machine should own a canonical checkout.
 
 The default realm catalog is empty. If an older Userland state file contains Danfoss or Trellis attachments, the next sync removes their generated `.envrc`, direnv authorization, Git projection, SSH projection, and attachment records. It leaves the checkout directory in place for review instead of deleting source code.
+
+Browser profiles, cookies, saved sessions, browser extensions, and non-XDG application settings are not copied. Sync checks the two declared Helium extension IDs and opens their Chrome Web Store pages for attended installation. Raycast is the one exception: it opens the tracked encrypted `.rayconfig` for an attended import. Ghostty, Git, Mise, Neovim, Atuin, bat, btop, Starship, and the shell use the declared XDG files.
 
 ## Credentials
 
@@ -55,7 +57,7 @@ Userland writes a static Zsh cache containing direct paths for only the tools in
 | `release/` | Reproducible archives, platform selection, checksum verification, and public bootstrap delivery. |
 | `tests/` | Go, shell, release, and compatibility tests. |
 
-Sync only changes paths declared by this checkout. It stops on unmanaged dotfile conflicts, never stashes an existing repository, and does not delete an unmanaged file or application. Stock macOS applications such as GarageBand are not removed automatically. If you want those deleted, make that a separate, reviewed cleanup operation.
+Sync only changes paths declared by this checkout. It stops on unmanaged dotfile conflicts, never stashes an existing repository, and does not delete an unmanaged file or application. Stock macOS applications such as GarageBand are not removed automatically; deleting them remains a separate, reviewed cleanup operation because macOS system protections and personal files can make that irreversible.
 
 ## Development
 

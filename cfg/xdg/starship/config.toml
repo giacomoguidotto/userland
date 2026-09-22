@@ -1,7 +1,7 @@
 "$schema" = 'https://starship.rs/config-schema.json'
 
 format = '$directory$character'
-right_format = '$all$direnv$nix_shell'
+right_format = '$all$nix_shell'
 
 add_newline = false
 command_timeout = 1000
@@ -17,11 +17,6 @@ format = '[$symbol$branch(:$remote_branch)]($style) '
 [conda]
 format = '[$symbol\[$environment\]]($style) '
 symbol = "🅒 "
-
-[direnv]
-format = '[$loaded]($style) '
-loaded_msg = "📁"
-disabled = true
 
 [deno]
 disabled = true

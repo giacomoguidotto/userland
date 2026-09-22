@@ -84,8 +84,7 @@ func shellCache(c *Context, action Action) int {
 		name string
 		args []string
 	}{
-		{"atuin", []string{"init", "zsh"}}, {"carapace", []string{"_carapace", "zsh"}},
-		{"direnv", []string{"hook", "zsh"}}, {"fzf", []string{"--zsh"}},
+		{"atuin", []string{"init", "zsh"}}, {"fzf", []string{"--zsh"}},
 		{"starship", []string{"init", "zsh"}}, {"zoxide", []string{"init", "zsh"}},
 	} {
 		if path, ok := platformCommand(c, command.name); ok {
@@ -139,7 +138,7 @@ func shellFingerprint(c *Context, environment miseShellEnvironment) string {
 	if contents, err := os.ReadFile(filepath.Join(c.Env.Root, "completions", "zsh")); err == nil {
 		hash.Write(contents)
 	}
-	for _, name := range []string{"atuin", "carapace", "direnv", "fzf", "starship", "zoxide"} {
+	for _, name := range []string{"atuin", "fzf", "starship", "zoxide"} {
 		if path, ok := platformCommand(c, name); ok {
 			result := run(c, path, "--version")
 			fmt.Fprintf(hash, "%s\t%s\t%s\n", name, path, firstLine(result.Output))

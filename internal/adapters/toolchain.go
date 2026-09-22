@@ -24,6 +24,14 @@ type toolProblem struct {
 	command string
 }
 
+type toolProbeState string
+
+const (
+	toolMissing toolProbeState = "missing"
+	toolBroken  toolProbeState = "broken"
+	toolReady   toolProbeState = "ready"
+)
+
 func toolchain(c *Context, action Action) int {
 	if c.Env.Bool("USERLAND_TESTING") && !c.Env.Bool("TEST_TOOLCHAIN_HEALTH") {
 		if action == Plan {
@@ -40,8 +48,10 @@ func toolchain(c *Context, action Action) int {
 			switch problem.repair {
 			case "promote":
 				addPlan(c.Plan, plan.Item{Area: plan.AreaFS, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: homePath(c, ".local", "bin", "mise"), Detail: "atomically promote the pinned Userland mise launcher", Proof: "toolchain:mise-launcher"})
+			case "install":
+				addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "install", Handling: plan.Automatic, Ownership: "declared", Target: problem.command, Detail: "install the missing pinned tool " + problem.id, Proof: "toolchain:install:" + problem.id})
 			case "reinstall":
-				addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: problem.command, Detail: "reinstall only the corrupted pinned tool " + problem.id, Proof: "toolchain:reinstall:" + problem.id})
+				addPlan(c.Plan, plan.Item{Area: plan.AreaApps, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: problem.command, Detail: "reinstall the corrupted pinned tool " + problem.id, Proof: "toolchain:reinstall:" + problem.id})
 			case "activate":
 				addPlan(c.Plan, plan.Item{Area: plan.AreaFS, Action: "update", Handling: plan.Automatic, Ownership: "declared", Target: problem.command + " path", Detail: "activate pinned " + problem.id + " in clean global shells", Proof: "toolchain:activate:" + problem.id})
 			case "review":
@@ -58,6 +68,8 @@ func toolchain(c *Context, action Action) int {
 			switch problem.repair {
 			case "promote":
 				c.Log(Attention, "public mise launcher is older than Userland pinned mise")
+			case "install":
+				c.Log(Attention, problem.command+" is not installed; pinned "+problem.id+" needs installation")
 			case "reinstall":
 				c.Log(Attention, problem.command+" cannot execute; pinned "+problem.id+" needs reinstall")
 			case "activate":
@@ -82,16 +94,27 @@ func toolchain(c *Context, action Action) int {
 		return 1
 	}
 	for _, probe := range probes {
-		if probePinned(c, probe) {
+		state := probeState(c, probe)
+		if state == toolReady {
 			continue
 		}
-		c.Log(Changed, "reinstalling affected pinned tool: "+probe.id)
-		invocation := c.Env.MiseInvocation("install", "--force", "--yes", probe.id)
+		force := state == toolBroken
+		verb := "installing missing pinned tool: "
+		if force {
+			verb = "reinstalling corrupted pinned tool: "
+		}
+		c.Log(Changed, verb+probe.id)
+		args := []string{"install", "--yes"}
+		if force {
+			args = append(args, "--force")
+		}
+		args = append(args, probe.id)
+		invocation := c.Env.MiseInvocation(args...)
 		invocation = invocation.WithEnvironment("MISE_QUIET", "true")
 		if result := runInvocation(c, nil, invocation); result.Code != 0 {
 			return result.Code
 		}
-		if !probePinned(c, probe) {
+		if probeState(c, probe) != toolReady {
 			c.Log(Attention, probe.command+" still cannot execute after targeted reinstall")
 			return 1
 		}
@@ -169,12 +192,18 @@ func toolProblems(c *Context, probes []toolProbe, complete bool) []toolProblem {
 	problems := make([]*toolProblem, len(probes))
 	parallelReadOnly(c, len(probes), func(index int) {
 		probe := probes[index]
-		if !probePinned(c, probe) {
+		switch state := probeState(c, probe); state {
+		case toolMissing:
+			problem := toolProblem{probe.id, "install", probe.command}
+			problems[index] = &problem
+		case toolBroken:
 			problem := toolProblem{probe.id, "reinstall", probe.command}
 			problems[index] = &problem
-		} else if globalReady && !probeGlobal(c, probe, binPaths) {
-			problem := toolProblem{probe.id, "activate", probe.command}
-			problems[index] = &problem
+		case toolReady:
+			if globalReady && !probeGlobal(c, probe, binPaths) {
+				problem := toolProblem{probe.id, "activate", probe.command}
+				problems[index] = &problem
+			}
 		}
 	})
 	for _, problem := range problems {
@@ -203,10 +232,21 @@ func toolPublicMiseCurrent(c *Context) bool {
 }
 
 func probePinned(c *Context, probe toolProbe) bool {
+	return probeState(c, probe) == toolReady
+}
+
+func probeState(c *Context, probe toolProbe) toolProbeState {
+	where := runMise(c, "where", probe.id)
+	if where.Code != 0 {
+		return toolMissing
+	}
 	args := append([]string{"exec", "--", probe.command}, probe.args...)
 	invocation := c.Env.MiseInvocation(args...)
 	invocation = invocation.WithEnvironment("MISE_QUIET", "true")
-	return runInvocation(c, nil, invocation).Code == 0
+	if runInvocation(c, nil, invocation).Code != 0 {
+		return toolBroken
+	}
+	return toolReady
 }
 
 func probeGlobal(c *Context, probe toolProbe, binPaths []string) bool {

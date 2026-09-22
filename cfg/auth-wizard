@@ -273,6 +273,13 @@ if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/gh/hosts.yml" ]] &&
 fi
 
 stage "Codex CLI"
+# A previous Codex CLI login may have left a plaintext cache before the
+# managed keyring policy was applied. Remove only that credential cache; the
+# browser login below recreates the session in the system keyring.
+if [[ -e "$HOME/.codex/auth.json" ]]; then
+  note "Removing the old plaintext Codex credential cache before keyring login."
+  rm -f "$HOME/.codex/auth.json"
+fi
 if command -v codex >/dev/null 2>&1 && codex login status >/dev/null 2>&1; then
   say "Codex is already authenticated."
 else

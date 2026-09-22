@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -46,5 +47,42 @@ func TestShippedConfigDoesNotInstallDockerByDefault(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "cfg", "docker")); !os.IsNotExist(err) {
 		t.Fatalf("Docker configuration is still shipped")
+	}
+}
+
+func TestToolProbeDistinguishesMissingFromBroken(t *testing.T) {
+	base := t.TempDir()
+	mise := filepath.Join(base, "mise")
+	script := `#!/bin/sh
+case "$*" in
+  *where\ missing*) exit 1 ;;
+  *where\ broken*|*where\ ready*) printf '%s\n' "$0"; exit 0 ;;
+  *exec\ --\ broken*) exit 1 ;;
+  *exec\ --\ ready*) exit 0 ;;
+esac
+exit 1
+`
+	if err := os.WriteFile(mise, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := platform.NewEnvironment([]string{
+		"USERLAND_ROOT=" + base,
+		"USERLAND_HOME=" + filepath.Join(base, "home"),
+		"USERLAND_MISE=" + mise,
+		"PATH=/usr/bin:/bin",
+	})
+	c := &Context{Context: context.Background(), Env: env}
+	for _, test := range []struct {
+		id    string
+		state toolProbeState
+	}{
+		{id: "missing", state: toolMissing},
+		{id: "broken", state: toolBroken},
+		{id: "ready", state: toolReady},
+	} {
+		result := env.RunMise(context.Background(), nil, "where", test.id)
+		if state := probeState(c, toolProbe{id: test.id, command: test.id}); state != test.state {
+			t.Fatalf("probe %s state = %q, want %q (where code=%d output=%q)", test.id, state, test.state, result.Code, result.Output)
+		}
 	}
 }

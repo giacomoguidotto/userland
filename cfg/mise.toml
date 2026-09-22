@@ -28,16 +28,15 @@ op = "2.39.0"
 # Native system packages are managed through Mise; application updates follow
 # vendor releases. cfg/mise.lock pins the portable tools above.
 [bootstrap.packages]
-"brew:git" = { version = "latest", os = ["macos"] }
-"brew:duti" = { version = "latest", os = ["macos"] }
 "apt:git" = { version = "latest", os = ["linux"] }
 "apt:zsh" = { version = "latest", os = ["linux"] }
 "dnf:git" = { version = "latest", os = ["linux"] }
 "dnf:zsh" = { version = "latest", os = ["linux"] }
 "pacman:git" = { version = "latest", os = ["linux"] }
 "pacman:zsh" = { version = "latest", os = ["linux"] }
-# Git is provided by the operating system on Linux/Termux and by Homebrew on
-# macOS. All other command-line tools are pinned above and installed by Mise.
+# Git is provided by the operating system on Linux/Termux. On macOS, git and
+# duti are declared in cfg/brewfile so Homebrew is installed before formulas.
+# All other command-line tools are pinned above and installed by Mise.
 
 [dotfiles]
 "~/.zshrc" = { source = "home/zshrc", mode = "symlink" }

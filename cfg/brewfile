@@ -1,5 +1,8 @@
-# Desktop applications only. Command-line tools live in cfg/mise.toml so the
-# same declaration works on macOS, Linux, and Termux.
+# macOS-only manager and desktop declarations. Portable command-line tools
+# remain pinned in cfg/mise.toml so the same declaration works on Linux and
+# Termux.
+brew "git"
+brew "duti"
 cask "1password", args: { adopt: true }
 cask "font-jetbrains-mono-nerd-font", args: { adopt: true }
 cask "ghostty", args: { adopt: true }

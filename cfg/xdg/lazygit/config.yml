@@ -1,6 +1,0 @@
-notARepository: skip
-git:
-  diffRenderers:
-    - command: delta
-gui:
-  sidePanelWidth: 0.25

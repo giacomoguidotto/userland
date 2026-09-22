@@ -119,6 +119,13 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	defer closeTaskStdin()
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
+	if env.IsMacOS() && len(missingPackages) != 0 {
+		if code := nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
+			return adapters.PrepareHomebrew(ctx, env, taskStdin, stdout)
+		}); code != 0 {
+			return code
+		}
+	}
 	if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}

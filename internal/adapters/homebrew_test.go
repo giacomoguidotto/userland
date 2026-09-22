@@ -93,6 +93,22 @@ esac
 	}
 }
 
+func TestPrepareHomebrewSkipsInstallerWhenManagerExists(t *testing.T) {
+	root := t.TempDir()
+	brew := filepath.Join(root, "brew")
+	if err := os.WriteFile(brew, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := platform.NewEnvironment([]string{
+		"USERLAND_UNAME=Darwin",
+		"USERLAND_BREW=" + brew,
+		"PATH=/usr/bin:/bin",
+	})
+	if code := PrepareHomebrew(context.Background(), env, strings.NewReader(""), nil); code != 0 {
+		t.Fatalf("PrepareHomebrew returned %d", code)
+	}
+}
+
 func TestRealmHomebrewOwnsPostmanAndReportsItemProgress(t *testing.T) {
 	base := t.TempDir()
 	root, home := filepath.Join(base, "root"), filepath.Join(base, "home")

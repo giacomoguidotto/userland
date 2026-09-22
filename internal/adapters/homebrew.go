@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -557,4 +558,18 @@ func installHomebrew(c *Context) int {
 	c.Log(Changed, "installing Homebrew from pinned commit "+homebrewCommit)
 	environ := c.Env.With("NONINTERACTIVE", "1")
 	return runWith(c, environ, c.Stdin, "/bin/bash", installer).Code
+}
+
+// PrepareHomebrew ensures the manager used by Mise's brew backend exists.
+// Formula declarations and installation still go through Mise; this only
+// bootstraps the native manager that Mise needs on a fresh macOS account.
+func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer) int {
+	if !env.IsMacOS() {
+		return 0
+	}
+	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output}
+	if _, present := brewCommand(c); present {
+		return 0
+	}
+	return installHomebrew(c)
 }

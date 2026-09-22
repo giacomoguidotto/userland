@@ -122,6 +122,11 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	if env.IsMacOS() && len(missingPackages) != 0 {
 		var result platform.Result
 		code := nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
+			// The installer writes prompts and progress directly. Stop the live
+			// spinner first so `sudo`'s password prompt remains readable.
+			if render.Rich() {
+				render.ClearTask()
+			}
 			result = adapters.PrepareHomebrew(ctx, env, taskStdin, stdout, terminal)
 			return result.Code
 		})
@@ -237,8 +242,16 @@ func packageTaskInput(env platform.Environment, stdin io.Reader) (io.Reader, fun
 	if !env.IsMacOS() {
 		return stdin, func() {}
 	}
+	if env.Bool("USERLAND_NO_TTY") {
+		return nil, func() {}
+	}
 	if terminal, err := os.Open("/dev/tty"); err == nil {
 		return terminal, func() { _ = terminal.Close() }
+	}
+	if file, ok := stdin.(*os.File); ok {
+		if info, err := file.Stat(); err == nil && info.Mode()&os.ModeCharDevice == 0 {
+			return nil, func() {}
+		}
 	}
 	return stdin, func() {}
 }

@@ -569,10 +569,12 @@ func installHomebrewResult(c *Context) platform.Result {
 	// installer can spend several minutes installing Command Line Tools or
 	// waiting for sudo; hiding that output makes a healthy run look hung.
 	environ := c.Env.List
-	if c.Terminal {
+	if c.Terminal || c.Stdin != nil {
 		// The installer can receive a terminal-backed reader through a
 		// subprocess and still fail its stdin TTY check. Tell it explicitly to
-		// stay interactive; sudo will then prompt through /dev/tty.
+		// stay interactive; sudo will then prompt through /dev/tty. In a
+		// genuinely headless invocation stdin is nil, so the installer retains
+		// its normal non-interactive failure with a useful message.
 		environ = c.Env.With("INTERACTIVE", "1", "NONINTERACTIVE", "")
 	}
 	return runWithObserved(c, environ, c.Stdin, c.Output, "/bin/bash", installer)

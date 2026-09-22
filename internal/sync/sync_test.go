@@ -173,3 +173,12 @@ printf '%s\n' "$line" >"$MISE_STDIN_CAPTURE"
 		t.Fatalf("Mise did not receive interactive input: %q", value)
 	}
 }
+
+func TestPackageTaskInputDisablesPromptsWhenNoTTYRequested(t *testing.T) {
+	env := platform.NewEnvironment([]string{"USERLAND_UNAME=Darwin", "USERLAND_NO_TTY=1"})
+	input, closeInput := packageTaskInput(env, strings.NewReader("password\n"))
+	defer closeInput()
+	if input != nil {
+		t.Fatal("packageTaskInput returned interactive input with USERLAND_NO_TTY=1")
+	}
+}

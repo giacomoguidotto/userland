@@ -16,6 +16,9 @@ commit=0123456789abcdef0123456789abcdef01234567
 fixture="$work/fixture/userland-1.2.3"
 mkdir -p "$fixture/bin" "$fixture/cfg" "$fixture/cmd/userland"
 printf '%s\n' 'package main' >"$fixture/cmd/userland/main.go"
+mkdir -p "$fixture/cfg/docker/cli-plugins"
+ln -s /opt/homebrew/lib/docker/cli-plugins/docker-compose \
+  "$fixture/cfg/docker/cli-plugins/docker-compose"
 
 cat >"$fixture/bin/userland" <<'EOF'
 #!/bin/sh
@@ -702,6 +705,7 @@ locked_home="$work/locked-home"
 prepare_home "$locked_home"
 mkdir -p "$locked_home/.local/share/userland/bootstrap.lock"
 printf '%s\n' other-run >"$locked_home/.local/share/userland/bootstrap.lock/owner"
+printf '%s\n' "$$" >"$locked_home/.local/share/userland/bootstrap.lock/pid"
 locked_status=0
 HOME="$locked_home" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
@@ -716,6 +720,25 @@ HOME="$locked_home" \
 [ "$(cat "$locked_home/.local/share/userland/bootstrap.lock/owner")" = other-run ] ||
   fail "concurrent bootstrap lock was modified"
 [ ! -e "$locked_home/.userland" ] || fail "locked bootstrap published a checkout"
+
+stale_home="$work/stale-lock-home"
+prepare_home "$stale_home"
+mkdir -p "$stale_home/.local/share/userland/bootstrap.lock" "$stale_home/.local/share/userland/.bootstrap.stale"
+printf '%s\n' .bootstrap.stale >"$stale_home/.local/share/userland/bootstrap.lock/owner"
+printf '%s\n' 99999999 >"$stale_home/.local/share/userland/bootstrap.lock/pid"
+printf '%s\n' .bootstrap.stale >"$stale_home/.local/share/userland/.bootstrap.stale/owner"
+stale_status=0
+HOME="$stale_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/stale-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$stale_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || stale_status=$?
+[ "$stale_status" -eq 0 ] || fail "stale bootstrap lock was not recovered"
+[ ! -e "$stale_home/.local/share/userland/bootstrap.lock" ] || fail "stale bootstrap lock remained"
 
 unmanaged_home="$work/unmanaged-home"
 prepare_home "$unmanaged_home"

@@ -1,17 +1,15 @@
 package adapters
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
-func TestRealmSelectionRecordsAnExplicitChoiceOfNone(t *testing.T) {
+func TestRealmSelectionDisablesRealmsByDefault(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
 	state := filepath.Join(base, "state")
@@ -32,12 +30,14 @@ func TestRealmSelectionRecordsAnExplicitChoiceOfNone(t *testing.T) {
 		"USERLAND_HOME=" + filepath.Join(base, "home"),
 		"USERLAND_STATE_DIR=" + state,
 	})
-	var output bytes.Buffer
 	invocation := &Context{
-		Context: context.Background(), Env: env, Stdin: strings.NewReader("n\nn\n"), Output: &output, Terminal: true,
+		Context: context.Background(), Env: env, Terminal: false,
 	}
 	if code := realmSelection(invocation, Apply); code != 0 {
 		t.Fatalf("selection returned %d: %#v", code, invocation.Events)
+	}
+	if len(invocation.Events) != 1 || invocation.Events[0].Message != "optional realms disabled by default; use userland realm add to attach one" {
+		t.Fatalf("default realm policy was not reported: %#v", invocation.Events)
 	}
 	if got, err := os.ReadFile(filepath.Join(state, "realms.csv")); err != nil || string(got) != "name,path\n" {
 		t.Fatalf("empty selection was not recorded: %q %v", got, err)

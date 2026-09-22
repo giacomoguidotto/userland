@@ -1,13 +1,9 @@
 package adapters
 
 import (
-	"bufio"
 	"errors"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/giacomoguidotto/userland/internal/csvfile"
 	"github.com/giacomoguidotto/userland/internal/platform"
@@ -25,48 +21,21 @@ func realmSelection(c *Context, action Action) int {
 		return 0
 	}
 	if action == Plan {
-		for _, option := range options {
-			c.Log(Manual, "choose whether to attach the "+option.Name+" realm at "+option.DefaultPath)
-		}
+		c.Log(Current, "optional realms are disabled by default; use userland realm add to attach one")
 		return 0
 	}
 	if action == Doctor {
-		c.Log(Attention, "realm selection has not been recorded; run userland sync")
-		return 2
-	}
-	if !c.Terminal {
-		c.Log(Attention, "realm selection needs an interactive terminal")
-		return 2
-	}
-	reader := bufio.NewReader(c.Stdin)
-	var selected []string
-	for _, option := range options {
-		fmt.Fprintf(c.Output, "Attach the %s realm at %s? [y/N] ", option.Name, option.DefaultPath)
-		reply, readErr := reader.ReadString('\n')
-		if readErr != nil && !errors.Is(readErr, io.EOF) {
-			c.Log(Attention, readErr.Error())
-			return 1
-		}
-		if strings.EqualFold(strings.TrimSpace(reply), "y") || strings.EqualFold(strings.TrimSpace(reply), "yes") {
-			selected = append(selected, option.Name)
-		}
+		return 0
 	}
 	if err := manager.BeginSelection(); err != nil {
 		c.Log(Attention, err.Error())
 		return 1
 	}
-	for _, name := range selected {
-		result, addErr := manager.AddByName(c.Context, name)
-		if addErr != nil {
-			c.Log(Attention, addErr.Error())
-			return 1
-		}
-		c.Log(Changed, result.Name+" realm attached")
-	}
 	if err := manager.RecordSelection(); err != nil {
 		c.Log(Attention, err.Error())
 		return 1
 	}
+	c.Log(Current, "optional realms disabled by default; use userland realm add to attach one")
 	return 0
 }
 

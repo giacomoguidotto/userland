@@ -46,10 +46,9 @@ the ambient shell.
 A realm applies a private operational identity below one directory. The
 portable, optional catalog lives in `cfg/realms.csv`; the attachment map for
 the current Mac lives in Userland state and is not committed. On the first
-sync, Userland asks which declared realms should be attached and records the
-selection, including a selection of none. Later runs converge only those
-realms. The same choices are also available through `realm list` and
-`realm add <name>`.
+sync, Userland records no realm attachments by default. Later runs converge only
+realms you explicitly attach with `realm add <name>` or `realm add <repository> <path>`.
+The available declarations are listed by `realm list`.
 
 `realm add` clones a missing realm configuration checkout or adopts an existing
 checkout whose raw origin matches the declaration. The configuration checkout

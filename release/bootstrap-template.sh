@@ -317,16 +317,59 @@ validate_materialized_checkout() {
     die "$materialized_path has no regular mise launcher"
   [ -f "$materialized_path/cfg/mise.toml" ] && [ ! -L "$materialized_path/cfg/mise.toml" ] ||
     die "$materialized_path/cfg/mise.toml is not a regular file"
-  [ -z "$(find "$release_dir" -type l -print -quit 2>/dev/null)" ] ||
-    die "release archives with symlinks are not supported"
-  [ -z "$(find "$materialized_path" -type l -print -quit 2>/dev/null)" ] ||
-    die "$materialized_path contains an unexpected symlink"
-  /usr/bin/diff -qr \
-    -x .userland-stage \
-    -x .userland-stage-version \
-    -x .userland-bootstrap-owner \
-    "$release_dir" "$materialized_path" >/dev/null ||
+  compare_materialized_tree "$release_dir" "$materialized_path" ||
     die "$materialized_path differs from the verified release"
+}
+
+tree_manifest() {
+  tree_root=$1
+  (
+    cd "$tree_root"
+    find . -print |
+      grep -v -e '^\./\.userland-stage$' \
+        -e '^\./\.userland-stage-version$' \
+        -e '^\./\.userland-bootstrap-owner$' |
+      LC_ALL=C sort
+  )
+}
+
+file_mode() {
+  mode=$(stat -f '%Lp' "$1" 2>/dev/null || :)
+  case "$mode" in
+    '' | *[!0-9]*) stat -c '%a' "$1" ;;
+    *) printf '%s\n' "$mode" ;;
+  esac
+}
+
+compare_materialized_tree() {
+  expected_root=$1
+  actual_root=$2
+  expected_manifest=$(tree_manifest "$expected_root") || return 1
+  actual_manifest=$(tree_manifest "$actual_root") || return 1
+
+  # Compare paths before inspecting contents. This prevents a symlink in either
+  # tree from hiding an added or missing path, and it avoids following the
+  # absolute Docker Compose link in the release.
+  [ "$expected_manifest" = "$actual_manifest" ] || return 1
+  while IFS= read -r relative_path; do
+    [ "$relative_path" = . ] && continue
+    expected_path="$expected_root/${relative_path#./}"
+    actual_path="$actual_root/${relative_path#./}"
+    if [ -L "$expected_path" ]; then
+      [ -L "$actual_path" ] || return 1
+      [ "$(readlink "$expected_path")" = "$(readlink "$actual_path")" ] || return 1
+    elif [ -d "$expected_path" ]; then
+      [ -d "$actual_path" ] && [ ! -L "$actual_path" ] || return 1
+    elif [ -f "$expected_path" ]; then
+      [ -f "$actual_path" ] && [ ! -L "$actual_path" ] || return 1
+      cmp -s "$expected_path" "$actual_path" || return 1
+      [ "$(file_mode "$expected_path")" = "$(file_mode "$actual_path")" ] || return 1
+    else
+      return 1
+    fi
+  done <<EOF
+$expected_manifest
+EOF
 }
 
 release_work=
@@ -481,7 +524,7 @@ cleanup() {
   [ -z "$control_dir" ] || rm -rf "$control_dir" || :
   if [ "$lock_acquired" -eq 1 ] && [ -d "$lock_dir" ] && [ ! -L "$lock_dir" ] &&
     [ "$(cat "$lock_dir/owner" 2>/dev/null)" = "$transaction_id" ]; then
-    rm -f "$lock_dir/owner" || :
+    rm -f "$lock_dir/owner" "$lock_dir/pid" || :
     rmdir "$lock_dir" 2>/dev/null || :
   fi
   exit "$cleanup_status"
@@ -491,6 +534,28 @@ install_signal_traps() {
   trap 'exit 129' HUP
   trap 'exit 130' INT
   trap 'exit 143' TERM
+}
+
+recover_stale_lock() {
+  stale_lock=$1
+  [ -d "$stale_lock" ] && [ ! -L "$stale_lock" ] || return 1
+  stale_owner=$(cat "$stale_lock/owner" 2>/dev/null) || return 1
+  stale_pid=$(cat "$stale_lock/pid" 2>/dev/null) || return 1
+  case "$stale_owner" in
+    .bootstrap.[A-Za-z0-9]*) ;;
+    *) return 1 ;;
+  esac
+  case "$stale_pid" in
+    '' | *[!0-9]*) return 1 ;;
+  esac
+  kill -0 "$stale_pid" 2>/dev/null && return 1
+
+  stale_control="$data_dir/$stale_owner"
+  if [ -d "$stale_control" ] && [ ! -L "$stale_control" ]; then
+    rm -rf "$stale_control" || return 1
+  fi
+  rm -f "$stale_lock/owner" "$stale_lock/pid" || return 1
+  rmdir "$stale_lock" 2>/dev/null
 }
 
 trap cleanup 0
@@ -503,9 +568,12 @@ transaction_id=${control_dir##*/}
 printf '%s\n' "$transaction_id" >"$control_dir/owner"
 lock_dir=$data_dir/bootstrap.lock
 if ! mkdir "$lock_dir" 2>/dev/null; then
-  die "another userland bootstrap is running; if it was force-quit, remove $lock_dir"
+  recover_stale_lock "$lock_dir" ||
+    die "another userland bootstrap is running; if it was force-quit, remove $lock_dir"
+  mkdir "$lock_dir" || die "could not recover the stale bootstrap lock"
 fi
 printf '%s\n' "$transaction_id" >"$lock_dir/owner"
+printf '%s\n' "$$" >"$lock_dir/pid"
 lock_acquired=1
 
 if [ -d "$release_dir" ]; then

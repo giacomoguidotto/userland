@@ -542,10 +542,30 @@ func containsBrewIssue(issues []brewIssue, expected brewIssue) bool {
 }
 
 func installHomebrew(c *Context) int {
-	return installHomebrewResult(c).Code
+	if result := authenticateHomebrew(c); result.Code != 0 {
+		return result.Code
+	}
+	return installHomebrewAfterAuth(c).Code
 }
 
-func installHomebrewResult(c *Context) platform.Result {
+func authenticateHomebrew(c *Context) platform.Result {
+	if !c.Env.IsMacOS() {
+		return platform.Result{}
+	}
+	return runWithObserved(c, c.Env.List, c.Stdin, c.Output, "/usr/bin/sudo", "-v")
+}
+
+// AuthenticateHomebrew obtains the administrator authorization that the
+// pinned Homebrew installer needs for its native prefix.
+func AuthenticateHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer, terminal bool) platform.Result {
+	if !env.IsMacOS() {
+		return platform.Result{}
+	}
+	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Terminal: terminal}
+	return authenticateHomebrew(c)
+}
+
+func installHomebrewAfterAuth(c *Context) platform.Result {
 	directory, err := os.MkdirTemp(c.Env.Get("TMPDIR"), "userland-homebrew.")
 	if err != nil {
 		return platform.Result{Code: 1, Err: err}
@@ -568,21 +588,17 @@ func installHomebrewResult(c *Context) platform.Result {
 	// Stream the installer output as well as retaining it in the result. The
 	// installer can spend several minutes installing Command Line Tools or
 	// waiting for sudo; hiding that output makes a healthy run look hung.
-	environ := c.Env.List
-	if c.Terminal || c.Stdin != nil {
-		// The installer can receive a terminal-backed reader through a
-		// subprocess and still fail its stdin TTY check. Tell it explicitly to
-		// stay interactive; sudo will then prompt through /dev/tty. In a
-		// genuinely headless invocation stdin is nil, so the installer retains
-		// its normal non-interactive failure with a useful message.
-		environ = c.Env.With("INTERACTIVE", "1", "NONINTERACTIVE", "")
-	}
+	// sudo -v above has already obtained administrator authorization. Run the
+	// installer non-interactively so its own RETURN prompt cannot bypass the
+	// Userland TUI, while preserving its output in the diagnostic log.
+	environ := c.Env.With("NONINTERACTIVE", "1")
 	return runWithObserved(c, environ, c.Stdin, c.Output, "/bin/bash", installer)
 }
 
-// PrepareHomebrew ensures the manager used by Mise's brew backend exists.
-// Formula declarations and installation still go through Mise; this only
-// bootstraps the native manager that Mise needs on a fresh macOS account.
+// PrepareHomebrew ensures the manager used by Mise's brew backend exists
+// after administrator access has been authenticated. Formula declarations and
+// installation still go through Mise; this only bootstraps the native manager
+// that Mise needs on a fresh macOS account.
 func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer, terminal bool) platform.Result {
 	if !env.IsMacOS() {
 		return platform.Result{}
@@ -591,5 +607,5 @@ func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Rea
 	if _, present := brewCommand(c); present {
 		return platform.Result{}
 	}
-	return installHomebrewResult(c)
+	return installHomebrewAfterAuth(c)
 }

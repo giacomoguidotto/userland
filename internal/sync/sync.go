@@ -121,16 +121,29 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
 	if env.IsMacOS() && len(missingPackages) != 0 {
 		var result platform.Result
-		code := nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
-			// The installer writes prompts and progress directly. Stop the live
-			// spinner first so `sudo`'s password prompt remains readable.
+		code := nativeTask(render, "Authenticate macOS administrator access", func() int {
+			// sudo writes its password prompt directly to the terminal. Stop the
+			// spinner first so the prompt remains readable.
 			if render.Rich() {
 				render.ClearTask()
 			}
-			result = adapters.PrepareHomebrew(ctx, env, taskStdin, stdout, terminal)
+			result = adapters.AuthenticateHomebrew(ctx, env, taskStdin, stdout, terminal)
 			return result.Code
 		})
-		appendBootstrapLog(runLog, "Prepare Homebrew for Mise packages", result)
+		appendBootstrapLog(runLog, "Authenticate macOS administrator access", result, "sudo -v")
+		if code != 0 {
+			if detail := lastOutputLine(result.Output); detail != "" {
+				render.Status(tui.StatusInfo, "sudo: "+detail)
+			}
+			render.Status(tui.StatusInfo, "Log: "+runLog)
+			return code
+		}
+		progressOutput := homebrewProgressOutput{render: render}
+		code = nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
+			result = adapters.PrepareHomebrew(ctx, env, taskStdin, &progressOutput, terminal)
+			return result.Code
+		})
+		appendBootstrapLog(runLog, "Prepare Homebrew for Mise packages", result, "pinned Homebrew installer")
 		if code != 0 {
 			if detail := lastOutputLine(result.Output); detail != "" {
 				render.Status(tui.StatusInfo, "Homebrew: "+detail)
@@ -486,14 +499,53 @@ func appendLog(path, label string, output []byte) {
 	_, _ = file.Write(output)
 }
 
-func appendBootstrapLog(path, label string, result platform.Result) {
+func appendBootstrapLog(path, label string, result platform.Result, command string) {
 	var output strings.Builder
-	fmt.Fprintf(&output, "command: pinned Homebrew installer\nexit: %d\n", result.Code)
+	fmt.Fprintf(&output, "command: %s\nexit: %d\n", command, result.Code)
 	if result.Err != nil {
 		fmt.Fprintf(&output, "error: %v\n", result.Err)
 	}
 	output.Write(result.Output)
 	appendLog(path, label, []byte(output.String()))
+}
+
+type homebrewProgressOutput struct {
+	render  tui.Renderer
+	pending string
+}
+
+func (w *homebrewProgressOutput) Write(value []byte) (int, error) {
+	w.pending += strings.ReplaceAll(string(value), "\r", "\n")
+	for {
+		line, rest, found := strings.Cut(w.pending, "\n")
+		if !found {
+			break
+		}
+		w.pending = rest
+		if detail := homebrewProgressDetail(line); detail != "" {
+			w.render.UpdateTask(detail)
+		}
+	}
+	return len(value), nil
+}
+
+func homebrewProgressDetail(line string) string {
+	line = strings.TrimSpace(strings.TrimPrefix(line, "==>"))
+	switch {
+	case line == "", strings.HasPrefix(line, "Warning:"), strings.HasPrefix(line, "This installation"), strings.HasPrefix(line, "Please create"), strings.HasPrefix(line, "You are responsible"), strings.HasPrefix(line, "/opt/homebrew"), strings.HasPrefix(line, "/etc/paths"):
+		return ""
+	case strings.HasPrefix(line, "Checking for"):
+		return "checking Homebrew prerequisites"
+	case strings.HasPrefix(line, "The Xcode Command Line Tools"):
+		return "installing Xcode Command Line Tools"
+	case strings.HasPrefix(line, "Downloading"):
+		return "downloading Homebrew"
+	case strings.HasPrefix(line, "Installing"):
+		return "installing Homebrew"
+	case strings.HasPrefix(line, "Running"):
+		return line
+	}
+	return ""
 }
 
 func lastOutputLine(output []byte) string {

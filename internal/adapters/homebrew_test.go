@@ -104,8 +104,8 @@ func TestPrepareHomebrewSkipsInstallerWhenManagerExists(t *testing.T) {
 		"USERLAND_BREW=" + brew,
 		"PATH=/usr/bin:/bin",
 	})
-	if code := PrepareHomebrew(context.Background(), env, strings.NewReader(""), nil); code != 0 {
-		t.Fatalf("PrepareHomebrew returned %d", code)
+	if result := PrepareHomebrew(context.Background(), env, strings.NewReader(""), nil); result.Code != 0 {
+		t.Fatalf("PrepareHomebrew returned %d", result.Code)
 	}
 }
 

@@ -120,9 +120,17 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
 	if env.IsMacOS() && len(missingPackages) != 0 {
-		if code := nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
-			return adapters.PrepareHomebrew(ctx, env, taskStdin, stdout)
-		}); code != 0 {
+		var result platform.Result
+		code := nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
+			result = adapters.PrepareHomebrew(ctx, env, taskStdin, stdout)
+			return result.Code
+		})
+		appendBootstrapLog(runLog, "Prepare Homebrew for Mise packages", result)
+		if code != 0 {
+			if detail := lastOutputLine(result.Output); detail != "" {
+				render.Status(tui.StatusInfo, "Homebrew: "+detail)
+			}
+			render.Status(tui.StatusInfo, "Log: "+runLog)
 			return code
 		}
 	}
@@ -463,6 +471,26 @@ func appendLog(path, label string, output []byte) {
 	defer file.Close()
 	_, _ = fmt.Fprintf(file, "\n## %s\n", label)
 	_, _ = file.Write(output)
+}
+
+func appendBootstrapLog(path, label string, result platform.Result) {
+	var output strings.Builder
+	fmt.Fprintf(&output, "command: pinned Homebrew installer\nexit: %d\n", result.Code)
+	if result.Err != nil {
+		fmt.Fprintf(&output, "error: %v\n", result.Err)
+	}
+	output.Write(result.Output)
+	appendLog(path, label, []byte(output.String()))
+}
+
+func lastOutputLine(output []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if line := strings.TrimSpace(lines[index]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func appendAdapterLog(path, label string, events []adapters.Event) {

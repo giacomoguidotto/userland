@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -541,35 +542,42 @@ func containsBrewIssue(issues []brewIssue, expected brewIssue) bool {
 }
 
 func installHomebrew(c *Context) int {
+	return installHomebrewResult(c).Code
+}
+
+func installHomebrewResult(c *Context) platform.Result {
 	directory, err := os.MkdirTemp(c.Env.Get("TMPDIR"), "userland-homebrew.")
 	if err != nil {
-		return 1
+		return platform.Result{Code: 1, Err: err}
 	}
 	defer os.RemoveAll(directory)
 	installer := filepath.Join(directory, "install.sh")
 	if result := run(c, "curl", "--proto", "=https", "--tlsv1.2", "-fsSL", homebrewInstaller, "-o", installer); result.Code != 0 {
-		return result.Code
+		return result
 	}
 	digest, err := fileSHA256(installer)
 	if err != nil || digest != homebrewSHA256 {
 		c.Log(Attention, "Homebrew installer checksum mismatch")
-		return 1
+		return platform.Result{Code: 1, Err: errors.New("Homebrew installer checksum mismatch")}
 	}
 	c.Log(Changed, "installing Homebrew from pinned commit "+homebrewCommit)
-	environ := c.Env.With("NONINTERACTIVE", "1")
-	return runWith(c, environ, c.Stdin, "/bin/bash", installer).Code
+	// Let the installer detect whether its stdin is a real terminal. For the
+	// interactive sync path this preserves the sudo password prompt; for a
+	// non-interactive invocation Homebrew enables its own safe non-interactive
+	// mode.
+	return runWith(c, c.Env.List, c.Stdin, "/bin/bash", installer)
 }
 
 // PrepareHomebrew ensures the manager used by Mise's brew backend exists.
 // Formula declarations and installation still go through Mise; this only
 // bootstraps the native manager that Mise needs on a fresh macOS account.
-func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer) int {
+func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer) platform.Result {
 	if !env.IsMacOS() {
-		return 0
+		return platform.Result{}
 	}
 	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output}
 	if _, present := brewCommand(c); present {
-		return 0
+		return platform.Result{}
 	}
-	return installHomebrew(c)
+	return installHomebrewResult(c)
 }

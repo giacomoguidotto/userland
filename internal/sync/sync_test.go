@@ -182,3 +182,17 @@ func TestPackageTaskInputDisablesPromptsWhenNoTTYRequested(t *testing.T) {
 		t.Fatal("packageTaskInput returned interactive input with USERLAND_NO_TTY=1")
 	}
 }
+
+func TestNativeTaskDoesNotReportCancellationAsFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	environ := []string{"USERLAND_UI_MODE=plain"}
+	var output bytes.Buffer
+	render := tui.New(&output, environ)
+	if code := nativeTask(ctx, render, "Homebrew applications", func() int { return -1 }); code != 130 {
+		t.Fatalf("nativeTask returned %d, want cancellation 130", code)
+	}
+	if strings.Contains(output.String(), "failed") {
+		t.Fatalf("cancellation was rendered as failure: %q", output.String())
+	}
+}

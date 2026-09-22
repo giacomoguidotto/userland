@@ -121,7 +121,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
 	if env.IsMacOS() && len(missingPackages) != 0 {
 		var result platform.Result
-		code := nativeTask(render, "Authenticate macOS administrator access", func() int {
+		code := nativeTask(ctx, render, "Authenticate macOS administrator access", func() int {
 			// sudo writes its password prompt directly to the terminal. Stop the
 			// spinner first so the prompt remains readable.
 			if render.Rich() {
@@ -142,7 +142,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 			return code
 		}
 		progressOutput := homebrewProgressOutput{render: render}
-		code = nativeTask(render, "Prepare Homebrew for Mise packages", func() int {
+		code = nativeTask(ctx, render, "Prepare Homebrew for Mise packages", func() int {
 			result = adapters.PrepareHomebrew(ctx, env, taskStdin, &progressOutput, terminal)
 			return result.Code
 		})
@@ -181,7 +181,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	if !env.Bool("USERLAND_TESTING") {
 		render.Section("Apply managed files")
-		if code := nativeTask(render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
+		if code := nativeTask(ctx, render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
 			return code
 		}
 	}
@@ -205,6 +205,12 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 			}
 		},
 		func(label string, events []adapters.Event, code int) {
+			if ctx.Err() != nil {
+				if render.Rich() {
+					render.ClearTask()
+				}
+				return
+			}
 			if adapters.DirectApply(label) {
 				for _, event := range events {
 					render.Status(adapterStatus(event.Level), event.Message)
@@ -228,13 +234,16 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 				render.Status(tui.StatusError, fmt.Sprintf("%s failed (exit %d)", label, code))
 			}
 		})
+	if ctx.Err() != nil {
+		return 130
+	}
 	if result.Code != 0 {
 		render.Summary(tui.StatusError, "Stopped at the failed step. Fix it, then rerun sync.")
 		return result.Code
 	}
 	if env.Bool("USERLAND_TESTING") {
 		render.Section("Apply managed files")
-		if code := nativeTask(render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
+		if code := nativeTask(ctx, render, "Apply managed files transactionally", func() int { return manager.Apply(ctx) }); code != 0 {
 			return code
 		}
 	}
@@ -378,6 +387,9 @@ func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer
 		_, _ = out.Write(result.Output)
 	}
 	appendLog(runLog, label, result.Output)
+	if ctx.Err() != nil {
+		return 130
+	}
 	if result.Code == 0 {
 		render.TaskSuccess(label)
 		return 0
@@ -472,7 +484,7 @@ func trimPrefixes(values []string, prefix string) []string {
 	return result
 }
 
-func nativeTask(render tui.Renderer, label string, operation func() int) int {
+func nativeTask(ctx context.Context, render tui.Renderer, label string, operation func() int) int {
 	if render.Rich() {
 		render.BeginTask(label)
 	} else {
@@ -481,6 +493,9 @@ func nativeTask(render tui.Renderer, label string, operation func() int) int {
 	code := operation()
 	if render.Rich() {
 		render.ClearTask()
+	}
+	if ctx.Err() != nil {
+		return 130
 	}
 	if code == 0 {
 		render.TaskSuccess(label)

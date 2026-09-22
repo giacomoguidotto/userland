@@ -630,13 +630,12 @@ HOME="$retained_home" \
   USERLAND_DATA_DIR="$retained_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/upgrade-bootstrap" >"$work/cross-release-output" 2>&1 || cross_release_status=$?
-[ "$cross_release_status" -ne 0 ] || fail "new release accepted an unfinished older stage"
-grep -Fq "https://userland.guidotto.dev/$tag" "$work/cross-release-output" ||
-  fail "unfinished older stage did not provide its pinned recovery command"
-[ "$(readlink "$retained_home/.local/share/userland/current")" = "$retained_home/.local/share/userland/releases/$tag" ] ||
-  fail "cross-release refusal moved the current release pointer"
+[ "$cross_release_status" -eq 0 ] || fail "new release did not discard and replace an unfinished older stage"
+grep -Fq "discarding interrupted $tag stage before installing v1.2.4" "$work/cross-release-output" ||
+  fail "cross-release replacement did not report the discarded older stage"
+[ -d "$retained_home/.userland/.git" ] || fail "cross-release replacement did not promote the new checkout"
 [ "$(readlink "$retained_home/.local/bin/userland")" = "$retained_home/.userland/bin/userland" ] ||
-  fail "cross-release refusal moved the command away from the retained stage"
+  fail "cross-release replacement did not retain the canonical command"
 
 promotion_home="$work/promotion-home"
 prepare_home "$promotion_home"

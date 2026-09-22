@@ -354,8 +354,14 @@ validate_materialized_checkout() {
   [ -f "$materialized_path/.userland-stage-version" ] && [ ! -L "$materialized_path/.userland-stage-version" ] ||
     die "$materialized_path has no staged release version"
   materialized_tag=$(cat "$materialized_path/.userland-stage-version")
-  [ "$(cat "$materialized_path/.userland-stage")" = "$commit" ] && [ "$materialized_tag" = "$tag" ] ||
-    die "$materialized_path contains an interrupted $materialized_tag install; finish it with: curl -fsSL https://userland.guidotto.dev/$materialized_tag | sh"
+  if [ "$(cat "$materialized_path/.userland-stage")" != "$commit" ] || [ "$materialized_tag" != "$tag" ]; then
+    if [ "$materialized_tag" != "$tag" ]; then
+      printf 'userland: discarding interrupted %s stage before installing %s\n' "$materialized_tag" "$tag" >&2
+      rm -rf "$materialized_path"
+      return 0
+    fi
+    die "$materialized_path contains a tampered interrupted $materialized_tag install"
+  fi
   [ -f "$materialized_path/.userland-release" ] && [ ! -L "$materialized_path/.userland-release" ] ||
     die "$materialized_path has no release marker"
   [ "$(cat "$materialized_path/.userland-release")" = "$commit" ] ||
@@ -368,6 +374,26 @@ validate_materialized_checkout() {
     die "$materialized_path/cfg/mise.toml is not a regular file"
   compare_materialized_tree "$release_dir" "$materialized_path" ||
     die "$materialized_path differs from the verified release"
+}
+
+create_materialized_checkout() {
+  checkout_work=$(mktemp -d "$HOME/.userland.new.XXXXXX")
+  cp -pR "$release_dir/." "$checkout_work/"
+  [ ! -e "$checkout_work/.userland-stage" ] && [ ! -L "$checkout_work/.userland-stage" ] ||
+    die "release contains a reserved stage marker"
+  [ ! -e "$checkout_work/.userland-stage-version" ] && [ ! -L "$checkout_work/.userland-stage-version" ] ||
+    die "release contains a reserved stage version"
+  [ ! -e "$checkout_work/.userland-bootstrap-owner" ] && [ ! -L "$checkout_work/.userland-bootstrap-owner" ] ||
+    die "release contains a reserved ownership marker"
+  printf '%s\n' "$commit" >"$checkout_work/.userland-stage"
+  printf '%s\n' "$tag" >"$checkout_work/.userland-stage-version"
+  printf '%s\n' "$transaction_id" >"$checkout_work/.userland-bootstrap-owner"
+  validate_materialized_checkout "$checkout_work"
+  [ ! -e "$repo_dir" ] && [ ! -L "$repo_dir" ] ||
+    die "$repo_dir appeared while preparing userland"
+  mv "$checkout_work" "$repo_dir"
+  checkout_work=
+  repo_created=1
 }
 
 tree_manifest() {
@@ -734,24 +760,9 @@ elif [ -d "$repo_dir/.git" ]; then
   fi
 elif [ -e "$repo_dir" ]; then
   validate_materialized_checkout "$repo_dir"
+  [ -e "$repo_dir" ] || create_materialized_checkout
 else
-  checkout_work=$(mktemp -d "$HOME/.userland.new.XXXXXX")
-  cp -pR "$release_dir/." "$checkout_work/"
-  [ ! -e "$checkout_work/.userland-stage" ] && [ ! -L "$checkout_work/.userland-stage" ] ||
-    die "release contains a reserved stage marker"
-  [ ! -e "$checkout_work/.userland-stage-version" ] && [ ! -L "$checkout_work/.userland-stage-version" ] ||
-    die "release contains a reserved stage version"
-  [ ! -e "$checkout_work/.userland-bootstrap-owner" ] && [ ! -L "$checkout_work/.userland-bootstrap-owner" ] ||
-    die "release contains a reserved ownership marker"
-  printf '%s\n' "$commit" >"$checkout_work/.userland-stage"
-  printf '%s\n' "$tag" >"$checkout_work/.userland-stage-version"
-  printf '%s\n' "$transaction_id" >"$checkout_work/.userland-bootstrap-owner"
-  validate_materialized_checkout "$checkout_work"
-  [ ! -e "$repo_dir" ] && [ ! -L "$repo_dir" ] ||
-    die "$repo_dir appeared while preparing userland"
-  mv "$checkout_work" "$repo_dir"
-  checkout_work=
-  repo_created=1
+  create_materialized_checkout
 fi
 
 MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null

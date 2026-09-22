@@ -565,7 +565,10 @@ func installHomebrewResult(c *Context) platform.Result {
 	// interactive sync path this preserves the sudo password prompt; for a
 	// non-interactive invocation Homebrew enables its own safe non-interactive
 	// mode.
-	return runWith(c, c.Env.List, c.Stdin, "/bin/bash", installer)
+	// Stream the installer output as well as retaining it in the result. The
+	// installer can spend several minutes installing Command Line Tools or
+	// waiting for sudo; hiding that output makes a healthy run look hung.
+	return runWithObserved(c, c.Env.List, c.Stdin, c.Output, "/bin/bash", installer)
 }
 
 // PrepareHomebrew ensures the manager used by Mise's brew backend exists.

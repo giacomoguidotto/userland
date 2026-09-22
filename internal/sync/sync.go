@@ -117,7 +117,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
-	if code := miseTask(ctx, env, render, stdout, runLog, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	var upgrades []string
@@ -128,16 +128,16 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	if len(upgrades) != 0 {
 		args := append([]string{"bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
-		if code := miseTask(ctx, env, render, stdout, runLog, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
+		if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
 			return code
 		}
 	}
 	render.Section("Apply machine state")
-	if code := miseTask(ctx, env, render, stdout, runLog, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	if env.IsMacOS() {
-		if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
+		if code := miseTask(ctx, env, render, stdout, runLog, stdin, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 			return code
 		}
 	}
@@ -305,14 +305,16 @@ func preflight(ctx context.Context, env platform.Environment) error {
 	return nil
 }
 
-func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog, label string, progressTargets []string, args ...string) int {
+func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog string, stdin io.Reader, label string, progressTargets []string, args ...string) int {
 	if render.Rich() {
 		render.BeginTask(label)
 	} else {
 		render.Status(tui.StatusInfo, label)
 	}
 	progress := newPackageProgress(render, progressTargets)
-	result := env.RunMiseObserved(ctx, nil, progress, args...)
+	// Keep the terminal input attached. Mise may need one sudo prompt while
+	// creating a native package prefix such as /opt/homebrew.
+	result := env.RunMiseObserved(ctx, stdin, progress, args...)
 	progress.Flush()
 	if render.Rich() {
 		render.ClearTask()

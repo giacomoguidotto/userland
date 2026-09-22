@@ -65,7 +65,7 @@ printf '%s\n' 'mise brew:yazi ✓ 26.8.15'
 		t.Fatal(err)
 	}
 
-	code := miseTask(context.Background(), env, render, &output, runLog,
+	code := miseTask(context.Background(), env, render, &output, runLog, nil,
 		"Upgrade installed rolling packages",
 		[]string{"ffmpeg", "yazi"},
 		"bootstrap", "packages", "upgrade", "--yes", "brew:ffmpeg", "brew:yazi",
@@ -111,7 +111,7 @@ printf '%s\n' 'mise coder@2.36.3 [1/3] install'
 	if err := os.WriteFile(runLog, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code := miseTask(context.Background(), env, render, &output, runLog,
+	code := miseTask(context.Background(), env, render, &output, runLog, nil,
 		"Install pinned development tools", []string{"azure-cli", "coder"}, "install", "--yes")
 	if code != 0 {
 		t.Fatalf("miseTask returned %d", code)
@@ -129,5 +129,47 @@ printf '%s\n' 'mise coder@2.36.3 [1/3] install'
 	}
 	if !bytes.Contains(log, []byte("Downloading noisy vendor archive")) {
 		t.Fatalf("hidden installer output was not retained in the diagnostic log: %q", log)
+	}
+}
+
+func TestMiseTaskForwardsInteractiveInput(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "state")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	captured := filepath.Join(root, "stdin")
+	mise := filepath.Join(root, "mise")
+	script := `#!/bin/sh
+IFS= read -r line
+printf '%s\n' "$line" >"$MISE_STDIN_CAPTURE"
+`
+	if err := os.WriteFile(mise, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	environ := []string{
+		"USERLAND_ROOT=" + root,
+		"USERLAND_HOME=" + root,
+		"USERLAND_STATE_DIR=" + state,
+		"USERLAND_MISE=" + mise,
+		"MISE_STDIN_CAPTURE=" + captured,
+		"USERLAND_UI_MODE=plain",
+	}
+	env := platform.NewEnvironment(environ)
+	var output bytes.Buffer
+	render := tui.New(&output, environ)
+	runLog := filepath.Join(state, "last-run.log")
+	if err := os.WriteFile(runLog, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := miseTask(context.Background(), env, render, &output, runLog, strings.NewReader("sudo-password\n"), "Install packages", nil, "bootstrap", "packages", "apply"); code != 0 {
+		t.Fatalf("miseTask returned %d", code)
+	}
+	value, err := os.ReadFile(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(value)) != "sudo-password" {
+		t.Fatalf("Mise did not receive interactive input: %q", value)
 	}
 }

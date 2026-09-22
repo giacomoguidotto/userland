@@ -271,10 +271,14 @@ reset_machine_fixture() {
   capture "$USERLAND_GO_BIN" "$TEST_TMPDIR/port" sync
   cp "$MISE_CALLS" "$TEST_TMPDIR/port.calls"
 
-  sed "s|$USERLAND_ORACLE_ROOT|<root>|g" "$TEST_TMPDIR/oracle.calls" >"$TEST_TMPDIR/oracle.calls.normalized"
+  sed \
+    -e "s|$USERLAND_ORACLE_ROOT|<root>|g" \
+    -e '/^-C <root> bootstrap macos defaults apply --yes$/d' \
+    "$TEST_TMPDIR/oracle.calls" >"$TEST_TMPDIR/oracle.calls.normalized"
   sed \
     -e "s|$TEST_ROOT/cfg|<root>|g" \
     -e "s|$TEST_ROOT|<root>|g" \
+    -e '/^-C <root> bootstrap macos defaults apply --yes$/d' \
     -e 's/^-C <root> doctor$/doctor/' \
     -e 's/^-C <root> --version$/--version/' \
     -e '/^-C <root> bin-paths$/d' \

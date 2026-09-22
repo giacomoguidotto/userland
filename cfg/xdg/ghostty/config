@@ -1,3 +1,4 @@
+font-family = JetBrainsMono Nerd Font
 theme = dark:catppuccin-mocha.conf,light:Catppuccin Latte
 background-opacity = 0.88
 background-blur-radius = 95

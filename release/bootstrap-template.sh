@@ -3,12 +3,43 @@ set -eu
 
 tag='@USERLAND_TAG@'
 commit='@USERLAND_COMMIT@'
-archive_sha256='@USERLAND_ARCHIVE_SHA256@'
-archive="userland-$tag.tar.gz"
+archive_sha256_darwin_arm64='@USERLAND_ARCHIVE_SHA256_DARWIN_ARM64@'
+archive_sha256_linux_arm64='@USERLAND_ARCHIVE_SHA256_LINUX_ARM64@'
+archive_sha256_linux_x64='@USERLAND_ARCHIVE_SHA256_LINUX_X64@'
 repository='https://github.com/giacomoguidotto/userland.git'
+platform_os=$(uname -s 2>/dev/null || printf unknown)
+platform_arch=$(uname -m 2>/dev/null || printf unknown)
+if [ -n "${USERLAND_PLATFORM:-}" ]; then
+  case "$USERLAND_PLATFORM" in
+    darwin-arm64) platform_os=Darwin; platform_arch=arm64 ;;
+    linux-arm64) platform_os=Linux; platform_arch=aarch64 ;;
+    linux-x64) platform_os=Linux; platform_arch=x86_64 ;;
+    *) printf 'userland: invalid USERLAND_PLATFORM %s\n' "$USERLAND_PLATFORM" >&2; exit 1 ;;
+  esac
+fi
+case "$platform_os:$platform_arch" in
+  Darwin:arm64|Darwin:aarch64)
+    platform=darwin-arm64
+    archive="userland-$tag.tar.gz"
+    archive_sha256=$archive_sha256_darwin_arm64
+    ;;
+  Linux:arm64|Linux:aarch64|Linux:armv8l)
+    platform=linux-arm64
+    archive="userland-$tag-linux-arm64.tar.gz"
+    archive_sha256=$archive_sha256_linux_arm64
+    ;;
+  Linux:x86_64|Linux:amd64)
+    platform=linux-x64
+    archive="userland-$tag-linux-x64.tar.gz"
+    archive_sha256=$archive_sha256_linux_x64
+    ;;
+  *) die() { printf 'userland: unsupported platform %s/%s\n' "$platform_os" "$platform_arch" >&2; exit 1; }; die ;;
+esac
 release_url="https://github.com/giacomoguidotto/userland/releases/download/$tag/$archive"
 data_dir=${USERLAND_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/userland}
-release_dir="$data_dir/releases/$tag"
+release_key=$tag
+[ "$platform" = darwin-arm64 ] || release_key="$tag-$platform"
+release_dir="$data_dir/releases/$release_key"
 repo_dir=$HOME/.userland
 legacy_repo_dir="$data_dir/repo"
 bin_dir=${USERLAND_BIN_DIR:-$HOME/.local/bin}

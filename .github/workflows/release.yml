@@ -75,6 +75,8 @@ jobs:
           cmp "$RUNNER_TEMP/release-first/bootstrap" "$RUNNER_TEMP/release-second/bootstrap"
           cmp "$RUNNER_TEMP/release-first/checksums.txt" "$RUNNER_TEMP/release-second/checksums.txt"
           cmp "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG.tar.gz"
+          cmp "$RUNNER_TEMP/release-first/userland-$TAG-linux-arm64.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG-linux-arm64.tar.gz"
+          cmp "$RUNNER_TEMP/release-first/userland-$TAG-linux-x64.tar.gz" "$RUNNER_TEMP/release-second/userland-$TAG-linux-x64.tar.gz"
           tar -tzf "$RUNNER_TEMP/release-first/userland-$TAG.tar.gz" > "$RUNNER_TEMP/archive-files"
           grep -Eq '^userland-[^/]+/(tests|release|\.github)/' "$RUNNER_TEMP/archive-files" && exit 1 || true
           [[ "$(grep -Ec '^userland-[^/]+/completions/(bash|fish|nushell|zsh)$' "$RUNNER_TEMP/archive-files")" == 4 ]]
@@ -186,6 +188,8 @@ jobs:
             ${{ runner.temp }}/release/bootstrap
             ${{ runner.temp }}/release/checksums.txt
             ${{ runner.temp }}/release/userland-${{ env.TAG }}.tar.gz
+            ${{ runner.temp }}/release/userland-${{ env.TAG }}-linux-arm64.tar.gz
+            ${{ runner.temp }}/release/userland-${{ env.TAG }}-linux-x64.tar.gz
 
       - name: Publish the GitHub release
         env:
@@ -198,6 +202,8 @@ jobs:
             "$RUNNER_TEMP/release/bootstrap#bootstrap"
             "$RUNNER_TEMP/release/checksums.txt#checksums.txt"
             "$RUNNER_TEMP/release/userland-$TAG.tar.gz#userland-$TAG.tar.gz"
+            "$RUNNER_TEMP/release/userland-$TAG-linux-arm64.tar.gz#userland-$TAG-linux-arm64.tar.gz"
+            "$RUNNER_TEMP/release/userland-$TAG-linux-x64.tar.gz#userland-$TAG-linux-x64.tar.gz"
           )
 
           if release_json=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isImmutable,isPrerelease 2>/dev/null); then
@@ -219,6 +225,8 @@ jobs:
               cmp "$RUNNER_TEMP/release/bootstrap" "$RUNNER_TEMP/published-release/bootstrap"
               cmp "$RUNNER_TEMP/release/checksums.txt" "$RUNNER_TEMP/published-release/checksums.txt"
               cmp "$RUNNER_TEMP/release/userland-$TAG.tar.gz" "$RUNNER_TEMP/published-release/userland-$TAG.tar.gz"
+              cmp "$RUNNER_TEMP/release/userland-$TAG-linux-arm64.tar.gz" "$RUNNER_TEMP/published-release/userland-$TAG-linux-arm64.tar.gz"
+              cmp "$RUNNER_TEMP/release/userland-$TAG-linux-x64.tar.gz" "$RUNNER_TEMP/published-release/userland-$TAG-linux-x64.tar.gz"
             fi
           else
             arguments=(

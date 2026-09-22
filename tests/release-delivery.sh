@@ -89,9 +89,18 @@ GOOS=linux GOARCH=amd64 \
   "$release_dir/build-release.sh" v9.9.9 "$(git -C "$repository_root" rev-parse HEAD)" "$target_output"
 mkdir -p "$work/target-archive"
 tar -xzf "$target_output/userland-v9.9.9.tar.gz" -C "$work/target-archive"
-target_header=$(od -An -tx1 -N8 "$work/target-archive/userland-9.9.9/bin/userland" | tr -d ' \n')
-[ "$target_header" = cffaedfe0c000001 ] ||
-  fail "release binary is not a Darwin arm64 Mach-O executable: $target_header"
+for archive in userland-v9.9.9.tar.gz userland-v9.9.9-linux-arm64.tar.gz userland-v9.9.9-linux-x64.tar.gz; do
+  [ -f "$target_output/$archive" ] || fail "release archive missing: $archive"
+done
+darwin_header=$(od -An -tx1 -N8 "$work/target-archive/userland-9.9.9/bin/userland" | tr -d ' \n')
+[ "$darwin_header" = cffaedfe0c000001 ] || fail "Darwin archive has an unexpected binary header: $darwin_header"
+mkdir -p "$work/linux-arm64" "$work/linux-x64"
+tar -xzf "$target_output/userland-v9.9.9-linux-arm64.tar.gz" -C "$work/linux-arm64"
+tar -xzf "$target_output/userland-v9.9.9-linux-x64.tar.gz" -C "$work/linux-x64"
+for target in linux-arm64 linux-x64; do
+  header=$(od -An -tx1 -N8 "$work/$target/userland-9.9.9/bin/userland" | tr -d ' \n')
+  [ "$header" = 7f454c4602010100 ] || fail "$target archive has an unexpected binary header: $header"
+done
 
 "$test_dir/release-bootstrap.sh"
 

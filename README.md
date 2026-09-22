@@ -1,143 +1,68 @@
 # userland
 
-My personal macOS configuration. It restores the tools, applications, preferences, and files that make a new Mac feel like mine.
+A small, reproducible personal machine baseline. The same release command works on Apple silicon macOS, Linux x64/arm64, and Termux's Linux arm64 environment.
 
 [![Checks](https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml/badge.svg)](https://github.com/giacomoguidotto/userland/actions/workflows/checks.yml)
 [![Latest release](https://img.shields.io/github/v/release/giacomoguidotto/userland)](https://github.com/giacomoguidotto/userland/releases/latest)
 
 ## Install
 
-Latest stable release:
-
 ```sh
 curl -fsSL https://userland.guidotto.dev | sh
 ```
 
-Pin an exact release:
+The bootstrap selects the matching release archive, verifies its SHA-256 checksum, recovers unfinished transactions, and then runs the same plan and sync flow every time. It keeps a failed transaction's journal so a rerun can finish or roll it back. Set `USERLAND_PLATFORM=darwin-arm64`, `linux-arm64`, or `linux-x64` only when testing a different target.
 
-```sh
-curl -fsSL https://userland.guidotto.dev/v0.1.30 | sh
-```
+On Termux, install `git`, `curl`, `tar`, `zsh`, and the current `mise` package from Termux first. Termux uses the Linux arm64 archive. Mise and some upstream binary releases still depend on the Termux package set, so project-specific toolchains belong in that project's own `mise.toml`.
 
-The installer verifies the release checksum and prepares `~/.userland` before showing the first plan. Cancelling removes a checkout created by that run. Once apply starts, the same path is retained and becomes the managed Git checkout.
+## What the default sync installs
+
+Mise is the one installer and version source. On every supported Unix it installs pinned versions of Node, 1Password CLI, Codex CLI, Atuin, bat, btop, eza, fd, fzf, GitHub CLI, delta, jq, Neovim, ripgrep, Starship, and zoxide. Git itself comes from the host package manager on Linux and Homebrew on macOS because it is needed before Mise can bootstrap the checkout.
+
+macOS applications are limited to 1Password, Ghostty, Helium, Raycast, Shottr, Spotify, T3 Code, Wispr Flow, and JetBrains Mono Nerd Font. Raycast, Shottr, and Wispr Flow remain login items. Browser extension prompts are limited to 1Password and Raycast Companion in Helium. No Chrome, Zed, Docker, Colima, Kubernetes, Android SDK, Java, Gradle, mobile SDK, DaVinci Resolve, OpenScreen, or hardware utility is part of the default.
+
+Hardware integrations are deliberately absent from the public baseline. Add a device-specific declaration to a private or local Mise profile when the device is attached. Mobile development belongs in `cfg/profiles/mobile.toml`, which is never loaded by the default sync.
+
+The default repository catalog is empty. Sync does not clone personal repositories or overwrite existing work. Add a repository declaration locally when a machine should own a canonical checkout.
+
+The default realm catalog is empty. If an older Userland state file contains Danfoss or Trellis attachments, the next sync removes their generated `.envrc`, direnv authorization, Git projection, SSH projection, and attachment records. It leaves the checkout directory in place for review instead of deleting source code.
+
+## Credentials
+
+The repository contains no token, private key, browser cookie, or exported session. Codex is configured with `cli_auth_credentials_store = "keyring"` and `mcp_oauth_credentials_store = "keyring"`, so login fails rather than writing `~/.codex/auth.json` when a system keyring is unavailable. See the [Codex authentication settings](https://learn.chatgpt.com/docs/auth).
+
+The personal authentication wizard follows the human through 1Password SSH-agent setup, the GitHub SSH-key page, GitHub CLI's browser login, and Codex's browser login. It is safe to stop and rerun. For non-interactive work, keep only `op://...` references in an untracked local file and run the command with `op run`; 1Password resolves the value in memory. Do not put `OP_SERVICE_ACCOUNT_TOKEN`, `GH_TOKEN`, API keys, or private keys in this repository or in shell startup files. See [1Password's secret environment guide](https://www.1password.dev/cli/secrets-environment-variables/).
 
 ## Use
 
 | Command | Purpose |
 | --- | --- |
-| `userland plan` | Show what would change without changing the machine. |
-| `userland sync` | Apply declared state, guide attended steps, then run the doctor. Safe to rerun after an interruption. |
-| `userland doctor` | Report drift and machine health without changing anything. Use `--json` for structured output. |
-| `userland realm list` | List the optional private realms declared by this configuration. |
-| `userland realm add <name>` | Attach a declared private realm at its default path. |
-| `userland realm add <repository> <path>` | Attach optional private configuration to a directory tree on this Mac. |
-| `userland realm remove <name-or-path>` | Detach a realm without deleting its checkout or portable declaration. |
-| `userland completions <shell>` | Print completions for Bash, Fish, Nushell, or Zsh. Zsh is wired in automatically by sync. |
+| `userland plan` | Show declared changes without applying them. |
+| `userland sync` | Apply the plan, run attended authentication steps, and reconcile files. Rerun after any interruption. |
+| `userland doctor` | Report drift without changing the machine. |
+| `userland completions <shell>` | Print Bash, Fish, Nushell, or Zsh completions. |
 
-Userland generates a static Zsh environment containing direct binary paths for
-only the tools declared in `cfg/mise.toml`. The shared Mise shim directory is
-not placed on the global `PATH`, so a tool installed for one project does not
-appear active elsewhere. Realm activation adds its own project tools through
-direnv, and explicit automation can use `mise -C <realm> exec` without changing
-the ambient shell.
-
-## Realms
-
-A realm applies a private operational identity below one directory. The
-portable, optional catalog lives in `cfg/realms.csv`; the attachment map for
-the current Mac lives in Userland state and is not committed. On the first
-sync, Userland records no realm attachments by default. Later runs converge only
-realms you explicitly attach with `realm add <name>` or `realm add <repository> <path>`.
-The available declarations are listed by `realm list`.
-
-`realm add` clones a missing realm configuration checkout or adopts an existing
-checkout whose raw origin matches the declaration. The configuration checkout
-may be the attached directory itself, as it is for Danfoss, or a separate
-private checkout projected onto an existing product repository, as it is for
-Trellis. Userland never pulls, switches, stages, or cleans an existing checkout
-during attachment. It creates an excluded `.envrc` that loads the configuration
-checkout's `mise.toml` once through the existing direnv hook. An optional
-`.userland/envrc` can provide additional private exports. If the configuration
-checkout contains `.gitconfig`, Userland generates a native Git `includeIf` for
-repositories below the attached path. An optional `ssh.config` is materialized
-only while the realm is attached, with its configuration and attachment paths
-substituted into the generated configuration.
-
-A realm can project private files into its attached checkout with
-`.userland/files.csv`, using `source,target,mode` columns. Both paths must be
-clean relative paths confined to the realm configuration and attachment roots.
-Sync restores the declared bytes and permissions atomically. Realm-specific
-login items may be declared in `.userland/login-items.csv`; applications that
-are not installed are intentionally ignored. Realm-owned Homebrew applications
-may be declared in `.userland/brewfile`; Userland rejects duplicate ownership
-between personal and attached-realm Brewfiles. The realm's `mise.toml` toolchain
-and Homebrew applications are installed with item progress before authentication
-begins. An executable
-`.userland/auth-wizard` is checked by plan and doctor, and is run interactively
-by sync when authentication cannot be restored from the private configuration.
-
-A realm can declare its repository taxonomy in
-`.userland/repositories.csv` with `repository,path,branch` columns. Plan and
-doctor validate each checkout, its raw origin, and its declared canonical
-branch. Sync clones missing checkouts and resets existing primary checkouts to
-the declared remote branch while preserving ignored files. Feature work belongs
-in linked worktrees. When configuration lives in a separate checkout, path `.`
-declares the attached directory as the primary checkout and lets `realm add`
-provision it when missing. Userland also maintains local Git exclusions in the
-attached repository and never deletes an undeclared child checkout.
-
-`realm remove` revokes direnv authorization and removes Userland-generated
-activation and realm projections. The configuration checkout, attached
-repository, private files, and optional catalog entry remain. A realm may
-explicitly snapshot credentials when its owner accepts the security tradeoff;
-otherwise its wizard should use the service's attended login flow.
+Userland writes a static Zsh cache containing direct paths for only the tools in `cfg/mise.toml`. It does not put the shared Mise shim directory on the global path. Project toolchains stay inside their repository.
 
 ## Repository map
 
 | Folder | Contents |
 | --- | --- |
-| `.mise/` | Fork-owned development tools, lockfile, lint, and test tasks. |
-| `cmd/` | The thin Go command entry point. |
-| `cfg/` | Personal machine state, including its isolated Mise declaration and lockfile, dotfiles, applications, repositories, optional realm catalog, and agent assets. |
+| `.mise/` | Tools and tasks used to test this repository. |
+| `cfg/` | Personal applications, Mise declarations, dotfiles, credential policy, and optional profiles. |
 | `completions/` | Static shell completion definitions. |
-| `internal/` | Go orchestration, typed planning, adapters, recovery transactions, health checks, and terminal rendering. |
-| `release/` | Checksum-verified release and bootstrap delivery. |
-| `tests/` | Frozen-v0.2.3 compatibility, release, and HTTP interface checks. |
+| `internal/` | Planning, adapters, recovery transactions, health checks, and terminal rendering. |
+| `release/` | Reproducible archives, platform selection, checksum verification, and public bootstrap delivery. |
+| `tests/` | Go, shell, release, and compatibility tests. |
 
-The release command is a statically linked Go binary. Its public interface is
-`userland.Run`, while machine effects stay behind internal collectors. Personal
-declarations never live in the library and are owned only by `cfg/`.
-Userland invokes Mise only through `cfg/mise.toml`; parent development tooling
-cannot leak into machine synchronization. A fork can replace `cfg/` without
-editing the library or its development environment.
-Tabular declarations use header-validated CSV files so values can be quoted
-without changing their schema.
-The compatibility suite materializes v0.2.3 from Git as a shell oracle, then
-compares terminal bytes, exit status, command traces, and sync behavior against
-the Go implementation.
+Sync only changes paths declared by this checkout. It stops on unmanaged dotfile conflicts, never stashes an existing repository, and does not delete an unmanaged file or application. Stock macOS applications such as GarageBand are not removed automatically. If you want those deleted, make that a separate, reviewed cleanup operation.
 
-## Ownership
+## Development
 
-Userland owns only the personal state declared here. Work-domain configuration
-and any explicitly versioned credentials stay in private realms. Browser
-profiles, histories, caches, application databases, and machine-local
-authentication stay out of the public repository.
+```sh
+mise run test
+```
 
-Sync never stashes or edits an undeclared repository. Declared primary checkouts are canonical remote-branch mirrors: sync discards their tracked changes and untracked, non-ignored files while preserving ignored local state such as dotenv files. It does not prune unmanaged packages, applications, files, Dock items, login items, or browser extensions. Dotfile conflicts stop the run; supported legacy migrations preserve undeclared children.
-
-## Manual gates
-
-macOS and application security still require a person for some steps: App Store
-authentication, privacy approvals, licenses, browser extensions, Android SDK
-licenses, vendor-only installers, and Raycast's encrypted import. Sync also
-runs the personal and selected-realm authentication wizards when their
-read-only checks fail. `userland sync` opens or explains each attended step and
-remains safe to rerun.
-
-## Release integrity
-
-Strict SemVer tags produce immutable GitHub Release assets. The public bootstrap verifies the archive checksum before extraction. `userland.guidotto.dev` serves the same bootstrap bytes at the root and exact-version endpoints without redirects.
-
-A real fresh-Mac parity run remains the final proof. This is personal configuration in public, not a general-purpose dotfiles framework.
+Release builds are reproducible and publish one bootstrap plus Darwin arm64, Linux arm64, and Linux x64 archives. The bootstrap chooses the archive from `uname`, verifies it before extraction, and promotes a release only after the sync apply checkpoint succeeds.
 
 MIT licensed.

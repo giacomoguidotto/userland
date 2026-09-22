@@ -1,0 +1,8 @@
+# Copy the required declarations to a mobile project's own mise.toml.
+[tools]
+java = "temurin-21.0.12+8.0.LTS"
+gradle = "9.7.0"
+"npm:eas-cli" = "22.0.0"
+[bootstrap.packages]
+"brew-cask:android-commandlinetools" = { os = ["macos"] }
+"mas:497799835" = { os = ["macos"] }

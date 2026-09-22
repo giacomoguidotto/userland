@@ -9,109 +9,56 @@ locked = true
 
 [tools]
 node = "24.19.0"
-bun = "1.3.14"
 op = "2.39.0"
-java = "temurin-21.0.12+8.0.LTS"
-gradle = "9.7.0"
-"aqua:bats-core/bats-core" = "1.14.0"
-"aqua:koalaman/shellcheck" = "0.11.0"
-"aqua:mvdan/sh" = "3.13.1"
-"npm:@earendil-works/pi-coding-agent" = "0.84.2"
 "npm:@openai/codex" = "0.148.0"
-"npm:eas-cli" = "22.0.0"
-"npm:tree-sitter-cli" = { version = "0.26.12", allow_builds = ["tree-sitter-cli"] }
-pitchfork = "2.22.0"
-uv = "0.12.5"
-python = "3.14.7"
+"aqua:atuinsh/atuin" = "18.22.0"
+"aqua:aristocratos/btop" = "1.4.7"
+"aqua:sharkdp/bat" = "0.26.1"
+"aqua:eza-community/eza" = "0.23.5"
+"aqua:sharkdp/fd" = "10.5.0"
+"aqua:junegunn/fzf" = "0.74.4"
+"aqua:cli/cli" = "2.101.0"
+"aqua:dandavison/delta" = "0.19.2"
+"aqua:jqlang/jq" = "1.8.2"
+"aqua:neovim/neovim" = "0.12.5"
+"aqua:BurntSushi/ripgrep" = "15.2.0"
+"aqua:starship/starship" = "1.26.0"
+"aqua:ajeetdsouza/zoxide" = "0.10.0"
 
-# CLI programs intentionally roll forward. cfg/mise.lock pins the tools above.
-# Homebrew applications and vendor updaters do not offer equivalent locks.
+# Native system packages are managed through Mise; application updates follow
+# vendor releases. cfg/mise.lock pins the portable tools above.
 [bootstrap.packages]
-"brew:bat" = "latest"
-"brew:btop" = "latest"
-"brew:atuin" = "latest"
-"brew:carapace" = "latest"
-"brew:colima" = "latest"
-"brew:direnv" = "latest"
-"brew:docker" = "latest"
-"brew:docker-compose" = "latest"
-"brew:dust" = "latest"
-"brew:duti" = "latest"
-"brew:eza" = "latest"
-"brew:fd" = "latest"
-"brew:ffmpeg" = "latest"
-"brew:fzf" = "latest"
-"brew:gh" = "latest"
-"brew:git" = "latest"
-"brew:git-absorb" = "latest"
-"brew:git-filter-repo" = "latest"
-"brew:git-delta" = "latest"
-"brew:hyperfine" = "latest"
-"brew:jq" = "latest"
-"brew:k9s" = "latest"
-"brew:kondo" = "latest"
-"brew:kubectx" = "latest"
-"brew:kubernetes-cli" = "latest"
-"brew:lazydocker" = "latest"
-"brew:lazygit" = "latest"
-"brew:lazysql" = "latest"
-"brew:mole" = "latest"
-"brew:nmap" = "latest"
-"brew:neovim" = "latest"
-"brew:nushell" = "latest"
-"brew:ollama" = "latest"
-"brew:ripgrep" = "latest"
-"brew:sshuttle" = "latest"
-"brew:starship" = "latest"
-"brew:spotify_player" = "latest"
-"brew:tokei" = "latest"
-"brew:tree" = "latest"
-"brew:usage" = "latest"
-"brew:watchexec" = "latest"
-"brew:watchman" = "latest"
-"brew:xh" = "latest"
-"brew:yazi" = "latest"
-"brew:zellij" = "latest"
-"brew:zoxide" = "latest"
+"brew:git" = { version = "latest", os = ["macos"] }
+"brew:duti" = { version = "latest", os = ["macos"] }
+"apt:git" = { version = "latest", os = ["linux"] }
+"apt:zsh" = { version = "latest", os = ["linux"] }
+"dnf:git" = { version = "latest", os = ["linux"] }
+"dnf:zsh" = { version = "latest", os = ["linux"] }
+"pacman:git" = { version = "latest", os = ["linux"] }
+"pacman:zsh" = { version = "latest", os = ["linux"] }
+# Git is provided by the operating system on Linux/Termux and by Homebrew on
+# macOS. All other command-line tools are pinned above and installed by Mise.
 
 [dotfiles]
 "~/.zshrc" = { source = "home/zshrc", mode = "symlink" }
 "~/.zshenv" = { source = "home/zshenv", mode = "symlink" }
 "~/.hushlogin" = { source = "home/hushlogin", mode = "symlink" }
-"~/.docker/cli-plugins" = { source = "docker/cli-plugins", mode = "symlink-each" }
+"~/.local/bin/userland-secrets" = { source = "home/bin/userland-secrets", mode = "symlink" }
 "~/.ssh/config" = { source = "home/ssh/config", mode = "symlink" }
 "~/.ssh/life-auth.pub" = { source = "home/ssh/life-auth.pub", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
-"~/.claude/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.codex/skills/t3-code-threads" = { source = "agents/skills/t3-code-threads", mode = "symlink" }
-"~/.config/t3-thread/config.json" = { source = "t3-thread/profiles/mac.json", mode = "symlink" }
-"~/.local/bin/t3-thread" = { source = "t3-thread/bin/t3-thread", mode = "symlink" }
-"~/.claude/settings.json" = { source = "agents/claude/settings.json", mode = "symlink" }
+"~/.codex/config.toml" = { source = "codex/config.toml", mode = "symlink" }
 
-"~/.config/aerospace" = { source = "xdg/aerospace", mode = "symlink-each" }
 "~/.config/atuin" = { source = "xdg/atuin", mode = "symlink-each" }
 "~/.config/bat" = { source = "xdg/bat", mode = "symlink-each" }
 "~/.config/btop" = { source = "xdg/btop", mode = "symlink-each" }
-"~/.config/direnv" = { source = "xdg/direnv", mode = "symlink-each" }
 "~/.config/ghostty" = { source = "xdg/ghostty", mode = "symlink-each" }
 "~/.config/git" = { source = "xdg/git", mode = "symlink-each" }
 "~/.config/gh" = { source = "xdg/gh", mode = "symlink-each" }
-"~/.config/k9s" = { source = "xdg/k9s", mode = "symlink-each" }
-"~/.config/lazydocker" = { source = "xdg/lazydocker", mode = "symlink-each" }
-"~/.config/lazygit" = { source = "xdg/lazygit", mode = "symlink-each" }
 "~/.config/mise" = { source = "xdg/mise", mode = "symlink-each" }
-"~/.config/neofetch" = { source = "xdg/neofetch", mode = "symlink-each" }
 "~/.config/nvim" = { source = "xdg/nvim", mode = "symlink-each" }
-"~/.config/nushell" = { source = "xdg/nushell", mode = "symlink-each" }
-"~/.config/posting" = { source = "xdg/posting", mode = "symlink-each" }
-"~/.config/projs" = { source = "xdg/projs", mode = "symlink-each" }
-"~/.config/scry" = { source = "xdg/scry", mode = "symlink-each" }
-"~/.config/spotify-player" = { source = "xdg/spotify-player", mode = "symlink-each" }
 "~/.config/starship" = { source = "xdg/starship", mode = "symlink-each" }
-"~/.config/yazi" = { source = "xdg/yazi", mode = "symlink-each" }
-"~/.config/zellij" = { source = "xdg/zellij", mode = "symlink-each" }
-"~/.config/zed/keymap.json" = { source = "xdg/zed/keymap.json", mode = "symlink" }
-"~/.config/zed/settings.json" = { source = "xdg/zed/settings.json", mode = "symlink" }
 
 [bootstrap.macos.dock]
 autohide = true

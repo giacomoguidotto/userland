@@ -58,8 +58,11 @@ archive_sha=$(shasum -a 256 "$work/userland-v1.2.3.tar.gz" | awk '{ print $1 }')
 sed \
   -e "s|@USERLAND_TAG@|$tag|g" \
   -e "s|@USERLAND_COMMIT@|$commit|g" \
-  -e "s|@USERLAND_ARCHIVE_SHA256@|$archive_sha|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256_DARWIN_ARM64@|$archive_sha|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256_LINUX_ARM64@|$archive_sha|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256_LINUX_X64@|$archive_sha|g" \
   "$repository_root/release/bootstrap-template.sh" >"$work/bootstrap"
+export USERLAND_PLATFORM=darwin-arm64
 
 prepare_home() {
   home=$1
@@ -293,7 +296,9 @@ upgrade_archive_sha=$(shasum -a 256 "$work/userland-v1.2.4.tar.gz" | awk '{ prin
 sed \
   -e "s|@USERLAND_TAG@|$upgrade_tag|g" \
   -e "s|@USERLAND_COMMIT@|$upgrade_commit|g" \
-  -e "s|@USERLAND_ARCHIVE_SHA256@|$upgrade_archive_sha|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256_DARWIN_ARM64@|$upgrade_archive_sha|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256_LINUX_ARM64@|$upgrade_archive_sha|g" \
+  -e "s|@USERLAND_ARCHIVE_SHA256_LINUX_X64@|$upgrade_archive_sha|g" \
   "$repository_root/release/bootstrap-template.sh" >"$work/upgrade-bootstrap"
 
 upgrade_status=0

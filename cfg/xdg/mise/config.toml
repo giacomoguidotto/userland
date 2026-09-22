@@ -1,19 +1,18 @@
-[settings]
-trusted_config_paths = ["~/dev", "~/.t3/worktrees"]
-
+# Global tools mirror cfg/mise.toml. Project toolchains belong in each repository.
 [tools]
 node = "24.19.0"
-bun = "1.3.14"
 op = "2.39.0"
-java = "temurin-21.0.12+8.0.LTS"
-gradle = "9.7.0"
-"aqua:bats-core/bats-core" = "1.14.0"
-"aqua:koalaman/shellcheck" = "0.11.0"
-"aqua:mvdan/sh" = "3.13.1"
-"npm:@earendil-works/pi-coding-agent" = "0.84.2"
 "npm:@openai/codex" = "0.148.0"
-"npm:eas-cli" = "22.0.0"
-"npm:tree-sitter-cli" = { version = "0.26.12", allow_builds = ["tree-sitter-cli"] }
-pitchfork = "2.22.0"
-uv = "0.12.5"
-python = "3.14.7"
+"aqua:atuinsh/atuin" = "18.22.0"
+"aqua:aristocratos/btop" = "1.4.7"
+"aqua:sharkdp/bat" = "0.26.1"
+"aqua:eza-community/eza" = "0.23.5"
+"aqua:sharkdp/fd" = "10.5.0"
+"aqua:junegunn/fzf" = "0.74.4"
+"aqua:cli/cli" = "2.101.0"
+"aqua:dandavison/delta" = "0.19.2"
+"aqua:jqlang/jq" = "1.8.2"
+"aqua:neovim/neovim" = "0.12.5"
+"aqua:BurntSushi/ripgrep" = "15.2.0"
+"aqua:starship/starship" = "1.26.0"
+"aqua:ajeetdsouza/zoxide" = "0.10.0"

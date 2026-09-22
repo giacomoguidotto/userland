@@ -1,0 +1,4 @@
+# Keep Codex credentials in the operating system keyring. The repository only
+# declares this preference; no token or exported session is stored here.
+cli_auth_credentials_store = "keyring"
+mcp_oauth_credentials_store = "keyring"

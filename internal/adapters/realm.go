@@ -17,7 +17,31 @@ func realmSelection(c *Context, action Action) int {
 		c.Log(Attention, err.Error())
 		return 1
 	}
-	if len(options) == 0 || !manager.SelectionPending() {
+	if len(options) == 0 {
+		hasAttachments, attachmentErr := manager.HasAttachments()
+		if attachmentErr != nil {
+			c.Log(Attention, attachmentErr.Error())
+			return 1
+		}
+		if !hasAttachments {
+			return 0
+		}
+		if action == Plan {
+			c.Log(Change, "disabled realm attachments will be removed")
+			return 0
+		}
+		if action == Doctor {
+			c.Log(Attention, "disabled realm attachments remain; run sync to remove them")
+			return 2
+		}
+		if err := manager.Purge(c.Context); err != nil {
+			c.Log(Attention, err.Error())
+			return 1
+		}
+		c.Log(Changed, "removed disabled realm attachments and projections")
+		return 0
+	}
+	if !manager.SelectionPending() {
 		return 0
 	}
 	if action == Plan {
@@ -40,6 +64,10 @@ func realmSelection(c *Context, action Action) int {
 }
 
 func realmsEnabled(env platform.Environment) bool {
+	options, optionsErr := realmstate.New(env).Options()
+	if optionsErr != nil || len(options) == 0 {
+		return false
+	}
 	rows, err := csvfile.Read(filepath.Join(env.State, "realms.csv"), []string{"name", "path"})
 	return err == nil && len(rows) != 0 || err != nil && !errors.Is(err, os.ErrNotExist)
 }

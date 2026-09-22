@@ -82,7 +82,11 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		return 1
 	}
 	if !env.Bool("USERLAND_TESTING") {
-		render.Status(tui.StatusOK, "macOS, Apple silicon, and disk-space preflight passed")
+		if env.IsMacOS() {
+			render.Status(tui.StatusOK, "macOS, Apple silicon, and disk-space preflight passed")
+		} else {
+			render.Status(tui.StatusOK, "Linux architecture and disk-space preflight passed")
+		}
 	}
 	if notice := env.Get("USERLAND_REPOSITORY_REFRESH_NOTICE"); notice != "" {
 		render.Status(tui.StatusWarning, notice)
@@ -132,8 +136,10 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	if code := miseTask(ctx, env, render, stdout, runLog, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
-	if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
-		return code
+	if env.IsMacOS() {
+		if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
+			return code
+		}
 	}
 	if !env.Bool("USERLAND_TESTING") {
 		render.Section("Apply managed files")
@@ -269,15 +275,15 @@ func preflight(ctx context.Context, env platform.Environment) error {
 	if env.Bool("USERLAND_TESTING") {
 		return nil
 	}
-	if !env.IsMacOS() {
-		return errors.New("sync currently supports macOS only")
+	if !env.IsMacOS() && runtime.GOOS != "linux" {
+		return errors.New("sync supports macOS and Linux")
 	}
 	architecture := runtime.GOARCH
 	if result := platform.Run(ctx, env.List, nil, "uname", "-m"); result.Code == 0 {
 		architecture = strings.TrimSpace(string(result.Output))
 	}
-	if architecture != "arm64" {
-		return errors.New("sync supports Apple silicon only; found " + architecture)
+	if architecture != "arm64" && architecture != "aarch64" && architecture != "x86_64" && architecture != "amd64" {
+		return errors.New("sync supports arm64 and x86_64 Linux, or Apple silicon; found " + architecture)
 	}
 	result := platform.Run(ctx, env.List, nil, "df", "-Pk", "/")
 	lines := strings.Split(strings.TrimSpace(string(result.Output)), "\n")
@@ -289,7 +295,11 @@ func preflight(ctx context.Context, env platform.Environment) error {
 		return errors.New("sync needs at least 30 GiB free before large application installs")
 	}
 	free, _ := strconv.ParseInt(fields[3], 10, 64)
-	if free < 31457280 {
+	minimum := int64(31457280)
+	if !env.IsMacOS() {
+		minimum = 1048576
+	}
+	if free < minimum {
 		return errors.New("sync needs at least 30 GiB free before large application installs")
 	}
 	return nil

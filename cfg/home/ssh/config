@@ -1,10 +1,5 @@
-Include ~/.ssh/userland-realms.config
-
-Include ~/.config/colima/ssh_config
-
-Host *
-  IdentityAgent "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
-
+# 1Password supplies the agent socket on macOS and Linux. Keep the socket in
+# SSH_AUTH_SOCK rather than embedding a machine-specific path in this file.
 Host life-github
   HostName github.com
   User git

@@ -1,26 +1,22 @@
-# .zshenv is sourced both in login and interactive shells
-# session variables
-export XDG_CONFIG_HOME="$HOME/.config"
-
-export EDITOR="zed --wait"
-export REACT_EDITOR="zed --wait"
-
-# used to tell lazygit to use delta as pager (https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Pagers.md#using-git-config)
+# .zshenv is sourced both in login and interactive shells.
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+export EDITOR="nvim"
+export VISUAL="$EDITOR"
+export REACT_EDITOR="$EDITOR"
 export GIT_PAGER="delta"
+export STARSHIP_CONFIG="$XDG_CONFIG_HOME/starship/config.toml"
 
-# override the default starship config path
-export STARSHIP_CONFIG="$HOME/.config/starship/config.toml"
+# Keep the global path static. Mise writes only the pinned tools declared in
+# cfg/mise.toml to this directory; project toolchains stay project-local.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
-# set the docker host to the colima socket
-export DOCKER_HOST="unix://$HOME/.config/colima/docker.sock"
-
-export ANDROID_HOME="$HOME/Library/Android/sdk"
-# Keep stock recovery tools and package managers available without exposing
-# project-only mise shims globally.
-export PATH="$HOME/.local/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
-
-# Userland generates direct paths for only the tools declared globally. Realm
-# activation adds project tools such as gcloud separately through direnv.
 if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh" ]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh"
+fi
+
+# Desktop 1Password takes precedence; remote sessions may forward an agent.
+if [ -S "$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" ]; then
+  export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+elif [ -S "$HOME/.1password/agent.sock" ]; then
+  export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
 fi

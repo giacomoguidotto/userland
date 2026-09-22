@@ -184,19 +184,51 @@ finish() {
 # Replace the example below. Set TOTAL_STAGES to match the stages you write.
 # ──────────────────────────────────────────────────────────────────────────
 
-agent_socket="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+agent_socket="${SSH_AUTH_SOCK:-}"
+if [[ -z "$agent_socket" ]]; then
+  for candidate in \
+    "$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" \
+    "$HOME/.1password/agent.sock"; do
+    [[ -S "$candidate" ]] && agent_socket="$candidate" && break
+  done
+fi
 
 check_personal_auth() {
   local missing=()
-  [[ -S "$agent_socket" ]] || missing+=("1Password SSH agent")
+  [[ -n "$agent_socket" && -S "$agent_socket" ]] || missing+=("1Password SSH agent")
   if ! { ssh -o BatchMode=yes -o ConnectTimeout=8 -T life-github 2>&1 || true; } | grep -q "successfully authenticated"; then
     missing+=("personal GitHub SSH access")
   fi
   command -v gh >/dev/null 2>&1 && gh auth status --hostname github.com >/dev/null 2>&1 || missing+=("GitHub CLI")
+  if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/gh/hosts.yml" ]] &&
+    grep -Eq '^[[:space:]]+oauth_token:' "${XDG_CONFIG_HOME:-$HOME/.config}/gh/hosts.yml"; then
+    missing+=("GitHub CLI keyring storage")
+  fi
+  command -v codex >/dev/null 2>&1 && codex login status >/dev/null 2>&1 || missing+=("Codex CLI")
+  [[ ! -e "$HOME/.codex/auth.json" ]] || missing+=("Codex is using plaintext auth.json")
   if (( ${#missing[@]} )); then
     printf 'personal authentication needs setup: %s\n' "${missing[*]}"
     return 1
   fi
+}
+
+secret_refs_file="${XDG_CONFIG_HOME:-$HOME/.config}/userland/secret-refs.env"
+
+write_secret_reference() {
+  local key="$1" value="$2" temporary
+  [[ -z "$value" || "$value" == op://* ]] || {
+    warn "$key must be an op:// reference; no value was saved"
+    return 1
+  }
+  mkdir -p "$(dirname "$secret_refs_file")"
+  chmod 700 "$(dirname "$secret_refs_file")"
+  touch "$secret_refs_file"
+  chmod 600 "$secret_refs_file"
+  temporary=$(mktemp)
+  grep -vE "^${key}=" "$secret_refs_file" >"$temporary" || true
+  [[ -z "$value" ]] || printf '%s=%s\n' "$key" "$value" >>"$temporary"
+  chmod 600 "$temporary"
+  mv "$temporary" "$secret_refs_file"
 }
 
 if [[ "${1:-}" == "--check" ]]; then
@@ -204,7 +236,7 @@ if [[ "${1:-}" == "--check" ]]; then
   exit $?
 fi
 
-TOTAL_STAGES=3
+TOTAL_STAGES=5
 
 banner "Personal authentication"
 
@@ -233,5 +265,33 @@ else
   say "GitHub CLI will open a browser-based device login."
   gh auth login --hostname github.com --git-protocol https --web
 fi
+if [[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/gh/hosts.yml" ]] &&
+  grep -Eq '^[[:space:]]+oauth_token:' "${XDG_CONFIG_HOME:-$HOME/.config}/gh/hosts.yml"; then
+  warn "GitHub CLI wrote a plaintext token. Signing out; enable a system keyring or use userland-secrets with an op:// reference."
+  gh auth logout --hostname github.com --yes >/dev/null 2>&1 || true
+  exit 1
+fi
+
+stage "Codex CLI"
+if command -v codex >/dev/null 2>&1 && codex login status >/dev/null 2>&1; then
+  say "Codex is already authenticated."
+else
+  say "Codex will open the ChatGPT browser login."
+  step "Complete the browser login and return to this terminal."
+  codex login
+fi
+if [[ -e "$HOME/.codex/auth.json" ]]; then
+  warn "Codex wrote plaintext auth.json despite the keyring policy. Remove it and fix the keyring before continuing."
+  exit 1
+fi
+
+stage "1Password secret references"
+say "Optional CI-style references let commands fetch tokens from 1Password without storing token values on disk."
+note "Leave both prompts empty if SSH-agent and browser login are enough."
+ask "GH_TOKEN_REF" "GitHub token reference (op://...; optional)"
+write_secret_reference GH_TOKEN "$GH_TOKEN_REF"
+ask "OPENAI_API_KEY_REF" "OpenAI API key reference (op://...; optional)"
+write_secret_reference OPENAI_API_KEY "$OPENAI_API_KEY_REF"
+note "Use userland-secrets gh ... or userland-secrets codex ... when a command needs these references."
 
 finish

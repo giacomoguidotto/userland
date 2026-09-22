@@ -539,23 +539,82 @@ install_signal_traps() {
 recover_stale_lock() {
   stale_lock=$1
   [ -d "$stale_lock" ] && [ ! -L "$stale_lock" ] || return 1
-  stale_owner=$(cat "$stale_lock/owner" 2>/dev/null) || return 1
-  stale_pid=$(cat "$stale_lock/pid" 2>/dev/null) || return 1
-  case "$stale_owner" in
-    .bootstrap.[A-Za-z0-9]*) ;;
-    *) return 1 ;;
-  esac
+  stale_owner=$(cat "$stale_lock/owner" 2>/dev/null || :)
+  stale_pid=$(cat "$stale_lock/pid" 2>/dev/null || :)
   case "$stale_pid" in
-    '' | *[!0-9]*) return 1 ;;
+    '' | *[!0-9]*) stale_pid= ;;
+    *) kill -0 "$stale_pid" 2>/dev/null && return 1 ;;
   esac
-  kill -0 "$stale_pid" 2>/dev/null && return 1
+  case "$stale_owner" in
+    .bootstrap.[A-Za-z0-9]*)
+      case "$stale_pid" in
+        '' | *[!0-9]*) stale_owner=; stale_pid= ;;
+      esac
+      ;;
+    *) stale_owner=; stale_pid= ;;
+  esac
 
-  stale_control="$data_dir/$stale_owner"
-  if [ -d "$stale_control" ] && [ ! -L "$stale_control" ]; then
-    rm -rf "$stale_control" || return 1
+  # The lock directory is created before its metadata. If the process dies in
+  # that narrow window, use the transaction metadata written before lock
+  # acquisition to distinguish a live bootstrap from a stale lock.
+  if [ -z "$stale_owner" ]; then
+    for stale_control in "$data_dir"/.bootstrap.*; do
+      [ "$stale_control" = "$control_dir" ] && continue
+      [ -d "$stale_control" ] && [ ! -L "$stale_control" ] || continue
+      candidate_pid=$(cat "$stale_control/pid" 2>/dev/null || :)
+      case "$candidate_pid" in
+        '' | *[!0-9]*) continue ;;
+      esac
+      kill -0 "$candidate_pid" 2>/dev/null && return 1
+    done
+  fi
+
+  if [ -n "$stale_owner" ]; then
+    stale_control="$data_dir/$stale_owner"
+    if [ -d "$stale_control" ] && [ ! -L "$stale_control" ]; then
+      rm -rf "$stale_control" || return 1
+    fi
+  else
+    for stale_control in "$data_dir"/.bootstrap.*; do
+      [ "$stale_control" = "$control_dir" ] && continue
+      [ -d "$stale_control" ] && [ ! -L "$stale_control" ] || continue
+      candidate_pid=$(cat "$stale_control/pid" 2>/dev/null || :)
+      case "$candidate_pid" in
+        '' | *[!0-9]*) continue ;;
+      esac
+      kill -0 "$candidate_pid" 2>/dev/null && return 1
+      rm -rf "$stale_control" || return 1
+    done
   fi
   rm -f "$stale_lock/owner" "$stale_lock/pid" || return 1
   rmdir "$stale_lock" 2>/dev/null
+}
+
+recover_interrupted_promotion() {
+  [ ! -e "$repo_dir" ] && [ ! -L "$repo_dir" ] || return 0
+  promotion_backup=
+  for candidate_backup in "$HOME"/.userland.archive.*; do
+    [ -d "$candidate_backup" ] && [ ! -L "$candidate_backup" ] || continue
+    candidate_owner=$(cat "$candidate_backup/.userland-bootstrap-owner" 2>/dev/null || :)
+    case "$candidate_owner" in
+      .bootstrap.[A-Za-z0-9]*) ;;
+      *) continue ;;
+    esac
+    [ -f "$candidate_backup/.userland-stage" ] &&
+      [ "$(cat "$candidate_backup/.userland-stage" 2>/dev/null)" = "$commit" ] || continue
+    [ -f "$candidate_backup/.userland-stage-version" ] &&
+      [ "$(cat "$candidate_backup/.userland-stage-version" 2>/dev/null)" = "$tag" ] || continue
+    [ -z "$promotion_backup" ] || die "multiple interrupted checkout backups need attention"
+    promotion_backup=$candidate_backup
+  done
+
+  [ -n "$promotion_backup" ] || return 0
+  mv "$promotion_backup" "$repo_dir" || die "could not recover the interrupted checkout"
+  promotion_owner_tmp="$repo_dir/.userland-bootstrap-owner.$$"
+  printf '%s\n' "$transaction_id" >"$promotion_owner_tmp"
+  mv "$promotion_owner_tmp" "$repo_dir/.userland-bootstrap-owner"
+  repo_created=1
+  printf 'userland: recovered interrupted checkout at %s\n' "$repo_dir" >&2
 }
 
 trap cleanup 0
@@ -566,6 +625,7 @@ mkdir -p "$data_dir/releases" "$bin_dir"
 control_dir=$(mktemp -d "$data_dir/.bootstrap.XXXXXX")
 transaction_id=${control_dir##*/}
 printf '%s\n' "$transaction_id" >"$control_dir/owner"
+printf '%s\n' "$$" >"$control_dir/pid"
 lock_dir=$data_dir/bootstrap.lock
 if ! mkdir "$lock_dir" 2>/dev/null; then
   recover_stale_lock "$lock_dir" ||
@@ -575,6 +635,7 @@ fi
 printf '%s\n' "$transaction_id" >"$lock_dir/owner"
 printf '%s\n' "$$" >"$lock_dir/pid"
 lock_acquired=1
+recover_interrupted_promotion
 
 if [ -d "$release_dir" ]; then
   [ -f "$release_dir/.userland-release" ] || die "$release_dir exists but userland did not create it"
@@ -642,8 +703,7 @@ MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev
 materialize_checkout_command() {
   mkdir -p "$repo_dir/bin"
   checkout_command_tmp=$repo_dir/bin/.userland.$$
-  cp "$release_dir/bin/userland" "$checkout_command_tmp"
-  chmod 755 "$checkout_command_tmp"
+  cp -p "$release_dir/bin/userland" "$checkout_command_tmp"
   mv "$checkout_command_tmp" "$repo_dir/bin/userland"
   if [ -d "$repo_dir/.git" ] && [ ! -L "$repo_dir/.git" ]; then
     mkdir -p "$repo_dir/.git/info"

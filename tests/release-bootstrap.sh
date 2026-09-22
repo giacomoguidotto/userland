@@ -652,15 +652,46 @@ HOME="$promotion_home" \
   fail "failed promotion discarded the applied archive stage"
 [ ! -d "$promotion_home/.userland/.git" ] || fail "failed promotion published an invalid Git checkout"
 
-printf '%s\n' tampered >>"$promotion_home/.userland/cfg/mise.toml"
-tampered_status=0
+mv "$promotion_home/.userland" "$promotion_home/.userland.archive.crash"
+promotion_recovery_status=0
 HOME="$promotion_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_MARK_APPLY_STARTED=1 \
+  TEST_OBSERVATION="$work/promotion-recovery-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$promotion_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || promotion_recovery_status=$?
+[ "$promotion_recovery_status" -eq 0 ] || fail "interrupted promotion was not recovered"
+[ -d "$promotion_home/.userland/.git" ] || fail "recovered promotion did not publish the Git checkout"
+[ ! -e "$promotion_home/.userland.archive.crash" ] || fail "recovered promotion left its archive behind"
+
+tampered_home="$work/tampered-home"
+prepare_home "$tampered_home"
+tampered_seed_status=0
+HOME="$tampered_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_GIT_CLONE_FAIL=1 \
+  TEST_MARK_APPLY_STARTED=1 \
+  TEST_OBSERVATION="$work/tampered-seed-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$tampered_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || tampered_seed_status=$?
+[ "$tampered_seed_status" -eq 12 ] || fail "tampered archive stage seed returned $tampered_seed_status"
+printf '%s\n' tampered >>"$tampered_home/.userland/cfg/mise.toml"
+tampered_status=0
+HOME="$tampered_home" \
   TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
   TEST_COMMIT="$commit" \
   TEST_OBSERVATION="$work/tampered-observation" \
   TEST_REPO_COMMAND="$work/repo-userland" \
   TEST_SYNC_STATUS=0 \
-  USERLAND_DATA_DIR="$promotion_home/.local/share/userland" \
+  USERLAND_DATA_DIR="$tampered_home/.local/share/userland" \
   USERLAND_NO_TTY=1 \
   sh "$work/bootstrap" >/dev/null 2>&1 || tampered_status=$?
 [ "$tampered_status" -ne 0 ] || fail "tampered archive stage was accepted"
@@ -739,6 +770,26 @@ HOME="$stale_home" \
   sh "$work/bootstrap" >/dev/null 2>&1 || stale_status=$?
 [ "$stale_status" -eq 0 ] || fail "stale bootstrap lock was not recovered"
 [ ! -e "$stale_home/.local/share/userland/bootstrap.lock" ] || fail "stale bootstrap lock remained"
+
+partial_lock_home="$work/partial-lock-home"
+prepare_home "$partial_lock_home"
+mkdir -p "$partial_lock_home/.local/share/userland/bootstrap.lock" \
+  "$partial_lock_home/.local/share/userland/.bootstrap.partial"
+printf '%s\n' .bootstrap.partial >"$partial_lock_home/.local/share/userland/.bootstrap.partial/owner"
+printf '%s\n' 99999999 >"$partial_lock_home/.local/share/userland/.bootstrap.partial/pid"
+partial_lock_status=0
+HOME="$partial_lock_home" \
+  TEST_ARCHIVE="$work/userland-v1.2.3.tar.gz" \
+  TEST_COMMIT="$commit" \
+  TEST_OBSERVATION="$work/partial-lock-observation" \
+  TEST_REPO_COMMAND="$work/repo-userland" \
+  TEST_SYNC_STATUS=0 \
+  USERLAND_DATA_DIR="$partial_lock_home/.local/share/userland" \
+  USERLAND_NO_TTY=1 \
+  sh "$work/bootstrap" >/dev/null 2>&1 || partial_lock_status=$?
+[ "$partial_lock_status" -eq 0 ] || fail "partial stale bootstrap lock was not recovered"
+[ ! -e "$partial_lock_home/.local/share/userland/bootstrap.lock" ] ||
+  fail "partial stale bootstrap lock remained"
 
 unmanaged_home="$work/unmanaged-home"
 prepare_home "$unmanaged_home"

@@ -18,4 +18,6 @@ data = re.sub(rb"\r\x1b\[2K[^\r\n]*\xe2\x80\xa6 [^\r\n]*", b"", data)
 data = data.replace(b"\r\x1b[2K", b"")
 data = re.sub(rb" \((?:<1s|[0-9]+s)\)$", b" (<elapsed>)", data, flags=re.MULTILINE)
 data = re.sub(rb"^    (?:<1s|[0-9]+s)$", b"    <elapsed>", data, flags=re.MULTILINE)
+# macOS-only defaults are intentionally skipped on Linux and Termux.
+data = re.sub(rb"^\[info\] Apply macOS preferences\n", b"", data, flags=re.MULTILINE)
 sys.stdout.buffer.write(data)

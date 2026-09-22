@@ -3,6 +3,10 @@
 # Termux.
 brew "git"
 brew "duti"
+# btop and eza do not publish macOS release archives; Homebrew is their
+# declarative macOS source while Mise owns the pinned Linux installations.
+brew "btop"
+brew "eza"
 cask "1password", args: { adopt: true }
 cask "font-jetbrains-mono-nerd-font", args: { adopt: true }
 cask "ghostty", args: { adopt: true }

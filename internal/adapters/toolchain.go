@@ -13,9 +13,10 @@ import (
 )
 
 type toolProbe struct {
-	id      string
-	command string
-	args    []string
+	id        string
+	command   string
+	args      []string
+	platforms []string
 }
 
 type toolProblem struct {
@@ -94,6 +95,9 @@ func toolchain(c *Context, action Action) int {
 		return 1
 	}
 	for _, probe := range probes {
+		if !probeEnabled(c, probe) {
+			continue
+		}
 		state := probeState(c, probe)
 		if state == toolReady {
 			continue
@@ -123,14 +127,18 @@ func toolchain(c *Context, action Action) int {
 }
 
 func toolProbes(c *Context) ([]toolProbe, bool) {
-	rows, err := readCSV(filepath.Join(c.Env.Root, "cfg", "tool-probes.csv"), "mise_tool", "command", "version_probe_arguments")
+	rows, err := readCSV(filepath.Join(c.Env.Root, "cfg", "tool-probes.csv"), "mise_tool", "command", "version_probe_arguments", "platforms")
 	if err != nil {
 		return nil, false
 	}
 	probes := make([]toolProbe, 0, len(rows))
 	probed := make([]string, 0, len(rows))
 	for _, row := range rows {
-		probes = append(probes, toolProbe{row[0], row[1], strings.Fields(row[2])})
+		var platforms []string
+		if strings.TrimSpace(row[3]) != "" {
+			platforms = strings.Split(row[3], "|")
+		}
+		probes = append(probes, toolProbe{id: row[0], command: row[1], args: strings.Fields(row[2]), platforms: platforms})
 		probed = append(probed, row[0])
 	}
 	declared, err := declaredTools(filepath.Join(c.Env.Root, "cfg", "mise.toml"))
@@ -192,6 +200,9 @@ func toolProblems(c *Context, probes []toolProbe, complete bool) []toolProblem {
 	problems := make([]*toolProblem, len(probes))
 	parallelReadOnly(c, len(probes), func(index int) {
 		probe := probes[index]
+		if !probeEnabled(c, probe) {
+			return
+		}
 		switch state := probeState(c, probe); state {
 		case toolMissing:
 			problem := toolProblem{probe.id, "install", probe.command}
@@ -212,6 +223,22 @@ func toolProblems(c *Context, probes []toolProbe, complete bool) []toolProblem {
 		}
 	}
 	return result
+}
+
+func probeEnabled(c *Context, probe toolProbe) bool {
+	if len(probe.platforms) == 0 {
+		return true
+	}
+	platformName := "linux"
+	if c.Env.IsMacOS() {
+		platformName = "macos"
+	}
+	for _, supported := range probe.platforms {
+		if strings.TrimSpace(supported) == platformName {
+			return true
+		}
+	}
+	return false
 }
 
 func toolPublicMiseCurrent(c *Context) bool {
@@ -242,7 +269,11 @@ func probeState(c *Context, probe toolProbe) toolProbeState {
 	}
 	args := append([]string{"exec", "--", probe.command}, probe.args...)
 	invocation := c.Env.MiseInvocation(args...)
-	invocation = invocation.WithEnvironment("MISE_QUIET", "true")
+	// Health checks must be observational. Mise's default exec behavior is to
+	// install every missing tool it encounters, so probing one tool can fail
+	// because an unrelated tool is unavailable and make a healthy tool look
+	// corrupted. Disable both auto-install settings for the probe itself.
+	invocation = invocation.WithEnvironment("MISE_QUIET", "true", "MISE_AUTO_INSTALL", "0", "MISE_EXEC_AUTO_INSTALL", "0")
 	if runInvocation(c, nil, invocation).Code != 0 {
 		return toolBroken
 	}

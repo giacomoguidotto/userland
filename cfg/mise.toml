@@ -12,9 +12,9 @@ node = "24.19.0"
 op = "2.39.0"
 "npm:@openai/codex" = "0.148.0"
 "aqua:atuinsh/atuin" = "18.22.0"
-"aqua:aristocratos/btop" = "1.4.7"
+"aqua:aristocratos/btop" = { version = "1.4.7", os = ["linux"] }
 "aqua:sharkdp/bat" = "0.26.1"
-"aqua:eza-community/eza" = "0.23.5"
+"aqua:eza-community/eza" = { version = "0.23.5", os = ["linux"] }
 "aqua:sharkdp/fd" = "10.5.0"
 "aqua:junegunn/fzf" = "0.74.4"
 "aqua:cli/cli" = "2.101.0"
@@ -26,7 +26,9 @@ op = "2.39.0"
 "aqua:ajeetdsouza/zoxide" = "0.10.0"
 
 # Native system packages are managed through Mise; application updates follow
-# vendor releases. cfg/mise.lock pins the portable tools above.
+# vendor releases. cfg/mise.lock pins the portable tools above. btop and eza
+# are Linux-only here because their upstream releases have no macOS archive;
+# the Mac Brewfile supplies those two formulas.
 [bootstrap.packages]
 "apt:git" = { version = "latest", os = ["linux"] }
 "apt:zsh" = { version = "latest", os = ["linux"] }

@@ -17,7 +17,7 @@ On Termux, install `git`, `curl`, `tar`, `zsh`, and the current `mise` package f
 
 ## What the default sync installs
 
-Mise is the one installer and version source for the portable toolchain. On every supported Unix it installs pinned versions of Node, 1Password CLI, Codex CLI, Atuin, bat, btop, eza, fd, fzf, GitHub CLI, delta, jq, Neovim, ripgrep, Starship, and zoxide. Git itself comes from the host package manager on Linux and from the pinned Homebrew bootstrap on macOS because it is needed before the checkout can bootstrap.
+Mise is the one installer and version source for the portable toolchain. On Linux and Termux it installs pinned versions of Node, 1Password CLI, Codex CLI, Atuin, bat, btop, eza, fd, fzf, GitHub CLI, delta, jq, Neovim, ripgrep, Starship, and zoxide. btop and eza do not publish macOS release archives, so the Mac Brewfile installs those two formulas while Mise keeps the cross-platform declaration and probes. Git itself comes from the host package manager on Linux and from the pinned Homebrew bootstrap on macOS because it is needed before the checkout can bootstrap.
 
 macOS applications are limited to 1Password, Ghostty, Helium, Raycast, Shottr, Spotify, T3 Code, Wispr Flow, and JetBrains Mono Nerd Font. Raycast, Shottr, and Wispr Flow remain login items. Browser extension prompts are limited to 1Password and Raycast Companion in Helium. No Chrome, Zed, Docker, Colima, Kubernetes, Android SDK, Java, Gradle, mobile SDK, DaVinci Resolve, OpenScreen, or hardware utility is part of the default.
 

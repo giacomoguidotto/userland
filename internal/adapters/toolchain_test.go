@@ -58,7 +58,11 @@ case "$*" in
   *where\ missing*) exit 1 ;;
   *where\ broken*|*where\ ready*) printf '%s\n' "$0"; exit 0 ;;
   *exec\ --\ broken*) exit 1 ;;
-  *exec\ --\ ready*) exit 0 ;;
+  *exec\ --\ ready*)
+    [ "${MISE_AUTO_INSTALL:-}" = 0 ] || exit 1
+    [ "${MISE_EXEC_AUTO_INSTALL:-}" = 0 ] || exit 1
+    exit 0
+    ;;
 esac
 exit 1
 `
@@ -84,5 +88,17 @@ exit 1
 		if state := probeState(c, toolProbe{id: test.id, command: test.id}); state != test.state {
 			t.Fatalf("probe %s state = %q, want %q (where code=%d output=%q)", test.id, state, test.state, result.Code, result.Output)
 		}
+	}
+}
+
+func TestToolProbePlatformRestrictions(t *testing.T) {
+	probe := toolProbe{id: "aqua:aristocratos/btop", command: "btop", platforms: []string{"linux"}}
+	linux := &Context{Env: platform.NewEnvironment([]string{"USERLAND_UNAME=Linux"})}
+	mac := &Context{Env: platform.NewEnvironment([]string{"USERLAND_UNAME=Darwin"})}
+	if !probeEnabled(linux, probe) {
+		t.Fatal("Linux-only probe was disabled on Linux")
+	}
+	if probeEnabled(mac, probe) {
+		t.Fatal("Linux-only probe was enabled on macOS")
 	}
 }

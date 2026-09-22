@@ -136,7 +136,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	if code := miseTask(ctx, env, render, stdout, runLog, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
-	if env.IsMacOS() {
+	if env.IsMacOS() || env.Bool("USERLAND_TESTING") {
 		if code := miseTask(ctx, env, render, stdout, runLog, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 			return code
 		}

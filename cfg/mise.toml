@@ -73,9 +73,19 @@ show_recents = false
 AppleShowAllExtensions = true
 AppleShowAllFiles = true
 CreateDesktop = false
+ShowExternalHardDrivesOnDesktop = false
+ShowHardDrivesOnDesktop = false
+ShowMountedServersOnDesktop = false
+ShowRemovableMediaOnDesktop = false
 FXPreferredViewStyle = "Nlsv"
 QuitMenuItem = true
 NewWindowTarget = "PfHm"
+
+[bootstrap.macos.defaults."com.apple.WindowManager"]
+# Keep the desktop as a clean workspace; widgets remain available in
+# Notification Center.
+StandardHideWidgets = true
+StageManagerHideWidgets = true
 
 [bootstrap.macos.defaults.NSGlobalDomain]
 InitialKeyRepeat = 20

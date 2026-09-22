@@ -77,6 +77,7 @@ type adapter struct {
 var registry = []adapter{
 	{name: "toolchain-health", label: "Toolchain health", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: toolchain},
 	{name: "homebrew-apps", label: "Homebrew applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: homebrew},
+	{name: "macos-bloat", label: "Optional macOS applications", area: plan.AreaCleanup, action: "remove", attention: plan.Automatic, run: macosBloat},
 	{name: "android-sdk", label: "Android development tools", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: androidSDK, directApply: true, enabled: androidSDKEnabled},
 	{name: "personal-auth", label: "Personal authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: personalAuthentication, enabled: machineClosureEnabled, directApply: true},
 	{name: "personal-repos", label: "Personal repositories", area: plan.AreaFS, action: "clone", attention: plan.Blocked, run: personalRepositories},

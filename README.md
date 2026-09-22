@@ -21,6 +21,8 @@ Mise is the one installer and version source for the portable toolchain. On Linu
 
 macOS applications are limited to 1Password, Ghostty, Helium, Raycast, Shottr, Spotify, T3 Code, Wispr Flow, and JetBrains Mono Nerd Font. Raycast, Shottr, and Wispr Flow remain login items. Browser extension prompts are limited to 1Password and Raycast Companion in Helium. No Chrome, Zed, Docker, Colima, Kubernetes, Android SDK, Java, Gradle, mobile SDK, DaVinci Resolve, OpenScreen, or hardware utility is part of the default.
 
+The macOS baseline hides desktop files, mounted volumes, and desktop widgets while keeping widgets available in Notification Center. It shows Finder hidden files and uses the dark appearance. Liquid Glass's clear/tinted choice and the exact Notification Center widget order are private macOS UI state; Userland does not edit those undocumented records.
+
 Hardware integrations are deliberately absent from the public baseline. Add a device-specific declaration to a private or local Mise profile when the device is attached. Mobile development belongs in `cfg/profiles/mobile.toml`, which is never loaded by the default sync.
 
 The default repository catalog is empty. Sync does not clone personal repositories or overwrite existing work. Add a repository declaration locally when a machine should own a canonical checkout.
@@ -57,7 +59,7 @@ Userland writes a static Zsh cache containing direct paths for only the tools in
 | `release/` | Reproducible archives, platform selection, checksum verification, and public bootstrap delivery. |
 | `tests/` | Go, shell, release, and compatibility tests. |
 
-Sync only changes paths declared by this checkout. It stops on unmanaged dotfile conflicts, never stashes an existing repository, and does not delete an unmanaged file or application. Stock macOS applications such as GarageBand are not removed automatically; deleting them remains a separate, reviewed cleanup operation because macOS system protections and personal files can make that irreversible.
+Sync only changes paths declared by this checkout. It stops on unmanaged dotfile conflicts, never stashes an existing repository, and removes only the explicitly listed optional application bundles under `/Applications` (GarageBand, iMovie, iWork, Chess, Photo Booth, and Stickies). It never scans for or deletes applications under `/System/Applications`.
 
 ## Development
 

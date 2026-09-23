@@ -51,7 +51,7 @@ cat >"$fixture/bin/mise" <<'EOF'
 exit 0
 EOF
 chmod +x "$fixture/bin/userland" "$fixture/bin/mise"
-printf 'min_version = "2026.8.9"\n' >"$fixture/cfg/mise.toml"
+printf 'min_version = "2026.9.6"\n' >"$fixture/cfg/mise.toml"
 tar -czf "$work/userland-v1.2.3.tar.gz" -C "$work/fixture" userland-1.2.3
 archive_sha=$(shasum -a 256 "$work/userland-v1.2.3.tar.gz" | awk '{ print $1 }')
 
@@ -109,7 +109,7 @@ if [ "$1" = clone ]; then
   cp "$TEST_REPO_COMMAND" "$destination/bin/userland"
   chmod +x "$destination/bin/userland"
   printf '%s\n' 'package main' >"$destination/cmd/userland/main.go"
-  printf 'min_version = "2026.8.9"\n' >"$destination/cfg/mise.toml"
+  printf 'min_version = "2026.9.6"\n' >"$destination/cfg/mise.toml"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-head"
   printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" >"$destination/.git/test-remote-main"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-fetched-commit"

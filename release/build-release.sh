@@ -21,7 +21,7 @@ command -v mise >/dev/null 2>&1 || release_die "mise is required to build a rele
 command -v go >/dev/null 2>&1 || release_die "Go is required to build a release"
 command -v python3 >/dev/null 2>&1 || release_die "python3 is required to build a release"
 
-mise_version=2026.8.9
+mise_version=2026.9.6
 actual_mise_version=$(mise --version | awk '{ print $1 }')
 [ "$actual_mise_version" = "$mise_version" ] ||
   release_die "mise $mise_version is required, found $actual_mise_version"

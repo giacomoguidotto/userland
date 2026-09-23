@@ -50,6 +50,28 @@ func TestShippedConfigDoesNotInstallDockerByDefault(t *testing.T) {
 	}
 }
 
+func TestShippedConfigLeavesOnlyRunningAppsInDock(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate repository root")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
+	contents, err := os.ReadFile(filepath.Join(root, "cfg", "mise.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(contents)
+	if !strings.Contains(config, "min_version = \"2026.9.6\"") {
+		t.Fatal("shipped config must use mise 2026.9.6 or newer for Dock app declarations")
+	}
+	if !strings.Contains(config, "[bootstrap.macos.dock]\n") || !strings.Contains(config, "apps = []") {
+		t.Fatal("shipped Dock config must clear persistent application tiles")
+	}
+	if !strings.Contains(config, "[bootstrap.hooks.post-defaults]\nrun = \"killall Dock || true\"") {
+		t.Fatal("shipped macOS defaults config must relaunch Dock after applying changes")
+	}
+}
+
 func TestToolProbeDistinguishesMissingFromBroken(t *testing.T) {
 	base := t.TempDir()
 	mise := filepath.Join(base, "mise")

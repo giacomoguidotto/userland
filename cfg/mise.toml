@@ -1,4 +1,4 @@
-min_version = "2026.8.9"
+min_version = "2026.9.6"
 
 [settings]
 lockfile = true
@@ -68,6 +68,11 @@ op = "2.39.0"
 autohide = true
 orientation = "bottom"
 show_recents = false
+# Keep the Dock empty until an application is running.
+apps = []
+
+[bootstrap.hooks.post-defaults]
+run = "killall Dock || true"
 
 [bootstrap.macos.defaults."com.apple.finder"]
 AppleShowAllExtensions = true

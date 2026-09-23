@@ -29,9 +29,42 @@ func personalAuthWizard(c *Context, script string) int {
 			return 130
 		}
 		w.Stage(index+1, total, stage.title)
-		if run(c, script, "--check-stage", stage.id).Code == 0 {
+		check := run(c, script, "--check-stage", stage.id)
+		if check.Code == 0 {
 			w.Render.Status(tui.StatusOK, stage.title+" is ready")
 			continue
+		}
+		if stage.id == "ssh" {
+			registration := run(c, script, "--check-ssh-registration")
+			if c.Context.Err() != nil {
+				return 130
+			}
+			switch registration.Code {
+			case 0:
+				w.Info("Your public key is already registered on GitHub. This Mac's SSH connection still needs attention.")
+				w.Info("Unlock 1Password and allow this terminal to use life/auth. If SSH reports host verification or a network error, resolve that first.")
+				if detail := strings.TrimSpace(string(check.Output)); detail != "" {
+					w.Info(detail)
+				}
+				if code := w.Continue("Retry the SSH connection"); code != 0 {
+					return code
+				}
+				check = run(c, script, "--check-stage", stage.id)
+				if c.Context.Err() != nil {
+					return 130
+				}
+				if check.Code != 0 {
+					c.Log(Attention, "GitHub already has this key, but SSH access is still unavailable: "+strings.TrimSpace(string(check.Output)))
+					return 2
+				}
+				w.Render.Status(tui.StatusOK, stage.title+" is ready")
+				continue
+			case 1:
+				// Only a successful lookup with no match opens registration.
+			default:
+				c.Log(Attention, "Could not check whether GitHub already has this key. Registration was not opened; check your connection and rerun sync.")
+				return 2
+			}
 		}
 		w.Info(stage.instruction)
 		// Browser authentication owns no terminal input. All prompts remain in

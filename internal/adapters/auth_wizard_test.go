@@ -17,6 +17,7 @@ func TestPersonalWizardChecksCompletionAndResumes(t *testing.T) {
 	source := `#!/bin/sh
 case "$1" in
  --check-stage) test -f "$HOME/$2" ;;
+ --check-ssh-registration) exit 1 ;;
  --apply-stage)
   if [ -t 0 ] || IFS= read -r unexpected; then exit 7; fi
   printf 'Open browser for %s\n' "$2"

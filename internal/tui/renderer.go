@@ -301,6 +301,29 @@ func (r Renderer) confirmationPrompt(prompt string) {
 	fmt.Fprintf(r.out, " %s?%s  %s %s[Y/n]%s %s›%s ", r.cyan, r.reset, r.redact(prompt), r.dim, r.reset, r.cyan, r.reset)
 }
 
+// Secret reads a terminal password without echoing it. The returned bytes are
+// owned by the caller and must be cleared after the privileged operation.
+func (r Renderer) Secret(in io.Reader, prompt string) ([]byte, int) {
+	file, ok := in.(*os.File)
+	if !ok || !term.IsTerminal(int(file.Fd())) {
+		r.Status(StatusError, prompt+" requires an interactive terminal")
+		return nil, 1
+	}
+	r.ClearTask()
+	if r.mode == ModeRich {
+		fmt.Fprintf(r.out, " %s?%s  %s %s›%s ", r.cyan, r.reset, r.redact(prompt), r.cyan, r.reset)
+	} else {
+		fmt.Fprintf(r.out, "%s: ", r.redact(prompt))
+	}
+	value, err := term.ReadPassword(int(file.Fd()))
+	fmt.Fprintln(r.out)
+	if err != nil {
+		r.Status(StatusError, "could not read "+strings.ToLower(prompt)+": "+err.Error())
+		return nil, 1
+	}
+	return value, 0
+}
+
 func (r Renderer) closeSymbol() string {
 	if r.unicode {
 		return "└"

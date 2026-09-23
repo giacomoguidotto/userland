@@ -117,6 +117,8 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	taskStdin, closeTaskStdin := packageTaskInput(env, stdin)
 	defer closeTaskStdin()
+	var sudoPassword []byte
+	defer func() { clearBytes(sudoPassword) }()
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
 	// Homebrew and protected application cleanup run later with sudo. Authenticate
@@ -124,16 +126,13 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	// already installed on an earlier run.
 	if env.IsMacOS() && (len(missingPackages) != 0 || hasPrivilegedChanges(approved)) {
 		var result platform.Result
+		var passwordCode int
+		sudoPassword, passwordCode = render.Secret(taskStdin, "Administrator password")
+		if passwordCode != 0 {
+			return passwordCode
+		}
 		code := nativeTask(ctx, render, "Authenticate macOS administrator access", func() int {
-			// sudo writes its password prompt directly to the terminal. Stop the
-			// spinner first so the prompt remains readable.
-			if render.Rich() {
-				render.ClearTask()
-			}
-			result = adapters.AuthenticateHomebrew(ctx, env, taskStdin, stdout, terminal)
-			if render.Rich() {
-				clearInteractivePrompt(stdout)
-			}
+			result = adapters.AuthenticateHomebrew(ctx, env, sudoPassword, stdout, terminal)
 			return result.Code
 		})
 		appendBootstrapLog(runLog, "Authenticate macOS administrator access", result, "sudo -v")
@@ -146,7 +145,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		}
 		progressOutput := homebrewProgressOutput{render: render}
 		code = nativeTask(ctx, render, "Prepare Homebrew for Mise packages", func() int {
-			result = adapters.PrepareHomebrew(ctx, env, taskStdin, &progressOutput, terminal)
+			result = adapters.PrepareHomebrew(ctx, env, taskStdin, sudoPassword, &progressOutput, terminal)
 			return result.Code
 		})
 		appendBootstrapLog(runLog, "Prepare Homebrew for Mise packages", result, "pinned Homebrew installer")
@@ -189,7 +188,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		}
 	}
 	render.Section("Apply personal state")
-	result := adapters.RunTasks(ctx, env, adapters.Apply, taskStdin, stdout, terminal,
+	result := adapters.RunTasks(ctx, env, adapters.Apply, taskStdin, stdout, terminal, sudoPassword,
 		func(label string) {
 			if adapters.DirectApply(label) {
 				return
@@ -264,6 +263,12 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	render.Summary(tui.StatusAttention, "Done with steps that need attention.")
 	return 2
+}
+
+func clearBytes(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
 }
 
 func hasPrivilegedChanges(value *plan.Plan) bool {

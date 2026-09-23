@@ -42,15 +42,16 @@ type Event struct {
 }
 
 type Context struct {
-	Context  context.Context
-	Env      platform.Environment
-	Stdin    io.Reader
-	Output   io.Writer
-	Events   []Event
-	Plan     *plan.Plan
-	Terminal bool
-	Progress func(current, total int, detail string)
-	commands chan struct{}
+	Context      context.Context
+	Env          platform.Environment
+	Stdin        io.Reader
+	Output       io.Writer
+	Events       []Event
+	Plan         *plan.Plan
+	Terminal     bool
+	SudoPassword []byte
+	Progress     func(current, total int, detail string)
+	commands     chan struct{}
 }
 
 func (c *Context) Log(level Level, message string) {
@@ -124,22 +125,22 @@ func RunObserved(ctx context.Context, env platform.Environment, action Action, s
 	return runRegistry(ctx, env, action, stdin, terminal, nil, nil, observer)
 }
 
-func RunTasks(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, begin func(string), progress ProgressObserver, end Observer) Result {
-	return runRegistryOutput(ctx, env, action, stdin, output, terminal, nil, begin, progress, end)
+func RunTasks(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, sudoPassword []byte, begin func(string), progress ProgressObserver, end Observer) Result {
+	return runRegistryOutput(ctx, env, action, stdin, output, terminal, sudoPassword, nil, begin, progress, end)
 }
 
 func runRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, terminal bool, value *plan.Plan, begin func(string), observer Observer) Result {
-	return runRegistryOutput(ctx, env, action, stdin, io.Discard, terminal, value, begin, nil, observer)
+	return runRegistryOutput(ctx, env, action, stdin, io.Discard, terminal, nil, value, begin, nil, observer)
 }
 
-func runRegistryOutput(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), progress ProgressObserver, observer Observer) Result {
+func runRegistryOutput(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, sudoPassword []byte, value *plan.Plan, begin func(string), progress ProgressObserver, observer Observer) Result {
 	if action != Apply {
 		return runReadOnlyRegistry(ctx, env, action, stdin, output, terminal, value, begin, observer)
 	}
-	return runSerialRegistry(ctx, env, action, stdin, output, terminal, value, begin, progress, observer)
+	return runSerialRegistry(ctx, env, action, stdin, output, terminal, sudoPassword, value, begin, progress, observer)
 }
 
-func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, value *plan.Plan, begin func(string), progress ProgressObserver, observer Observer) Result {
+func runSerialRegistry(ctx context.Context, env platform.Environment, action Action, stdin io.Reader, output io.Writer, terminal bool, sudoPassword []byte, value *plan.Plan, begin func(string), progress ProgressObserver, observer Observer) Result {
 	result := Result{}
 	for _, item := range registry {
 		if item.enabled != nil && !item.enabled(env) {
@@ -148,7 +149,7 @@ func runSerialRegistry(ctx context.Context, env platform.Environment, action Act
 		if begin != nil {
 			begin(item.label)
 		}
-		invocation := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Plan: value, Terminal: terminal}
+		invocation := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Plan: value, Terminal: terminal, SudoPassword: sudoPassword}
 		if progress != nil {
 			invocation.Progress = func(current, total int, detail string) {
 				progress(item.label, current, total, detail)

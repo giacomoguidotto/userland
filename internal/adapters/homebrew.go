@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -589,16 +590,37 @@ func authenticateHomebrew(c *Context) platform.Result {
 	if !c.Env.IsMacOS() {
 		return platform.Result{}
 	}
-	return runWithObserved(c, c.Env.List, c.Stdin, c.Output, "/usr/bin/sudo", "-v")
+	if len(c.SudoPassword) == 0 {
+		return runWithObserved(c, c.Env.List, c.Stdin, c.Output, "/usr/bin/sudo", "-v")
+	}
+	input := append(append([]byte(nil), c.SudoPassword...), '\n')
+	defer clearSecretBytes(input)
+	return runWithObserved(c, c.Env.List, bytes.NewReader(input), c.Output, "/usr/bin/sudo", "-S", "-p", "", "-v")
+}
+
+func runPrivileged(c *Context, args ...string) platform.Result {
+	if len(c.SudoPassword) == 0 {
+		return runWith(c, c.Env.List, c.Stdin, "/usr/bin/sudo", append([]string{"-n"}, args...)...)
+	}
+	input := append(append([]byte(nil), c.SudoPassword...), '\n')
+	defer clearSecretBytes(input)
+	command := append([]string{"-S", "-p", ""}, args...)
+	return runWith(c, c.Env.List, bytes.NewReader(input), "/usr/bin/sudo", command...)
+}
+
+func clearSecretBytes(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
 }
 
 // AuthenticateHomebrew obtains the administrator authorization that the
 // pinned Homebrew installer needs for its native prefix.
-func AuthenticateHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer, terminal bool) platform.Result {
+func AuthenticateHomebrew(ctx context.Context, env platform.Environment, password []byte, output io.Writer, terminal bool) platform.Result {
 	if !env.IsMacOS() {
 		return platform.Result{}
 	}
-	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Terminal: terminal}
+	c := &Context{Context: ctx, Env: env, Output: output, Terminal: terminal, SudoPassword: password}
 	return authenticateHomebrew(c)
 }
 
@@ -629,18 +651,25 @@ func installHomebrewAfterAuth(c *Context) platform.Result {
 	// installer non-interactively so its own RETURN prompt cannot bypass the
 	// Userland TUI, while preserving its output in the diagnostic log.
 	environ := c.Env.With("NONINTERACTIVE", "1")
-	return runWithObserved(c, environ, c.Stdin, c.Output, "/bin/bash", installer)
+	input := c.Stdin
+	var passwordInput []byte
+	if len(c.SudoPassword) != 0 {
+		passwordInput = append(append([]byte(nil), c.SudoPassword...), '\n')
+		defer clearSecretBytes(passwordInput)
+		input = bytes.NewReader(passwordInput)
+	}
+	return runWithObserved(c, environ, input, c.Output, "/bin/bash", installer)
 }
 
 // PrepareHomebrew ensures the manager used by Mise's brew backend exists
 // after administrator access has been authenticated. Formula declarations and
 // installation still go through Mise; this only bootstraps the native manager
 // that Mise needs on a fresh macOS account.
-func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, output io.Writer, terminal bool) platform.Result {
+func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Reader, password []byte, output io.Writer, terminal bool) platform.Result {
 	if !env.IsMacOS() {
 		return platform.Result{}
 	}
-	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Terminal: terminal}
+	c := &Context{Context: ctx, Env: env, Stdin: stdin, Output: output, Terminal: terminal, SudoPassword: password}
 	if _, present := brewCommand(c); present {
 		return platform.Result{}
 	}

@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -48,7 +49,14 @@ func runBrewMutation(c *Context, environ []string, observer io.Writer, brew stri
 	// Keep Homebrew attached to the terminal-backed input. Cask installs may
 	// invoke sudo even after the initial bootstrap, and a nil stdin leaves the
 	// child waiting indefinitely for a password nobody can enter.
-	result := runWithObserved(c, environ, c.Stdin, monitor, brew, args...)
+	input := c.Stdin
+	var passwordInput []byte
+	if len(c.SudoPassword) != 0 {
+		passwordInput = append(append([]byte(nil), c.SudoPassword...), '\n')
+		defer clearSecretBytes(passwordInput)
+		input = bytes.NewReader(passwordInput)
+	}
+	result := runWithObserved(c, environ, input, monitor, brew, args...)
 	close(stop)
 	<-done
 	fmt.Fprintf(log, "\nexit: %d\n", result.Code)

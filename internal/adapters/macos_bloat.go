@@ -64,7 +64,7 @@ func macosBloat(c *Context, action Action) int {
 		return 0
 	}
 	for _, item := range present {
-		result := runWith(c, c.Env.List, c.Stdin, "/usr/bin/sudo", "-n", "/bin/rm", "-rf", "--", item[1])
+		result := runPrivileged(c, "/bin/rm", "-rf", "--", item[1])
 		if result.Code != 0 {
 			detail := firstLine(result.Output)
 			if detail == "" {

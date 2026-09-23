@@ -103,3 +103,13 @@ func TestBrewSilenceReportsWaitingWithoutCompletingItem(t *testing.T) {
 		t.Fatalf("activity did not resume: %q", detail)
 	}
 }
+
+func TestBrewActivitySurfacesNestedSudoPrompt(t *testing.T) {
+	var prompt strings.Builder
+	w := &brewActivity{log: io.Discard, interactive: &prompt, terminal: true}
+	_, _ = w.Write([]byte("[sudo] pass"))
+	_, _ = w.Write([]byte("word for giacomo: "))
+	if !strings.Contains(prompt.String(), "[sudo] password for giacomo:") {
+		t.Fatalf("nested sudo prompt was hidden: %q", prompt.String())
+	}
+}

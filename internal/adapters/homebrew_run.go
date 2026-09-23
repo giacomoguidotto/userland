@@ -30,7 +30,7 @@ func runBrewMutation(c *Context, environ []string, observer io.Writer, brew stri
 	if _, err := fmt.Fprintf(log, "\n## Homebrew command %s\ncommand: %q %q\n", time.Now().UTC().Format(time.RFC3339), brew, args); err != nil {
 		return brewLogFailure(c, err)
 	}
-	monitor := &brewActivity{log: log, observer: observer, last: time.Now()}
+	monitor := &brewActivity{log: log, observer: observer, interactive: c.Output, terminal: c.Terminal, last: time.Now()}
 	stop, done := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
@@ -82,11 +82,15 @@ func brewLogFailure(c *Context, err error) platform.Result {
 }
 
 type brewActivity struct {
-	mu       sync.Mutex
-	log      io.Writer
-	observer io.Writer
-	last     time.Time
-	err      error
+	mu             sync.Mutex
+	log            io.Writer
+	observer       io.Writer
+	interactive    io.Writer
+	terminal       bool
+	promptBuffer   string
+	promptReported bool
+	last           time.Time
+	err            error
 }
 
 func (w *brewActivity) Write(b []byte) (int, error) {
@@ -96,10 +100,41 @@ func (w *brewActivity) Write(b []byte) (int, error) {
 	if _, err := w.log.Write(b); err != nil && w.err == nil {
 		w.err = err
 	}
+	w.promptBuffer += string(b)
+	if strings.Contains(strings.ToLower(w.promptBuffer), "password") {
+		w.reportPrompt()
+		w.promptBuffer = ""
+	} else if len(w.promptBuffer) > 512 {
+		w.promptBuffer = w.promptBuffer[len(w.promptBuffer)-128:]
+	}
 	if w.observer != nil {
 		return w.observer.Write(b)
 	}
 	return len(b), nil
+}
+
+func (w *brewActivity) reportPrompt() {
+	if w.promptReported {
+		return
+	}
+	w.promptReported = true
+	if observer, ok := w.observer.(*brewOutputProgress); ok {
+		name := observer.active
+		if name == "" {
+			name = "Homebrew"
+		}
+		observer.progress.Update(name, "waiting for administrator password")
+	}
+	if w.interactive != nil && w.terminal {
+		// Homebrew's stderr is captured so ordinary brew logs do not tear up the
+		// renderer. Password prompts are the exception: surface only this safe,
+		// actionable line and leave the terminal input attached to sudo.
+		prompt := strings.TrimSpace(w.promptBuffer)
+		if prompt == "" {
+			prompt = "Homebrew is requesting administrator access"
+		}
+		_, _ = fmt.Fprintf(w.interactive, "\r\x1b[2K%s\n", prompt)
+	}
 }
 
 func (w *brewActivity) reportSilence(now time.Time) {

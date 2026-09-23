@@ -3,10 +3,13 @@ package tui
 import (
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"unicode"
+
+	"golang.org/x/term"
 )
 
 // Wizard uses the same renderer as sync. Completion prompts deliberately ignore
@@ -33,6 +36,9 @@ func (w Wizard) InputLine(prompt string) (string, int) {
 	if w.Input == nil {
 		return "", 3
 	}
+	if file, ok := w.Input.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
+		return w.inputTerminal(file)
+	}
 	// Do not buffer past a prompt: subprocesses and later stages share this input.
 	var answer strings.Builder
 	var one [1]byte
@@ -49,6 +55,47 @@ func (w Wizard) InputLine(prompt string) (string, int) {
 				return "", 1
 			}
 			answer.WriteByte(one[0])
+		}
+		if err != nil {
+			fmt.Fprintln(w.Render.out)
+			return "", 3
+		}
+	}
+}
+
+func (w Wizard) inputTerminal(file *os.File) (string, int) {
+	state, err := term.MakeRaw(int(file.Fd()))
+	if err != nil {
+		return "", 1
+	}
+	defer term.Restore(int(file.Fd()), state)
+	var answer []byte
+	var one [1]byte
+	for {
+		n, err := file.Read(one[:])
+		if n != 0 {
+			switch one[0] {
+			case '\r', '\n':
+				fmt.Fprintln(w.Render.out)
+				return strings.TrimSpace(string(answer)), 0
+			case 3:
+				fmt.Fprintln(w.Render.out)
+				return "", 130
+			case 4:
+				fmt.Fprintln(w.Render.out)
+				return "", 3
+			case 8, 127:
+				if len(answer) > 0 {
+					answer = answer[:len(answer)-1]
+					fmt.Fprint(w.Render.out, "\b \b")
+				}
+			default:
+				if len(answer) >= 4096 {
+					return "", 1
+				}
+				answer = append(answer, one[0])
+				_, _ = w.Render.out.Write(one[:])
+			}
 		}
 		if err != nil {
 			fmt.Fprintln(w.Render.out)

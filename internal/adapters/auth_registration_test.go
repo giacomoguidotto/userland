@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -15,16 +16,18 @@ import (
 func TestRegisteredSSHKeyDoesNotOpenRegistration(t *testing.T) {
 	home := t.TempDir()
 	bin := filepath.Join(home, "bin")
-	for _, dir := range []string{bin, filepath.Join(home, ".ssh"), filepath.Join(home, ".1password")} {
+	for _, dir := range []string{bin, filepath.Join(home, ".ssh")} {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
-	socket, err := net.Listen("unix", filepath.Join(home, ".1password/agent.sock"))
+	socketPath := filepath.Join(os.TempDir(), "userland-auth-"+strconv.Itoa(os.Getpid())+".sock")
+	socket, err := net.Listen("unix", socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer socket.Close()
+	defer os.Remove(socketPath)
 	if err := os.WriteFile(filepath.Join(home, ".ssh/life-auth.pub"), []byte("ssh-ed25519 AAAAtest local-comment\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +48,7 @@ func TestRegisteredSSHKeyDoesNotOpenRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	c := &Context{Context: context.Background(), Env: platform.NewEnvironment([]string{"HOME=" + home, "PATH=" + bin + ":" + os.Getenv("PATH"), "USERLAND_UI_MODE=plain"}), Stdin: strings.NewReader("\n"), Output: &out}
+	c := &Context{Context: context.Background(), Env: platform.NewEnvironment([]string{"HOME=" + home, "PATH=" + bin + ":" + os.Getenv("PATH"), "SSH_AUTH_SOCK=" + socketPath, "USERLAND_UI_MODE=plain"}), Stdin: strings.NewReader("\n"), Output: &out}
 	if result := platform.Run(context.Background(), c.Env.List, nil, script, "--check-ssh-registration"); result.Code != 0 {
 		t.Fatalf("registration probe failed: %d %s", result.Code, result.Output)
 	}

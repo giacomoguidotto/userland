@@ -144,6 +144,7 @@ func (r Renderer) Usage() {
 
 	fmt.Fprintf(r.out, "%s  plan      Preview what would change\n", margin)
 	fmt.Fprintf(r.out, "%s  sync      Update, apply, and verify declared state\n", margin)
+	fmt.Fprintf(r.out, "%s  nuke      Remove everything under the home folder\n", margin)
 	fmt.Fprintf(r.out, "%s  doctor    Check drift and machine health\n\n", margin)
 	fmt.Fprintf(r.out, "%s  realm list\n", margin)
 	fmt.Fprintf(r.out, "%s            List declared optional configuration\n", margin)

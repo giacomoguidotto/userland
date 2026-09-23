@@ -862,7 +862,41 @@ report_migration_notice
 MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
 install_command_link "$repo_dir/bin/userland"
 
+# A first bootstrap is usually launched from Terminal.app. Move the completed
+# health check into Ghostty so the bootstrap window can close without hiding
+# the result. This is deliberately opt-in by environment only for other
+# terminals; rerunning `userland sync` from Ghostty never creates another
+# window.
+handoff_to_ghostty() {
+  [ "${USERLAND_NO_GHOSTTY_HANDOFF:-0}" != 1 ] || return 0
+  [ "${TERM_PROGRAM:-}" = "Apple_Terminal" ] || return 0
+  [ -d /Applications/Ghostty.app ] || return 0
+  command -v osascript >/dev/null 2>&1 || return 0
+  doctor_command="$repo_dir/bin/userland doctor"
+  if osascript - "$doctor_command" >/dev/null 2>&1 <<'APPLESCRIPT'; then
+on run argv
+  set doctorCommand to item 1 of argv
+  tell application "Ghostty"
+    activate
+    set cfg to new surface configuration
+    set command of cfg to doctorCommand
+    set wait after command of cfg to true
+    set newWindow to new window with configuration cfg
+  end tell
+  tell application "Terminal"
+    try
+      close front window
+    end try
+  end tell
+end run
+APPLESCRIPT
+    return 0
+  fi
+  printf '%s\n' 'userland: could not hand off doctor to Ghostty; run: userland doctor' >&2
+}
+
 if [ "$sync_status" -eq 2 ]; then
   printf 'userland is installed. Manual steps remain; run: userland sync\n'
 fi
+handoff_to_ghostty
 exit 0

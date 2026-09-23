@@ -321,7 +321,7 @@ func raycast(c *Context, action Action) int {
 		c.Log(Attention, "Could not launch Raycast: "+strings.TrimSpace(string(result.Output)))
 		return result.Code
 	}
-	ready, code := wizard.ConfirmDone("Is Raycast ready for import?")
+	ready, code := wizard.ConfirmDone("Is Raycast onboarding complete?")
 	if code != 0 {
 		return code
 	}

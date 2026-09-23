@@ -5,6 +5,7 @@ Host life-github
   User git
   IdentityFile ~/.ssh/life-auth.pub
   IdentitiesOnly yes
+  UserKnownHostsFile ~/.ssh/userland-known_hosts
 
 Host nicagi-store01
   HostName nicagi-store01

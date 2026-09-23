@@ -50,6 +50,7 @@ op = "2.39.0"
 "~/.local/bin/userland-secrets" = { source = "home/bin/userland-secrets", mode = "symlink" }
 "~/.ssh/config" = { source = "home/ssh/config", mode = "symlink" }
 "~/.ssh/life-auth.pub" = { source = "home/ssh/life-auth.pub", mode = "symlink" }
+"~/.ssh/userland-known_hosts" = { source = "home/ssh/userland-known_hosts", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.codex/skills/t3-code-threads" = { source = "agents/skills/t3-code-threads", mode = "symlink" }
 "~/.codex/config.toml" = { source = "codex/config.toml", mode = "symlink" }
@@ -114,6 +115,10 @@ largesize = 16
 magnification = false
 mineffect = "genie"
 minimize-to-application = true
+# Keep the raw preference empty as well as the friendly declaration above. This
+# makes verification exact on mise versions that do not project Dock apps into
+# the raw defaults status.
+"persistent-apps" = []
 # Remove Downloads, Trash, and other persistent Dock items as well.
 "persistent-others" = []
 tilesize = 36

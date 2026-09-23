@@ -165,7 +165,7 @@ esac
 	if code := realmHomebrew(apply, Apply); code != 0 {
 		t.Fatalf("apply returned %d", code)
 	}
-	if strings.Join(progress, "\n") != "1/1:postman" {
+	if strings.Join(progress, "\n") != "0/1:postman · installing\n1/1:postman" {
 		t.Fatalf("realm cask progress = %#v", progress)
 	}
 	trace, err := os.ReadFile(calls)

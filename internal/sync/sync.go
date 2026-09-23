@@ -119,7 +119,11 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	defer closeTaskStdin()
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
-	if env.IsMacOS() && len(missingPackages) != 0 {
+	// Homebrew casks and formulas are applied later by the Homebrew adapter.
+	// Authenticate whenever that adapter has work, even when the rolling Mise
+	// packages were already installed on an earlier run. Otherwise a cask
+	// install can reach sudo without a terminal and appear to hang forever.
+	if env.IsMacOS() && (len(missingPackages) != 0 || hasHomebrewChanges(approved)) {
 		var result platform.Result
 		code := nativeTask(ctx, render, "Authenticate macOS administrator access", func() int {
 			// sudo writes its password prompt directly to the terminal. Stop the
@@ -186,7 +190,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		}
 	}
 	render.Section("Apply personal state")
-	result := adapters.RunTasks(ctx, env, adapters.Apply, stdin, stdout, terminal,
+	result := adapters.RunTasks(ctx, env, adapters.Apply, taskStdin, stdout, terminal,
 		func(label string) {
 			if adapters.DirectApply(label) {
 				return
@@ -221,7 +225,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 				render.ClearTask()
 			}
 			appendAdapterLog(runLog, label, events)
-			if !render.Rich() {
+			if !render.Rich() || code != 0 {
 				for _, event := range events {
 					render.Status(adapterStatus(event.Level), event.Message)
 				}
@@ -261,6 +265,15 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	render.Summary(tui.StatusAttention, "Done with steps that need attention.")
 	return 2
+}
+
+func hasHomebrewChanges(value *plan.Plan) bool {
+	for _, item := range value.Items() {
+		if strings.HasPrefix(item.Proof, "homebrew:") || item.Target == "Homebrew" {
+			return true
+		}
+	}
+	return false
 }
 
 func packageTaskInput(env platform.Environment, stdin io.Reader) (io.Reader, func()) {

@@ -133,12 +133,12 @@ func reconcileHomebrew(c *Context, action Action, sources []brewSource, installM
 		switch issue.state + ":" + issue.kind {
 		case "outdated:brew":
 			progress.Report(issue.name)
-			if result := brewRun(c, brew, "upgrade", issue.name); result.Code != 0 {
+			if result := brewRunObserved(c, newBrewOutputProgress(progress, map[string]bool{issue.name: true}), brew, "upgrade", issue.name); result.Code != 0 {
 				return result.Code
 			}
 		case "outdated:cask":
 			progress.Report(issue.name)
-			if result := brewRun(c, brew, "upgrade", "--cask", issue.name); result.Code != 0 {
+			if result := brewRunObserved(c, newBrewOutputProgress(progress, map[string]bool{issue.name: true}), brew, "upgrade", "--cask", issue.name); result.Code != 0 {
 				return result.Code
 			}
 		case "untrusted-unused:Tap":
@@ -147,7 +147,7 @@ func reconcileHomebrew(c *Context, action Action, sources []brewSource, installM
 				return 1
 			}
 			progress.Report(issue.name)
-			if result := brewRun(c, brew, "untap", issue.name); result.Code != 0 {
+			if result := brewRunObserved(c, nil, brew, "untap", issue.name); result.Code != 0 {
 				return result.Code
 			}
 		}
@@ -228,7 +228,7 @@ func brewRun(c *Context, brew string, args ...string) platform.Result {
 
 func brewRunObserved(c *Context, observer io.Writer, brew string, args ...string) platform.Result {
 	environ := c.Env.With("HOMEBREW_NO_AUTO_UPDATE", "1", "HOMEBREW_NO_ANALYTICS", "1", "HOMEBREW_NO_ENV_HINTS", "1", "HOMEBREW_NO_COLOR", "1")
-	return runWithObserved(c, environ, nil, observer, brew, args...)
+	return runBrewMutation(c, environ, observer, brew, args...)
 }
 
 func brewDeclarations(path string) ([][2]string, error) {
@@ -340,6 +340,7 @@ type brewOutputProgress struct {
 	progress *brewProgress
 	allowed  map[string]bool
 	pending  string
+	active   string
 }
 
 func newBrewOutputProgress(progress *brewProgress, allowed map[string]bool) *brewOutputProgress {
@@ -367,30 +368,39 @@ func (p *brewOutputProgress) Flush() {
 }
 
 func (p *brewOutputProgress) observe(line string) {
-	line = strings.TrimSpace(line)
+	line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "==>"))
 	fields := strings.Fields(line)
-	if len(fields) < 2 {
+	if len(fields) == 0 {
 		return
 	}
 	name := p.findName(line)
-	if name == "" {
+	if name != "" {
+		p.active = name
+	}
+	if p.active == "" {
 		return
 	}
 	switch fields[0] {
-	case "Installing":
-		p.progress.Report(name)
 	case "Using":
-		p.progress.Report(name)
-	case "Upgrading":
-		p.progress.Report(name)
-	case "Downloading", "Fetching":
-		p.progress.Update(name, strings.ToLower(fields[0]))
+		if name != "" {
+			p.progress.Report(name)
+		}
+	case "Installing", "Upgrading", "Downloading", "Fetching":
+		p.progress.Update(p.active, strings.ToLower(fields[0]))
+	case "Moving":
+		p.progress.Update(p.active, "moving application")
+	case "Verifying":
+		p.progress.Update(p.active, "verifying download")
+	case "Extracting", "Unpacking":
+		p.progress.Update(p.active, "extracting archive")
 	}
 }
 
 func (p *brewOutputProgress) findName(line string) string {
-	for name := range p.allowed {
-		if strings.Contains(line, name) {
+	// Match tokens exactly: e.g. 'foo' must not steal 'foo-bar' progress.
+	for _, field := range strings.Fields(line) {
+		name := strings.Trim(field, "`'\".,:!")
+		if p.allowed[name] {
 			return name
 		}
 	}

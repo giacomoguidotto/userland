@@ -108,6 +108,8 @@ largesize = 16
 magnification = false
 mineffect = "genie"
 minimize-to-application = true
+# Remove Downloads, Trash, and other persistent Dock items as well.
+"persistent-others" = []
 tilesize = 36
 wvous-tl-corner = 2
 wvous-tr-corner = 12

@@ -64,8 +64,13 @@ func macosBloat(c *Context, action Action) int {
 		return 0
 	}
 	for _, item := range present {
-		if err := os.RemoveAll(item[1]); err != nil {
-			c.Log(Attention, fmt.Sprintf("could not remove %s: %v", item[0], err))
+		result := runWith(c, c.Env.List, c.Stdin, "/usr/bin/sudo", "-n", "/bin/rm", "-rf", "--", item[1])
+		if result.Code != 0 {
+			detail := firstLine(result.Output)
+			if detail == "" {
+				detail = "administrator authorization is unavailable"
+			}
+			c.Log(Attention, fmt.Sprintf("could not remove %s: %s", item[0], detail))
 			return 1
 		}
 		c.Log(Changed, "removed "+item[0])

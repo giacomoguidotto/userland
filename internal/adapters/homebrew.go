@@ -120,7 +120,7 @@ func reconcileHomebrew(c *Context, action Action, sources []brewSource, installM
 	for _, source := range sources {
 		bundleNames := brewBundleProgressNames(issues, source.path)
 		observer := newBrewOutputProgress(progress, bundleNames)
-		result := brewRunObserved(c, observer, brew, "bundle", "--file", source.path, "--no-upgrade", "--verbose")
+		result := brewRunObserved(c, observer, brew, "bundle", "--file", source.path, "--no-upgrade")
 		observer.Flush()
 		if result.Code != 0 {
 			return result.Code

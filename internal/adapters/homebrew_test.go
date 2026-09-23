@@ -36,7 +36,7 @@ case "$*" in
   'trust --json=v1') echo '{"taps":["declared/tap"]}' ;;
   'list --full-name') : ;;
   tap) echo 'declared/tap'; echo 'unused/tap' ;;
-  *'bundle --file'*--verbose*) echo 'Using raycast'; echo 'Using zed' ;;
+  *'bundle --file'*) echo 'Using raycast'; echo 'Using zed' ;;
 esac
 `, calls, home)
 	if err := os.WriteFile(brew, []byte(script), 0o755); err != nil {
@@ -78,7 +78,7 @@ esac
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"bundle --file " + filepath.Join(root, "cfg", "brewfile") + " --no-upgrade --verbose", "upgrade ggshield", "upgrade --cask zed", "untap unused/tap"} {
+	for _, expected := range []string{"bundle --file " + filepath.Join(root, "cfg", "brewfile") + " --no-upgrade", "upgrade ggshield", "upgrade --cask zed", "untap unused/tap"} {
 		if !containsLine(string(trace), expected) {
 			t.Fatalf("trace omitted %q:\n%s", expected, trace)
 		}
@@ -143,7 +143,7 @@ case "$*" in
   'outdated --json=v2') echo '{"formulae":[],"casks":[]}' ;;
   'trust --json=v1') echo '{"taps":[]}' ;;
   'list --full-name'|'tap') : ;;
-  *'bundle --file'*danfoss*--verbose*) echo 'Installing postman cask. It is not currently installed.' ;;
+  *'bundle --file'*danfoss*) echo 'Installing postman cask. It is not currently installed.' ;;
 esac
 `, calls)
 	if err := os.WriteFile(brew, []byte(script), 0o755); err != nil {
@@ -172,7 +172,7 @@ esac
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !containsLine(string(trace), "bundle --file "+realmBrewfile+" --no-upgrade --verbose") {
+	if !containsLine(string(trace), "bundle --file "+realmBrewfile+" --no-upgrade") {
 		t.Fatalf("realm Brewfile was not applied:\n%s", trace)
 	}
 }

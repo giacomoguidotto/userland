@@ -119,11 +119,10 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	defer closeTaskStdin()
 	render.Section("Apply packages")
 	missingPackages := planTargets(approved, "mise:package:brew:", "install")
-	// Homebrew casks and formulas are applied later by the Homebrew adapter.
-	// Authenticate whenever that adapter has work, even when the rolling Mise
-	// packages were already installed on an earlier run. Otherwise a cask
-	// install can reach sudo without a terminal and appear to hang forever.
-	if env.IsMacOS() && (len(missingPackages) != 0 || hasHomebrewChanges(approved)) {
+	// Homebrew and protected application cleanup run later with sudo. Authenticate
+	// whenever either adapter has work, even when the rolling Mise packages were
+	// already installed on an earlier run.
+	if env.IsMacOS() && (len(missingPackages) != 0 || hasPrivilegedChanges(approved)) {
 		var result platform.Result
 		code := nativeTask(ctx, render, "Authenticate macOS administrator access", func() int {
 			// sudo writes its password prompt directly to the terminal. Stop the
@@ -267,9 +266,9 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	return 2
 }
 
-func hasHomebrewChanges(value *plan.Plan) bool {
+func hasPrivilegedChanges(value *plan.Plan) bool {
 	for _, item := range value.Items() {
-		if strings.HasPrefix(item.Proof, "homebrew:") || item.Target == "Homebrew" {
+		if strings.HasPrefix(item.Proof, "homebrew:") || strings.HasPrefix(item.Proof, "macos-bloat:") || item.Target == "Homebrew" {
 			return true
 		}
 	}

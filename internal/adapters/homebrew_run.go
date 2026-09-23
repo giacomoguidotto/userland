@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -31,7 +32,7 @@ func runBrewMutation(c *Context, environ []string, observer io.Writer, brew stri
 	if _, err := fmt.Fprintf(log, "\n## Homebrew command %s\ncommand: %q %q\n", time.Now().UTC().Format(time.RFC3339), brew, args); err != nil {
 		return brewLogFailure(c, err)
 	}
-	monitor := &brewActivity{log: log, observer: observer, interactive: c.Output, terminal: c.Terminal, last: time.Now()}
+	monitor := &brewActivity{log: log, observer: observer, last: time.Now()}
 	stop, done := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
@@ -89,12 +90,14 @@ func brewLogFailure(c *Context, err error) platform.Result {
 	return platform.Result{Code: 1, Err: err}
 }
 
+// Match actual prompts, never package names such as 1password. Raw child
+// output stays in last-run.log; the renderer owns every terminal line.
+var brewPasswordPrompt = regexp.MustCompile(`(?im)(?:^|[\r\n])(?:\[sudo\] )?password(?: for [^:\r\n]+)?:\s*$`)
+
 type brewActivity struct {
 	mu             sync.Mutex
 	log            io.Writer
 	observer       io.Writer
-	interactive    io.Writer
-	terminal       bool
 	promptBuffer   string
 	promptReported bool
 	last           time.Time
@@ -109,7 +112,7 @@ func (w *brewActivity) Write(b []byte) (int, error) {
 		w.err = err
 	}
 	w.promptBuffer += string(b)
-	if strings.Contains(strings.ToLower(w.promptBuffer), "password") {
+	if brewPasswordPrompt.MatchString(w.promptBuffer) {
 		w.reportPrompt()
 		w.promptBuffer = ""
 	} else if len(w.promptBuffer) > 512 {
@@ -132,16 +135,6 @@ func (w *brewActivity) reportPrompt() {
 			name = "Homebrew"
 		}
 		observer.progress.Update(name, "waiting for administrator password")
-	}
-	if w.interactive != nil && w.terminal {
-		// Homebrew's stderr is captured so ordinary brew logs do not tear up the
-		// renderer. Password prompts are the exception: surface only this safe,
-		// actionable line and leave the terminal input attached to sudo.
-		prompt := strings.TrimSpace(w.promptBuffer)
-		if prompt == "" {
-			prompt = "Homebrew is requesting administrator access"
-		}
-		_, _ = fmt.Fprintf(w.interactive, "\r\x1b[2K%s\n", prompt)
 	}
 }
 

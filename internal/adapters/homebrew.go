@@ -583,7 +583,7 @@ func installHomebrew(c *Context) int {
 	if result := authenticateHomebrew(c); result.Code != 0 {
 		return result.Code
 	}
-	return installHomebrewAfterAuth(c).Code
+	return installHomebrewAfterAuth(c, newBrewOutputProgress(newBrewProgress(c, nil), nil)).Code
 }
 
 func authenticateHomebrew(c *Context) platform.Result {
@@ -624,7 +624,7 @@ func AuthenticateHomebrew(ctx context.Context, env platform.Environment, passwor
 	return authenticateHomebrew(c)
 }
 
-func installHomebrewAfterAuth(c *Context) platform.Result {
+func installHomebrewAfterAuth(c *Context, progress io.Writer) platform.Result {
 	directory, err := os.MkdirTemp(c.Env.Get("TMPDIR"), "userland-homebrew.")
 	if err != nil {
 		return platform.Result{Code: 1, Err: err}
@@ -640,16 +640,8 @@ func installHomebrewAfterAuth(c *Context) platform.Result {
 		return platform.Result{Code: 1, Err: errors.New("Homebrew installer checksum mismatch")}
 	}
 	c.Log(Changed, "installing Homebrew from pinned commit "+homebrewCommit)
-	// Let the installer detect whether its stdin is a real terminal. For the
-	// interactive sync path this preserves the sudo password prompt; for a
-	// non-interactive invocation Homebrew enables its own safe non-interactive
-	// mode.
-	// Stream the installer output as well as retaining it in the result. The
-	// installer can spend several minutes installing Command Line Tools or
-	// waiting for sudo; hiding that output makes a healthy run look hung.
-	// sudo -v above has already obtained administrator authorization. Run the
-	// installer non-interactively so its own RETURN prompt cannot bypass the
-	// Userland TUI, while preserving its output in the diagnostic log.
+	// The caller provides a progress parser, never the terminal writer. Keep
+	// Homebrew's confirmation prompt disabled after the user approved the plan.
 	environ := c.Env.With("NONINTERACTIVE", "1")
 	input := c.Stdin
 	var passwordInput []byte
@@ -658,7 +650,9 @@ func installHomebrewAfterAuth(c *Context) platform.Result {
 		defer clearSecretBytes(passwordInput)
 		input = bytes.NewReader(passwordInput)
 	}
-	return runWithObserved(c, environ, input, c.Output, "/bin/bash", installer)
+	// Keep installer output in the run result and diagnostic log. Rendering raw
+	// Homebrew output here tears up the Userland task view.
+	return runWithObserved(c, environ, input, progress, "/bin/bash", installer)
 }
 
 // PrepareHomebrew ensures the manager used by Mise's brew backend exists
@@ -673,5 +667,5 @@ func PrepareHomebrew(ctx context.Context, env platform.Environment, stdin io.Rea
 	if _, present := brewCommand(c); present {
 		return platform.Result{}
 	}
-	return installHomebrewAfterAuth(c)
+	return installHomebrewAfterAuth(c, output)
 }

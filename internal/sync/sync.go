@@ -157,7 +157,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 			return code
 		}
 	}
-	if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, runLog, taskStdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	var upgrades []string
@@ -168,16 +168,16 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	if len(upgrades) != 0 {
 		args := append([]string{"bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
-		if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
+		if code := miseTask(ctx, env, render, runLog, taskStdin, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
 			return code
 		}
 	}
 	render.Section("Apply machine state")
-	if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
+	if code := miseTask(ctx, env, render, runLog, taskStdin, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
 	if env.IsMacOS() {
-		if code := miseTask(ctx, env, render, stdout, runLog, taskStdin, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
+		if code := miseTask(ctx, env, render, runLog, taskStdin, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 			return code
 		}
 	}
@@ -238,6 +238,10 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		})
 	if ctx.Err() != nil {
 		return 130
+	}
+	if result.Code == 3 || result.Code == 130 {
+		render.Summary(tui.StatusCancelled, "Setup paused. Completed steps were preserved; rerun sync to continue.")
+		return result.Code
 	}
 	if result.Code != 0 {
 		render.Summary(tui.StatusError, "Stopped at the failed step. Fix it, then rerun sync.")
@@ -387,7 +391,9 @@ func preflight(ctx context.Context, env platform.Environment) error {
 	return nil
 }
 
-func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, out io.Writer, runLog string, stdin io.Reader, label string, progressTargets []string, args ...string) int {
+func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer, runLog string, stdin io.Reader, label string, progressTargets []string, args ...string) int {
+	// Command output is retained in runLog and surfaced only on failure. Keeping
+	// it out of the terminal preserves the renderer's single live TUI surface.
 	if render.Rich() {
 		render.BeginTask(label)
 	} else {
@@ -400,8 +406,6 @@ func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer
 	progress.Flush()
 	if render.Rich() {
 		render.ClearTask()
-	} else if len(result.Output) != 0 {
-		_, _ = out.Write(result.Output)
 	}
 	appendLog(runLog, label, result.Output)
 	if ctx.Err() != nil {

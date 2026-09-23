@@ -29,13 +29,13 @@ The default repository catalog is empty. Sync does not clone personal repositori
 
 The default realm catalog is empty. If an older Userland state file contains Danfoss or Trellis attachments, the next sync removes their generated `.envrc`, direnv authorization, Git projection, SSH projection, and attachment records. It leaves the checkout directory in place for review instead of deleting source code.
 
-Browser profiles, cookies, saved sessions, browser extensions, and non-XDG application settings are not copied. Sync checks the two declared Helium extension IDs and opens their Chrome Web Store pages for attended installation. Raycast is the one exception: it opens the tracked encrypted `.rayconfig` for an attended import. Ghostty, Git, Mise, Neovim, Atuin, bat, btop, Starship, and the shell use the declared XDG files.
+Browser profiles, cookies, saved sessions, browser extensions, and non-XDG application settings are not copied. Sync checks the two declared Helium extension IDs and opens their Chrome Web Store pages for attended installation. Raycast is the one exception: sync opens the tracked encrypted `.rayconfig` and asks for confirmation in the Userland TUI after you enter its passphrase in Raycast. A receipt records that import; subsequent runs launch Raycast with the imported configuration. Its declared login item starts it automatically at login. Ghostty, Git, Mise, Neovim, Atuin, bat, btop, Starship, and the shell use the declared XDG files.
 
 ## Credentials
 
 The repository contains no token, private key, browser cookie, or exported session. Codex is configured with `cli_auth_credentials_store = "keyring"` and `mcp_oauth_credentials_store = "keyring"`, so login fails rather than writing `~/.codex/auth.json` when a system keyring is unavailable. See the [Codex authentication settings](https://learn.chatgpt.com/docs/auth).
 
-The personal authentication wizard follows the human through 1Password SSH-agent setup, the GitHub SSH-key page, GitHub CLI's browser login, and Codex's browser login. It is safe to stop and rerun. For non-interactive work, keep only `op://...` references in an untracked local file and run the command with `op run`; 1Password resolves the value in memory. Do not put `OP_SERVICE_ACCOUNT_TOKEN`, `GH_TOKEN`, API keys, or private keys in this repository or in shell startup files. See [1Password's secret environment guide](https://www.1password.dev/cli/secrets-environment-variables/).
+The personal authentication wizard runs inside the Userland TUI and follows the human through 1Password SSH-agent setup, the GitHub SSH-key page, GitHub CLI's browser login, and Codex's browser login. It is safe to stop and rerun. For non-interactive work, keep only `op://...` references in an untracked local file and run the command with `op run`; 1Password resolves the value in memory. Do not put `OP_SERVICE_ACCOUNT_TOKEN`, `GH_TOKEN`, API keys, or private keys in this repository or in shell startup files. See [1Password's secret environment guide](https://www.1password.dev/cli/secrets-environment-variables/).
 
 ## Use
 

@@ -61,6 +61,9 @@ func authenticationScript(c *Context, action Action, label, script string, envir
 		c.Log(Attention, label+" authentication needs an interactive terminal")
 		return 2
 	}
+	if label == "personal" {
+		return personalAuthWizard(c, script)
+	}
 	result := platform.RunObserved(c.Context, environ, c.Stdin, c.Output, script)
 	if result.Code != 0 {
 		c.Log(Attention, fmt.Sprintf("%s authentication wizard exited with status %d", label, result.Code))

@@ -104,12 +104,40 @@ func TestBrewSilenceReportsWaitingWithoutCompletingItem(t *testing.T) {
 	}
 }
 
-func TestBrewActivitySurfacesNestedSudoPrompt(t *testing.T) {
-	var prompt strings.Builder
-	w := &brewActivity{log: io.Discard, interactive: &prompt, terminal: true}
+func TestBrewActivityReportsNestedSudoPromptThroughProgress(t *testing.T) {
+	var detail string
+	c := &Context{Progress: func(_, _ int, message string) { detail = message }}
+	observer := newBrewOutputProgress(newBrewProgress(c, nil), nil)
+	w := &brewActivity{log: io.Discard, observer: observer}
 	_, _ = w.Write([]byte("[sudo] pass"))
 	_, _ = w.Write([]byte("word for giacomo: "))
-	if !strings.Contains(prompt.String(), "[sudo] password for giacomo:") {
-		t.Fatalf("nested sudo prompt was hidden: %q", prompt.String())
+	if detail != "Homebrew · waiting for administrator password" {
+		t.Fatalf("nested sudo prompt was hidden: %q", detail)
+	}
+}
+
+func TestBrewActivityDoesNotMistake1PasswordForSudo(t *testing.T) {
+	for _, chunked := range []bool{false, true} {
+		var output, log strings.Builder
+		c := &Context{Output: &output, Terminal: true}
+		observer := newBrewOutputProgress(newBrewProgress(c, nil), nil)
+		w := &brewActivity{log: &log, observer: observer}
+		transcript := "Using 1password\nUsing raycast\n`brew bundle` complete! 9 Brewfile dependencies now installed.\n"
+		if chunked {
+			for _, b := range []byte(transcript) {
+				_, _ = w.Write([]byte{b})
+			}
+		} else {
+			_, _ = w.Write([]byte(transcript))
+		}
+		if w.promptReported {
+			t.Fatal("1password was treated as an administrator prompt")
+		}
+		if output.Len() != 0 {
+			t.Fatalf("brew logs escaped into TUI: %q", output.String())
+		}
+		if log.String() != transcript {
+			t.Fatal("full brew diagnostics were not retained")
+		}
 	}
 }

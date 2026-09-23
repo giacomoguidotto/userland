@@ -1,7 +1,6 @@
 package adapters
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/giacomoguidotto/userland/internal/platform"
 	repositorycatalog "github.com/giacomoguidotto/userland/internal/repository"
+	"github.com/giacomoguidotto/userland/internal/tui"
 )
 
 func personalRepositories(c *Context, action Action) int {
@@ -275,6 +275,7 @@ func raycast(c *Context, action Action) int {
 		return 0
 	}
 	if current {
+		c.Log(Current, "Raycast configuration is imported; its declared login item starts it automatically")
 		return 0
 	}
 	if !eligible {
@@ -289,13 +290,17 @@ func raycast(c *Context, action Action) int {
 		c.Log(Manual, "Raycast import requires an interactive terminal")
 		return 2
 	}
-	c.Log(Manual, "opening Raycast configuration import; enter its export passphrase in Raycast")
+	wizard := tui.Wizard{Render: tui.New(c.Output, c.Env.List), Input: c.Stdin}
+	wizard.Render.Section("Raycast configuration")
+	wizard.Info("Enter the export passphrase in Raycast and finish the import. Raycast is declared to start automatically at login.")
 	if result := run(c, "open", "-a", "Raycast", export); result.Code != 0 {
 		return result.Code
 	}
-	// The caller owns the interactive acknowledgement and only invokes this
-	// adapter with a confirmed input stream.
-	if _, err := bufio.NewReader(c.Stdin).ReadString('\n'); err != nil && err != io.EOF {
+	confirmed, code := wizard.ConfirmDone("Confirm Raycast import completed")
+	if code != 0 {
+		return code
+	}
+	if !confirmed {
 		c.Log(Manual, "Raycast import was not confirmed; no receipt was recorded")
 		return 2
 	}

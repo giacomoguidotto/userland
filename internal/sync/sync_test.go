@@ -65,7 +65,7 @@ printf '%s\n' 'mise brew:yazi ✓ 26.8.15'
 		t.Fatal(err)
 	}
 
-	code := miseTask(context.Background(), env, render, &output, runLog, nil,
+	code := miseTask(context.Background(), env, render, runLog, nil,
 		"Upgrade installed rolling packages",
 		[]string{"ffmpeg", "yazi"},
 		"bootstrap", "packages", "upgrade", "--yes", "brew:ffmpeg", "brew:yazi",
@@ -111,7 +111,7 @@ printf '%s\n' 'mise coder@2.36.3 [1/3] install'
 	if err := os.WriteFile(runLog, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code := miseTask(context.Background(), env, render, &output, runLog, nil,
+	code := miseTask(context.Background(), env, render, runLog, nil,
 		"Install pinned development tools", []string{"azure-cli", "coder"}, "install", "--yes")
 	if code != 0 {
 		t.Fatalf("miseTask returned %d", code)
@@ -162,7 +162,7 @@ printf '%s\n' "$line" >"$MISE_STDIN_CAPTURE"
 	if err := os.WriteFile(runLog, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code := miseTask(context.Background(), env, render, &output, runLog, strings.NewReader("sudo-password\n"), "Install packages", nil, "bootstrap", "packages", "apply"); code != 0 {
+	if code := miseTask(context.Background(), env, render, runLog, strings.NewReader("sudo-password\n"), "Install packages", nil, "bootstrap", "packages", "apply"); code != 0 {
 		t.Fatalf("miseTask returned %d", code)
 	}
 	value, err := os.ReadFile(captured)

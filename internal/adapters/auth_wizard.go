@@ -42,9 +42,15 @@ func personalAuthWizard(c *Context, script string) int {
 			switch registration.Code {
 			case 0:
 				w.Info("Your public key is already registered on GitHub. This Mac's SSH connection still needs attention.")
-				w.Info("Unlock 1Password and allow this terminal to use life/auth. If SSH reports host verification or a network error, resolve that first.")
 				if detail := strings.TrimSpace(string(check.Output)); detail != "" {
-					w.Info(detail)
+					output := &tui.CommandOutput{Wizard: w}
+					_, _ = output.Write(check.Output)
+					output.Flush()
+					if strings.Contains(detail, "Permission denied") || strings.Contains(detail, "signing failed") {
+						w.Info("Check that life/auth is available in the 1Password SSH agent and approve any access request in 1Password.")
+					} else {
+						w.Info("Resolve the SSH error shown above, then retry. It does not mean the key is missing or 1Password is locked.")
+					}
 				}
 				if code := w.Continue("Retry the SSH connection"); code != 0 {
 					return code

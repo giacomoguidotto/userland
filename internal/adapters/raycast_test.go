@@ -41,10 +41,14 @@ func TestRaycastRequiresConfirmationAndSkipsCompletedImport(t *testing.T) {
 	if _, err := os.Stat(receipt); !os.IsNotExist(err) {
 		t.Fatal("unconfirmed import recorded")
 	}
-	if !strings.Contains(output.String(), "[info] Enter the export passphrase") {
+	opened, _ := os.ReadFile(calls)
+	if strings.Contains(string(opened), export) {
+		t.Fatal("import opened before onboarding was completed")
+	}
+	if !strings.Contains(output.String(), "onboarding") {
 		t.Fatalf("instructions missing before prompt: %s", output.String())
 	}
-	c.Stdin = strings.NewReader("yes\n")
+	c.Stdin = strings.NewReader("yes\nyes\n")
 	if code := raycast(c, Apply); code != 0 {
 		t.Fatalf("confirmed import: %d %#v", code, c.Events)
 	}

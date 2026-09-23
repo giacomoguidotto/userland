@@ -5,6 +5,7 @@ import (
 	"context"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -64,5 +65,40 @@ func TestRegisteredSSHKeyDoesNotOpenRegistration(t *testing.T) {
 	}
 	if code != 2 {
 		t.Fatalf("broken SSH must remain incomplete, got %d", code)
+	}
+}
+
+func TestSSHAgentPathWithSpacesParsesInOpenSSH(t *testing.T) {
+	ssh, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	home, err := os.MkdirTemp("/tmp", "ul-auth-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(home)
+	socketPath := filepath.Join(home, "Group Containers", "agent.sock")
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	socket, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer socket.Close()
+	bin := filepath.Join(home, "bin")
+	if err := os.Mkdir(bin, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Parse the exact options handed to SSH without making a network connection.
+	source := "#!/bin/sh\n" + shellSingleQuote(ssh) + " -G -F /dev/null \"$@\" >\"$HOME/parsed\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(source), 0700); err != nil {
+		t.Fatal(err)
+	}
+	script, _ := filepath.Abs("../../cfg/auth-wizard")
+	result := platform.Run(context.Background(), []string{"HOME=" + home, "PATH=" + bin + ":" + os.Getenv("PATH"), "SSH_AUTH_SOCK=" + socketPath}, nil, script, "--check-stage", "ssh")
+	if strings.Contains(string(result.Output), "extra arguments") {
+		t.Fatalf("SSH cannot parse agent path with spaces: %s", result.Output)
 	}
 }

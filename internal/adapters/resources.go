@@ -78,7 +78,7 @@ func browserExtensions(c *Context, action Action) int {
 	if err != nil {
 		return 1
 	}
-	type missingExtension struct{ browser, id string }
+	type missingExtension struct{ browser, id, name, root string }
 	var missing []missingExtension
 	for _, row := range rows {
 		root := ""
@@ -90,12 +90,11 @@ func browserExtensions(c *Context, action Action) int {
 		default:
 			return 1
 		}
-		installed := exists(filepath.Join(root, "Extensions", row[1]))
-		profiles, _ := filepath.Glob(filepath.Join(root, "*", "Extensions", row[1]))
-		installed = installed || len(profiles) != 0
-		if !installed {
-			c.Log(Manual, row[2]+" is missing from "+row[0])
-			missing = append(missing, missingExtension{row[0], row[1]})
+		if !browserExtensionInstalled(root, row[1]) {
+			if action != Apply {
+				c.Log(Manual, row[2]+" is missing from "+row[0])
+			}
+			missing = append(missing, missingExtension{row[0], row[1], row[2], root})
 		}
 	}
 	if len(missing) == 0 {
@@ -109,17 +108,42 @@ func browserExtensions(c *Context, action Action) int {
 	if action != Apply {
 		return 2
 	}
-	c.Log(Manual, "opening the supported Chrome Web Store pages for missing extensions")
+	if !c.Terminal {
+		c.Log(Manual, "Browser extensions require installation confirmation in the browser; rerun sync in a terminal")
+		return 2
+	}
+	wizard := tui.Wizard{Render: tui.New(c.Output, c.Env.List), Input: c.Stdin}
+	wizard.Render.Section("Browser extensions")
+	incomplete := false
 	for _, extension := range missing {
 		application := "Helium"
 		if extension.browser == "chrome" {
 			application = "Google Chrome"
 		}
+		wizard.Info("Install " + extension.name + " in " + application + ". On the store page, click Add to Chrome and confirm Add extension in the browser. Opening the page alone does not install it.")
 		if result := run(c, "open", "-a", application, "https://chromewebstore.google.com/detail/"+extension.id); result.Code != 0 {
+			c.Log(Attention, "Could not open the extension store page: "+strings.TrimSpace(string(result.Output)))
 			return result.Code
 		}
+		if code := wizard.Continue("Check installation after the browser finishes"); code != 0 {
+			return code
+		}
+		if browserExtensionInstalled(extension.root, extension.id) {
+			c.Log(Changed, extension.name+" installation detected in "+application)
+		} else {
+			incomplete = true
+			c.Log(Manual, extension.name+" is still missing from "+application+"; complete the browser installation and rerun sync")
+		}
 	}
-	return 2
+	if incomplete {
+		return 2
+	}
+	return 0
+}
+
+func browserExtensionInstalled(root, id string) bool {
+	profiles, _ := filepath.Glob(filepath.Join(root, "*", "Extensions", id))
+	return exists(filepath.Join(root, "Extensions", id)) || len(profiles) != 0
 }
 
 func fileHandlers(c *Context, action Action) int {
@@ -292,8 +316,23 @@ func raycast(c *Context, action Action) int {
 	}
 	wizard := tui.Wizard{Render: tui.New(c.Output, c.Env.List), Input: c.Stdin}
 	wizard.Render.Section("Raycast configuration")
+	wizard.Info("Finish or dismiss Raycast's onboarding first. Return here when its command search is available; Userland will then open the export.")
+	if result := run(c, "open", "-a", "Raycast"); result.Code != 0 {
+		c.Log(Attention, "Could not launch Raycast: "+strings.TrimSpace(string(result.Output)))
+		return result.Code
+	}
+	ready, code := wizard.ConfirmDone("Is Raycast ready for import?")
+	if code != 0 {
+		return code
+	}
+	if !ready {
+		c.Log(Manual, "Raycast onboarding is unfinished; rerun sync when ready. No import receipt was recorded")
+		return 2
+	}
 	wizard.Info("Enter the export passphrase in Raycast and finish the import. Raycast is declared to start automatically at login.")
+	wizard.Info("If no import dialog appears, run Import Settings & Data in Raycast and choose this file: " + export)
 	if result := run(c, "open", "-a", "Raycast", export); result.Code != 0 {
+		c.Log(Attention, "Could not open the Raycast export: "+strings.TrimSpace(string(result.Output)))
 		return result.Code
 	}
 	confirmed, code := wizard.ConfirmDone("Confirm Raycast import completed")

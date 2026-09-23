@@ -68,7 +68,10 @@ func (w Wizard) inputTerminal(file *os.File) (string, int) {
 	if err != nil {
 		return "", 1
 	}
-	defer term.Restore(int(file.Fd()), state)
+	defer func() {
+		_ = term.Restore(int(file.Fd()), state)
+		fmt.Fprintln(w.Render.out)
+	}()
 	var answer []byte
 	var one [1]byte
 	for {
@@ -76,13 +79,10 @@ func (w Wizard) inputTerminal(file *os.File) (string, int) {
 		if n != 0 {
 			switch one[0] {
 			case '\r', '\n':
-				fmt.Fprintln(w.Render.out)
 				return strings.TrimSpace(string(answer)), 0
 			case 3:
-				fmt.Fprintln(w.Render.out)
 				return "", 130
 			case 4:
-				fmt.Fprintln(w.Render.out)
 				return "", 3
 			case 8, 127:
 				if len(answer) > 0 {
@@ -98,7 +98,6 @@ func (w Wizard) inputTerminal(file *os.File) (string, int) {
 			}
 		}
 		if err != nil {
-			fmt.Fprintln(w.Render.out)
 			return "", 3
 		}
 	}

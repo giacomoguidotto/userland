@@ -87,7 +87,7 @@ var registry = []adapter{
 	{name: "realm-homebrew-apps", label: "Realm applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: realmHomebrew, enabled: realmsEnabled},
 	{name: "realm-toolchains", label: "Realm toolchains", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: realmToolchains, enabled: realmsEnabled},
 	{name: "realm-auth", label: "Realm authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: realmAuthentication, enabled: realmAuthenticationEnabled, directApply: true},
-	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions},
+	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions, directApply: true},
 	{name: "file-handlers", label: "File handlers", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: fileHandlers},
 	{name: "power-management", label: "Power management", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: powerManagement},
 	{name: "login-items", label: "Login items", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: loginItems, enabled: machineClosureEnabled},

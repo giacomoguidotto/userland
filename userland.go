@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/giacomoguidotto/userland/internal/doctor"
+	"github.com/giacomoguidotto/userland/internal/nuke"
 	"github.com/giacomoguidotto/userland/internal/planner"
 	"github.com/giacomoguidotto/userland/internal/platform"
 	"github.com/giacomoguidotto/userland/internal/realm"
@@ -60,6 +61,8 @@ func Run(ctx context.Context, invocation Invocation) ExitCode {
 			return usageError(invocation, "sync does not accept arguments")
 		}
 		return runSync(ctx, invocation)
+	case "nuke":
+		return ExitCode(nuke.Run(ctx, invocation.Environ, invocation.Stdin, invocation.Stdout, invocation.Stderr, invocation.Args))
 	case "doctor":
 		if len(invocation.Args) > 2 || len(invocation.Args) == 2 && invocation.Args[1] != "--json" {
 			return usageError(invocation, "doctor accepts only --json")

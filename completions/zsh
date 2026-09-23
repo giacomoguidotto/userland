@@ -5,6 +5,7 @@ _userland() {
   commands=(
     'plan:Preview what would change'
     'sync:Update, apply, and verify declared state'
+    'nuke:Remove everything under the home folder'
     'doctor:Check drift and machine health'
     'realm:Attach or detach private configuration'
     'completions:Print shell completions'

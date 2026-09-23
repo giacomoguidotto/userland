@@ -33,6 +33,7 @@ def without_realm_help(data: bytes) -> bytes:
         b"Attach optional private configuration",
         b"realm remove <name-or-path>",
         b"Detach configuration without deleting its checkout",
+        b"nuke      Remove everything under the home folder",
     )
     result = b"".join(line for line in data.splitlines(keepends=True) if not any(value in line for value in omitted))
     return result.replace(b"\r\n\r\n\r\n   completions", b"\r\n\r\n   completions")

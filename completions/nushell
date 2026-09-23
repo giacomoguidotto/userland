@@ -2,6 +2,7 @@ def "nu-complete userland commands" [] {
     [
         { value: plan, description: "Preview what would change" }
         { value: sync, description: "Update, apply, and verify declared state" }
+        { value: nuke, description: "Remove everything under the home folder" }
         { value: doctor, description: "Check drift and machine health" }
         { value: realm, description: "Attach or detach private configuration" }
         { value: completions, description: "Print shell completions" }
@@ -19,6 +20,11 @@ export extern userland [
 
 export extern "userland doctor" [
     --json
+]
+
+export extern "userland nuke" [
+    --dry-run
+    --yes
 ]
 
 export extern "userland realm add" [

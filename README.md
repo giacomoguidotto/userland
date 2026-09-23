@@ -13,6 +13,8 @@ curl -fsSL https://userland.guidotto.dev | sh
 
 The bootstrap selects the matching release archive, verifies its SHA-256 checksum, recovers unfinished transactions, and then runs the same plan and sync flow every time. It keeps a failed transaction's journal so a rerun can finish or roll it back. Set `USERLAND_PLATFORM=darwin-arm64`, `linux-arm64`, or `linux-x64` only when testing a different target.
 
+`userland nuke --dry-run` previews the complete contents of the configured home folder. `userland nuke` removes every entry under that folder, including `~/dev`, hidden files, credentials, caches, and application data, then leaves the empty home directory in place. It requires an interactive confirmation; use `--yes` only after an external backup has completed. The command does not erase `/Applications`, `/opt/homebrew`, or other paths outside the home folder. Because Userland itself lives under the home folder, bootstrap it again after logging in before running `userland sync` to restore the declared state.
+
 On Termux, install `git`, `curl`, `tar`, `zsh`, and the current `mise` package from Termux first. Termux uses the Linux arm64 archive. Mise and some upstream binary releases still depend on the Termux package set, so project-specific toolchains belong in that project's own `mise.toml`.
 
 ## What the default sync installs
@@ -43,6 +45,8 @@ The personal authentication wizard runs inside the Userland TUI and follows the 
 | --- | --- |
 | `userland plan` | Show declared changes without applying them. |
 | `userland sync` | Apply the plan, run attended authentication steps, and reconcile files. Rerun after any interruption. |
+| `userland nuke --dry-run` | Preview removal of every file under the home folder, including `~/dev`. |
+| `userland nuke` | Remove the home folder contents after an explicit TUI confirmation. Use `--yes` only after an external backup has completed. |
 | `userland doctor` | Report drift without changing the machine. |
 | `userland completions <shell>` | Print Bash, Fish, Nushell, or Zsh completions. |
 

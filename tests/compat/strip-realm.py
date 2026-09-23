@@ -14,6 +14,7 @@ def without_help_additions(data: bytes) -> bytes:
         b"Attach optional private configuration",
         b"realm remove <name-or-path>",
         b"Detach configuration without deleting its checkout",
+        b"nuke      Remove everything under the home folder",
     )
     result = b"".join(line for line in data.splitlines(keepends=True) if not any(value in line for value in omitted))
     while b"\r\n\r\n\r\n" in result:
@@ -24,6 +25,7 @@ def without_help_additions(data: bytes) -> bytes:
 
 
 def without_completion_additions(data: bytes) -> bytes:
+    data = data.replace(b"plan sync nuke doctor realm completions help", b"plan sync doctor completions help")
     data = data.replace(b"plan sync doctor realm completions help", b"plan sync doctor completions help")
     lines = data.splitlines(keepends=True)
     output: list[bytes] = []
@@ -31,6 +33,8 @@ def without_completion_additions(data: bytes) -> bytes:
     skip_nushell = False
     for line in lines:
         stripped = line.strip()
+        if stripped == b"nuke) choices='--dry-run --yes' ;;":
+            continue
         if stripped == b"realm)":
             skip_case = True
             continue
@@ -41,6 +45,9 @@ def without_completion_additions(data: bytes) -> bytes:
         if stripped.startswith(b'export extern "userland realm '):
             skip_nushell = True
             continue
+        if stripped == b'export extern "userland nuke" [':
+            skip_nushell = True
+            continue
         if skip_nushell:
             if stripped == b"]":
                 skip_nushell = False
@@ -49,6 +56,10 @@ def without_completion_additions(data: bytes) -> bytes:
             marker in line
             for marker in (
                 b"'realm:Attach or detach private configuration'",
+                b"'nuke:Remove everything under the home folder'",
+                b'{ value: nuke, description: "Remove everything under the home folder" }',
+                b"-a nuke -d 'Remove everything under the home folder'",
+                b"__fish_seen_subcommand_from nuke",
                 b'{ value: realm, description: "Attach or detach private configuration" }',
                 b"-a realm -d 'Attach or detach private configuration'",
                 b"__fish_seen_subcommand_from realm",

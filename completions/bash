@@ -4,9 +4,10 @@ _userland_completion() {
   command=${COMP_WORDS[1]:-}
   choices=
   if [ "$COMP_CWORD" -eq 1 ]; then
-    choices='plan sync doctor realm completions help'
+    choices='plan sync nuke doctor realm completions help'
   else
     case "$command" in
+      nuke) choices='--dry-run --yes' ;;
       doctor) choices='--json' ;;
       realm)
         if [ "$COMP_CWORD" -eq 2 ]; then

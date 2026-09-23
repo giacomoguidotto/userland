@@ -5,10 +5,12 @@ end
 complete -c userland -f
 complete -c userland -n __userland_needs_command -a plan -d 'Preview what would change'
 complete -c userland -n __userland_needs_command -a sync -d 'Update, apply, and verify declared state'
+complete -c userland -n __userland_needs_command -a nuke -d 'Remove everything under the home folder'
 complete -c userland -n __userland_needs_command -a doctor -d 'Check drift and machine health'
 complete -c userland -n __userland_needs_command -a realm -d 'Attach or detach private configuration'
 complete -c userland -n __userland_needs_command -a completions -d 'Print shell completions'
 complete -c userland -n __userland_needs_command -a help -d 'Show command help'
 complete -c userland -n '__fish_seen_subcommand_from doctor' -l json -d 'Print machine-readable status'
+complete -c userland -n '__fish_seen_subcommand_from nuke' -a '--dry-run --yes'
 complete -c userland -n '__fish_seen_subcommand_from realm; and not __fish_seen_subcommand_from list add remove' -a 'list add remove'
 complete -c userland -n '__fish_seen_subcommand_from completions' -a 'bash fish nushell zsh'

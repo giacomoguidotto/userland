@@ -92,6 +92,12 @@ NewWindowTarget = "PfHm"
 StandardHideWidgets = true
 StageManagerHideWidgets = true
 
+[bootstrap.macos.defaults."com.apple.screensaver"]
+# Start the screensaver after 20 minutes and lock as soon as it starts.
+idleTime = 1200
+askForPassword = true
+askForPasswordDelay = 0
+
 [bootstrap.macos.defaults.NSGlobalDomain]
 InitialKeyRepeat = 20
 KeyRepeat = 2

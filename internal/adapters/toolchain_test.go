@@ -73,6 +73,16 @@ func TestShippedConfigLeavesOnlyRunningAppsInDock(t *testing.T) {
 	if !strings.Contains(config, "[bootstrap.hooks.post-defaults]\nrun = \"killall Dock || true\"") {
 		t.Fatal("shipped macOS defaults config must relaunch Dock after applying changes")
 	}
+	for _, declaration := range []string{
+		"[bootstrap.macos.defaults.\"com.apple.screensaver\"]",
+		"idleTime = 1200",
+		"askForPassword = true",
+		"askForPasswordDelay = 0",
+	} {
+		if !strings.Contains(config, declaration) {
+			t.Fatalf("shipped config is missing screensaver declaration %q", declaration)
+		}
+	}
 }
 
 func TestToolProbeDistinguishesMissingFromBroken(t *testing.T) {

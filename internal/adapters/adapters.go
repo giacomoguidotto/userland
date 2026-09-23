@@ -89,6 +89,7 @@ var registry = []adapter{
 	{name: "realm-auth", label: "Realm authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: realmAuthentication, enabled: realmAuthenticationEnabled, directApply: true},
 	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions},
 	{name: "file-handlers", label: "File handlers", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: fileHandlers},
+	{name: "power-management", label: "Power management", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: powerManagement},
 	{name: "login-items", label: "Login items", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: loginItems, enabled: machineClosureEnabled},
 	{name: "raycast", label: "Raycast configuration", area: plan.AreaApps, action: "configure", attention: plan.Blocked, run: raycast, directApply: true},
 	{name: "shell-cache", label: "Shell cache", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: shellCache},

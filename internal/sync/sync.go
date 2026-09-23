@@ -273,7 +273,7 @@ func clearBytes(value []byte) {
 
 func hasPrivilegedChanges(value *plan.Plan) bool {
 	for _, item := range value.Items() {
-		if strings.HasPrefix(item.Proof, "homebrew:") || strings.HasPrefix(item.Proof, "macos-bloat:") || item.Target == "Homebrew" {
+		if strings.HasPrefix(item.Proof, "homebrew:") || strings.HasPrefix(item.Proof, "macos-bloat:") || strings.HasPrefix(item.Proof, "power-management:") || item.Target == "Homebrew" {
 			return true
 		}
 	}

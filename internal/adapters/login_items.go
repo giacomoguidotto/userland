@@ -85,8 +85,8 @@ func loginItems(c *Context, action Action) int {
 		expected := path + "\t" + hidden
 		if inspect.Code == 0 && strings.TrimSpace(string(inspect.Output)) == expected {
 			c.Log(Current, name+" login item matches")
-			if name == "Wispr Flow" && action == Apply {
-				if code := startWisprFlow(c); code != 0 {
+			if (name == "Wispr Flow" || name == "Shottr") && action == Apply {
+				if code := startLoginApplication(c, name); code != 0 {
 					return code
 				}
 			}
@@ -107,8 +107,8 @@ func loginItems(c *Context, action Action) int {
 			return 1
 		}
 		c.Log(Changed, name+" login item configured")
-		if name == "Wispr Flow" {
-			if code := startWisprFlow(c); code != 0 {
+		if name == "Wispr Flow" || name == "Shottr" {
+			if code := startLoginApplication(c, name); code != 0 {
 				return code
 			}
 		}
@@ -116,12 +116,12 @@ func loginItems(c *Context, action Action) int {
 	return code
 }
 
-func startWisprFlow(c *Context) int {
-	launched := run(c, "open", "-a", "Wispr Flow")
+func startLoginApplication(c *Context, name string) int {
+	launched := run(c, "open", "-g", "-a", name)
 	if launched.Code != 0 {
-		c.Log(Attention, "could not start Wispr Flow now: "+strings.TrimSpace(string(launched.Output)))
+		c.Log(Attention, "could not start "+name+" now: "+strings.TrimSpace(string(launched.Output)))
 		return 2
 	}
-	c.Log(Changed, "started Wispr Flow")
+	c.Log(Changed, "started "+name)
 	return 0
 }

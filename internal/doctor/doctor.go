@@ -196,24 +196,32 @@ func Human(ctx context.Context, environ []string, out io.Writer, embedded bool) 
 	}
 	render.Section("Personal state")
 	result := adapters.RunObserved(ctx, machine, adapters.Doctor, nil, false, func(label string, events []adapters.Event, adapterCode int) {
-		if !render.Rich() {
-			render.Status(tui.StatusInfo, label)
-		}
+
+		var details strings.Builder
 		for _, event := range events {
-			if !render.Rich() {
-				render.Status(eventStatus(event.Level), event.Message)
-			}
+			fmt.Fprintf(&details, "[%s] %s\n", event.Level, event.Message)
 		}
+		appendDoctorLog(runLog, label, []byte(details.String()))
 		if adapterCode == 0 {
-			render.TaskSuccess(label)
-		} else if adapterCode == 1 || adapterCode == 2 {
+			if render.Rich() {
+				render.TaskSuccess(label)
+			} else {
+				render.Status(tui.StatusOK, label)
+			}
+		} else {
 			render.Status(tui.StatusAttention, label)
+			seen := map[string]bool{}
 			for _, event := range events {
-				render.Excerpt(eventStatus(event.Level), event.Message)
+				if event.Level == adapters.Healthy || event.Level == adapters.Current || event.Level == adapters.Changed {
+					continue
+				}
+				summary := diagnosticSummary(label, event.Message)
+				if !seen[summary] {
+					render.Status(tui.StatusInfo, summary)
+					seen[summary] = true
+				}
 			}
 			render.Status(tui.StatusInfo, "Log: "+runLog)
-		} else {
-			render.Status(tui.StatusError, fmt.Sprintf("%s failed (exit %d)", label, adapterCode))
 		}
 	})
 	if result.Code != 0 {
@@ -238,43 +246,52 @@ func miseTask(ctx context.Context, env platform.Environment, render tui.Renderer
 		render.Status(tui.StatusInfo, label)
 	}
 	result := env.RunMise(ctx, nil, args...)
-	file, _ := os.OpenFile(env.State+"/last-run.log", os.O_APPEND|os.O_WRONLY, 0o600)
-	if file != nil {
-		_, _ = fmt.Fprintf(file, "\n## %s\n", label)
-		_, _ = file.Write(result.Output)
-		_ = file.Close()
-	}
+
+	appendDoctorLog(env.State+"/last-run.log", label, result.Output)
 	if result.Code == 0 {
-		if !render.Rich() {
-			for _, line := range outputLines(result.Output) {
-				render.TaskLine(line)
-			}
+		if render.Rich() {
+			render.TaskSuccess(label)
+		} else {
+			render.Status(tui.StatusOK, label)
 		}
-		render.TaskSuccess(label)
 		return true
 	}
 	render.Status(tui.StatusAttention, label)
-	lines := outputLines(result.Output)
-	if render.Rich() {
-		var selected []string
-		for _, line := range lines {
-			lower := strings.ToLower(line)
-			if strings.Contains(lower, "differs") || strings.Contains(lower, "missing") || strings.Contains(lower, "unknown") || strings.Contains(lower, "unavailable") || strings.Contains(lower, "failed") || strings.Contains(lower, "error") {
-				selected = append(selected, line)
-			}
-		}
-		if len(selected) != 0 {
-			lines = selected
-		}
-	}
-	if len(lines) > 6 {
-		lines = lines[len(lines)-6:]
-	}
-	for _, line := range lines {
-		render.TaskLine(line)
-	}
+	render.Status(tui.StatusInfo, diagnosticSummary(label, string(result.Output)))
 	render.Status(tui.StatusInfo, "Log: "+env.State+"/last-run.log")
 	return false
+}
+
+func appendDoctorLog(path, label string, output []byte) {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	_, _ = fmt.Fprintf(file, "\n## %s\n", label)
+	_, _ = file.Write(output)
+}
+
+// Command transcripts belong in the log. These summaries describe the action
+// needed without exposing terminal banners or wide machine-readable tables.
+func diagnosticSummary(label, output string) string {
+	lower := strings.ToLower(output)
+	switch {
+	case strings.Contains(lower, "unprotected private key"), strings.Contains(lower, "life-auth.pub") && strings.Contains(lower, "bad permissions"):
+		return "SSH could not sign with life/auth through 1Password. Unlock 1Password, check that this key is available to its SSH agent, then rerun sync."
+	case strings.Contains(lower, "host key verification failed"):
+		return "GitHub host verification failed. Rerun sync to reconcile the managed host key; details are in the log."
+	case strings.Contains(lower, "signing failed"), strings.Contains(lower, "permission denied (publickey)"):
+		return "GitHub SSH authentication failed. Check life/auth in the 1Password SSH agent and approve terminal access, then rerun sync."
+	case strings.Contains(output, "com.apple.dock") && (strings.Contains(output, "persistent-apps") || strings.Contains(output, "persistent-others")):
+		return "Dock still contains pinned items. Run userland sync to clear them; machine-state details are in the log."
+	case label == "Toolchain", label == "Machine state":
+		return label + " needs attention. Run userland sync; diagnostic details are in the log."
+	}
+	if len(output) <= 240 && !strings.ContainsAny(output, "\r\n\x1b") {
+		return output
+	}
+	return label + " needs attention. Run userland sync; diagnostic details are in the log."
 }
 
 func outputLines(output []byte) []string {

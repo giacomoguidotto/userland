@@ -73,7 +73,7 @@ show_recents = false
 apps = []
 
 [bootstrap.hooks.post-defaults]
-run = "killall Dock || true"
+run = "defaults write com.apple.dock persistent-apps -array && defaults write com.apple.dock persistent-others -array && killall Dock || true"
 
 [bootstrap.macos.defaults."com.apple.finder"]
 AppleShowAllExtensions = true

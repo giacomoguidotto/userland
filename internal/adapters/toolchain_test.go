@@ -73,7 +73,7 @@ func TestShippedConfigLeavesOnlyRunningAppsInDock(t *testing.T) {
 	if !strings.Contains(config, "\"persistent-apps\" = []") {
 		t.Fatal("shipped Dock config must clear the raw persistent application tiles")
 	}
-	if !strings.Contains(config, "[bootstrap.hooks.post-defaults]\nrun = \"killall Dock || true\"") {
+	if !strings.Contains(config, "[bootstrap.hooks.post-defaults]\nrun = \"defaults write com.apple.dock persistent-apps -array") {
 		t.Fatal("shipped macOS defaults config must relaunch Dock after applying changes")
 	}
 	for _, declaration := range []string{

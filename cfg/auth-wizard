@@ -38,7 +38,8 @@ apply_stage() {
       ;;
     github-cli)
       if gh_plaintext; then gh auth logout --hostname github.com </dev/null; fi
-      gh auth login --hostname github.com --git-protocol https --web
+      open 'https://github.com/login/device'
+      GH_PROMPT_DISABLED=1 gh auth login --hostname github.com --git-protocol https --web
       if gh_plaintext; then
         gh auth logout --hostname github.com </dev/null || return 1
         printf '%s\n' 'GitHub CLI could not store the login in the keyring; login was removed.' >&2

@@ -29,7 +29,7 @@ The default repository catalog is empty. Sync does not clone personal repositori
 
 The default realm catalog is empty. If an older Userland state file contains Danfoss or Trellis attachments, the next sync removes their generated `.envrc`, direnv authorization, Git projection, SSH projection, and attachment records. It leaves the checkout directory in place for review instead of deleting source code.
 
-Browser profiles, cookies, saved sessions, browser extensions, and non-XDG application settings are not copied. Sync checks the two declared Helium extension IDs and opens their Chrome Web Store pages for attended installation. Raycast is the one exception: sync opens the tracked encrypted `.rayconfig` and asks for confirmation in the Userland TUI after you enter its passphrase in Raycast. A receipt records that import; subsequent runs launch Raycast with the imported configuration. Its declared login item starts it automatically at login. Ghostty, Git, Mise, Neovim, Atuin, bat, btop, Starship, and the shell use the declared XDG files.
+Browser profiles, cookies, saved sessions, browser extensions, and non-XDG application settings are not copied. Sync checks the two declared Helium extension IDs and opens their Chrome Web Store pages for attended installation. Raycast is the one exception: sync opens the tracked encrypted `.rayconfig` and asks for confirmation in the Userland TUI after you enter its passphrase in Raycast. A receipt records the confirmed import so subsequent runs skip it. Its declared login item starts Raycast automatically at login with that configuration. Ghostty, Git, Mise, Neovim, Atuin, bat, btop, Starship, and the shell use the declared XDG files.
 
 ## Credentials
 

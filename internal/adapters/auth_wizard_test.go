@@ -18,6 +18,7 @@ func TestPersonalWizardChecksCompletionAndResumes(t *testing.T) {
 case "$1" in
  --check-stage) test -f "$HOME/$2" ;;
  --apply-stage)
+  if [ -t 0 ] || IFS= read -r unexpected; then exit 7; fi
   printf 'Open browser for %s\n' "$2"
   touch "$HOME/$2" ;;
 esac

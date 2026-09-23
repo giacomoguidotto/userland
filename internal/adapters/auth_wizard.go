@@ -2,7 +2,6 @@ package adapters
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,20 +34,10 @@ func personalAuthWizard(c *Context, script string) int {
 			continue
 		}
 		w.Info(stage.instruction)
-		// Feed only the browser-open acknowledgement to gh. All human input belongs
-		// to the TUI, and credentials are entered in the browser or the native app.
+		// Browser authentication owns no terminal input. All prompts remain in
+		// Userland; account credentials are entered in the browser or native app.
 		output := &tui.CommandOutput{Wizard: w}
-		var input io.Reader
-		if stage.browserLogin {
-			// Keep subprocess line buffering away from the TUI's input reader. On a
-			// real terminal the browser login gets its own tty; tests and piped runs
-			// remain non-blocking.
-			if terminal, err := os.Open("/dev/tty"); err == nil {
-				defer terminal.Close()
-				input = terminal
-			}
-		}
-		result := runWithObserved(c, c.Env.List, input, output, script, "--apply-stage", stage.id)
+		result := runWithObserved(c, c.Env.List, nil, output, script, "--apply-stage", stage.id)
 		output.Flush()
 		if c.Context.Err() != nil {
 			return 130

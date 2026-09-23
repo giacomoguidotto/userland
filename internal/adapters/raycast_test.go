@@ -11,7 +11,7 @@ import (
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
-func TestRaycastRequiresConfirmationThenStartsWithoutReimporting(t *testing.T) {
+func TestRaycastRequiresConfirmationAndSkipsCompletedImport(t *testing.T) {
 	base := t.TempDir()
 	for _, dir := range []string{"cfg", "state", "Applications/Raycast.app", "bin"} {
 		if err := os.MkdirAll(filepath.Join(base, dir), 0700); err != nil {

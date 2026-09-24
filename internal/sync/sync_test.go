@@ -79,6 +79,44 @@ printf '%s\n' 'mise brew:yazi ✓ 26.8.15'
 	}
 }
 
+func TestClearDockWritesAndVerifiesBothPersistentArrays(t *testing.T) {
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	defaults := `#!/bin/sh
+case "$1 $2 $3" in
+  "write com.apple.dock persistent-apps") printf '%s\n' "apps" >> "$USERLAND_DOCK_CALLS" ;;
+  "write com.apple.dock persistent-others") printf '%s\n' "others" >> "$USERLAND_DOCK_CALLS" ;;
+  "read com.apple.dock persistent-apps"|"read com.apple.dock persistent-others") printf '()\n' ;;
+  *) exit 1 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "defaults"), []byte(defaults), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "killall"), []byte("#!/bin/sh\nprintf '%s\\n' dock >>\"$USERLAND_DOCK_CALLS\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	calls := filepath.Join(root, "calls")
+	environ := []string{"PATH=" + bin, "USERLAND_UNAME=Darwin", "USERLAND_DOCK_CALLS=" + calls}
+	env := platform.NewEnvironment(environ)
+	var output bytes.Buffer
+	render := tui.New(&output, environ)
+	log := filepath.Join(root, "last-run.log")
+	if code := clearDock(context.Background(), env, render, log); code != 0 {
+		t.Fatalf("clearDock returned %d: %s", code, output.String())
+	}
+	contents, err := os.ReadFile(calls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(contents); got != "apps\nothers\ndock\n" {
+		t.Fatalf("unexpected Dock commands: %q", got)
+	}
+}
+
 func TestMiseToolTaskHidesInstallerOutputAndReportsEachTool(t *testing.T) {
 	root := t.TempDir()
 	state := filepath.Join(root, "state")

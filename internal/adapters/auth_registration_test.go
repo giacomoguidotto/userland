@@ -33,11 +33,12 @@ func TestRegisteredSSHKeyDoesNotOpenRegistration(t *testing.T) {
 		t.Fatal(err)
 	}
 	scripts := map[string]string{
-		"ssh":    "echo 'Permission denied (publickey).' >&2; exit 255",
-		"curl":   `printf '%s\n' '[{"key":"ssh-ed25519 AAAAtest github-comment"}]'`,
-		"open":   `printf '%s\n' "$*" >> "$HOME/opened"`,
-		"pbcopy": `cat >/dev/null; touch "$HOME/copied"`,
-		"gh":     "exit 0", "codex": "exit 0",
+		"ssh":     "echo 'Permission denied (publickey).' >&2; exit 255",
+		"ssh-add": `case "$1" in -L) printf '%s\n' 'ssh-ed25519 AAAAtest agent-comment' ;; -T) exit 0 ;; *) exit 2 ;; esac`,
+		"curl":    `printf '%s\n' '[{"key":"ssh-ed25519 AAAAtest github-comment"}]'`,
+		"open":    `printf '%s\n' "$*" >> "$HOME/opened"`,
+		"pbcopy":  `cat >/dev/null; touch "$HOME/copied"`,
+		"gh":      "exit 0", "codex": "exit 0",
 	}
 	for name, source := range scripts {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+source+"\n"), 0700); err != nil {

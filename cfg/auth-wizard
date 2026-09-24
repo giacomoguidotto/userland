@@ -17,12 +17,78 @@ agent_socket() {
 agent_ready() {
   agent_socket >/dev/null
 }
+key_file() {
+  [[ -r "$HOME/.ssh/life-auth.pub" ]] || {
+    printf '%s\n' 'Expected public key ~/.ssh/life-auth.pub is missing.'
+    return 1
+  }
+  awk 'NF >= 2 { print; found=1; exit } END { if (!found) exit 1 }' "$HOME/.ssh/life-auth.pub"
+}
+key_fingerprint() {
+  ssh-keygen -lf "$HOME/.ssh/life-auth.pub" -E sha256 2>/dev/null | awk '{print $2}'
+}
+agent_has_key() {
+  local socket listed expected
+  socket=$(agent_socket) || { printf '%s\n' '1Password SSH agent socket is unavailable.'; return 2; }
+  expected=$(key_file) || return 2
+  listed=$(SSH_AUTH_SOCK="$socket" ssh-add -L 2>&1) || {
+    local code=$?
+    printf '%s\n' "$listed"
+    return "$((code == 2 ? 2 : 1))"
+  }
+  if printf '%s\n' "$listed" | awk 'NF >= 2 { print $1 " " $2 }' | grep -Fqx -- "$(printf '%s\n' "$expected" | awk '{print $1 " " $2}')"; then
+    return 0
+  fi
+  printf 'Expected key fingerprint: %s\n' "$(key_fingerprint)"
+  printf '%s\n' 'The 1Password agent is reachable, but it is not offering life/auth.'
+  return 1
+}
+agent_can_sign() {
+  local socket result code
+  socket=$(agent_socket) || return 2
+  result=$(SSH_AUTH_SOCK="$socket" ssh-add -T "$HOME/.ssh/life-auth.pub" 2>&1) || {
+    code=$?
+    [[ -n "$result" ]] && printf '%s\n' "$result"
+    return "$((code == 2 ? 2 : 1))"
+  }
+  return 0
+}
 ssh_ready() {
-  local socket output
+  local socket output key_status sign_status
   socket=$(agent_socket) || { printf '%s\n' '1Password SSH agent socket is unavailable.'; return 1; }
+  if agent_has_key; then key_status=0; else key_status=$?; fi
+  (( key_status == 0 )) || return 1
+  if agent_can_sign; then sign_status=0; else sign_status=$?; fi
+  (( sign_status == 0 )) || {
+    printf '%s\n' 'The expected key is listed, but the agent refused a signing test.'
+    return 1
+  }
   output=$(SSH_AUTH_SOCK="$socket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -T life-github 2>&1) || true
   if [[ "$output" == *"Hi giacomoguidotto! You've successfully authenticated"* ]]; then return 0; fi
   printf '%s\n' "$output"
+  return 1
+}
+diagnose_ssh() {
+  local socket expected key_status sign_status output
+  printf '%s\n' 'GitHub SSH diagnostic (no private key or secret output)'
+  socket=$(agent_socket) || { printf '%s\n' 'FAIL agent socket: unavailable'; return 1; }
+  printf '%s\n' 'PASS agent socket: available'
+  expected=$(key_file) || { printf '%s\n' 'FAIL expected public key: missing or invalid'; return 1; }
+  printf 'Expected key fingerprint: %s\n' "$(key_fingerprint)"
+  if agent_has_key >/dev/null 2>&1; then key_status=0; else key_status=$?; fi
+  if (( key_status == 0 )); then printf '%s\n' 'PASS agent inventory: life/auth is offered'; else printf '%s\n' 'FAIL agent inventory: life/auth is not offered'; fi
+  if agent_can_sign >/dev/null 2>&1; then sign_status=0; else sign_status=$?; fi
+  if (( sign_status == 0 )); then printf '%s\n' 'PASS agent signing: life/auth can sign'; else printf '%s\n' 'FAIL agent signing: life/auth was refused'; fi
+  output=$(SSH_AUTH_SOCK="$socket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -T life-github 2>&1) || true
+  if [[ "$output" == *"Hi giacomoguidotto! You've successfully authenticated"* ]]; then
+    printf '%s\n' 'PASS GitHub: authenticated as giacomoguidotto'
+  else
+    printf '%s\n' 'FAIL GitHub: did not accept life/auth'
+    [[ -n "$output" ]] && printf '%s\n' "$output"
+  fi
+  if (( key_status == 0 && sign_status == 0 )) && [[ "$output" == *"Hi giacomoguidotto! You've successfully authenticated"* ]]; then
+    return 0
+  fi
   return 1
 }
 # Registration is public state and does not require a GitHub CLI login. A
@@ -87,6 +153,7 @@ apply_stage() {
 
 case "${1:-}" in
   --check-ssh-registration) ssh_registration ;;
+  --diagnose-ssh) diagnose_ssh ;;
   --check-stage) check_stage "${2:-}" ;;
   --apply-stage) apply_stage "${2:-}" ;;
   --check)

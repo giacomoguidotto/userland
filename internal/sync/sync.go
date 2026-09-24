@@ -180,6 +180,9 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		if code := miseTask(ctx, env, render, runLog, taskStdin, "Apply macOS preferences", nil, "bootstrap", "macos", "defaults", "apply", "--yes"); code != 0 {
 			return code
 		}
+		if code := clearDock(ctx, env, render, runLog); code != 0 {
+			return code
+		}
 	}
 	if !env.Bool("USERLAND_TESTING") {
 		render.Section("Apply managed files")
@@ -267,6 +270,42 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	}
 	render.Summary(tui.StatusAttention, "Done with steps that need attention.")
 	return 2
+}
+
+// Mise versions have changed how the Dock app declaration is projected into
+// defaults. Apply the two raw arrays explicitly and verify the write, so a
+// stale pinned Dock cannot be mistaken for a successful sync.
+func clearDock(ctx context.Context, env platform.Environment, render tui.Renderer, runLog string) int {
+	for _, key := range []string{"persistent-apps", "persistent-others"} {
+		result := platform.Run(ctx, env.List, nil, "defaults", "write", "com.apple.dock", key, "-array")
+		appendLog(runLog, "Clear Dock "+key, result.Output)
+		if result.Code != 0 {
+			render.Status(tui.StatusError, "Dock "+key+" failed")
+			render.Status(tui.StatusInfo, "Log: "+runLog)
+			return result.Code
+		}
+		check := platform.Run(ctx, env.List, nil, "defaults", "read", "com.apple.dock", key)
+		value := strings.TrimSpace(string(check.Output))
+		if check.Code == 0 && value != "" && value != "()" {
+			appendLog(runLog, "Verify Dock "+key, check.Output)
+			render.Status(tui.StatusError, "Dock "+key+" was not cleared")
+			render.Status(tui.StatusInfo, "Log: "+runLog)
+			return 1
+		}
+	}
+	result := platform.Run(ctx, env.List, nil, "killall", "Dock")
+	appendLog(runLog, "Restart Dock", result.Output)
+	if result.Code != 0 {
+		// killall returns 1 when Dock is already restarting or not running. The
+		// defaults writes above are still valid, so do not turn that into drift.
+		if !strings.Contains(strings.ToLower(string(result.Output)), "no matching processes") {
+			render.Status(tui.StatusError, "Dock restart failed")
+			render.Status(tui.StatusInfo, "Log: "+runLog)
+			return result.Code
+		}
+	}
+	render.Status(tui.StatusOK, "Dock pinned items cleared")
+	return 0
 }
 
 func clearBytes(value []byte) {

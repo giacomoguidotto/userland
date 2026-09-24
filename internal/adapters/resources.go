@@ -70,6 +70,8 @@ func personalRepositories(c *Context, action Action) int {
 	return 0
 }
 
+type missingBrowserExtension struct{ browser, id, name, root string }
+
 func browserExtensions(c *Context, action Action) int {
 	if !c.Env.IsMacOS() {
 		return 0
@@ -78,8 +80,7 @@ func browserExtensions(c *Context, action Action) int {
 	if err != nil {
 		return 1
 	}
-	type missingExtension struct{ browser, id, name, root string }
-	var missing []missingExtension
+	var missing []missingBrowserExtension
 	for _, row := range rows {
 		root := ""
 		switch row[0] {
@@ -94,7 +95,7 @@ func browserExtensions(c *Context, action Action) int {
 			if action != Apply {
 				c.Log(Manual, row[2]+" is missing from "+row[0])
 			}
-			missing = append(missing, missingExtension{row[0], row[1], row[2], root})
+			missing = append(missing, missingBrowserExtension{row[0], row[1], row[2], root})
 		}
 	}
 	if len(missing) == 0 {
@@ -106,6 +107,10 @@ func browserExtensions(c *Context, action Action) int {
 		return 0
 	}
 	if action != Apply {
+		return 2
+	}
+	if hasMissingBrowser(missing, "helium") && !applicationInstalled(c, "Helium.app") {
+		c.Log(Manual, "Helium is not installed; browser extension setup is waiting for Homebrew to install it")
 		return 2
 	}
 	if !c.Terminal {
@@ -139,6 +144,19 @@ func browserExtensions(c *Context, action Action) int {
 		return 2
 	}
 	return 0
+}
+
+func hasMissingBrowser(missing []missingBrowserExtension, browser string) bool {
+	for _, extension := range missing {
+		if extension.browser == browser {
+			return true
+		}
+	}
+	return false
+}
+
+func applicationInstalled(c *Context, name string) bool {
+	return exists(filepath.Join("/Applications", name)) || exists(homePath(c, "Applications", name))
 }
 
 func browserExtensionInstalled(root, id string) bool {

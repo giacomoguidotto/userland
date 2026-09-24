@@ -11,7 +11,7 @@ locked = true
 node = "24.19.0"
 op = "2.39.0"
 "npm:@openai/codex" = "0.148.0"
-"aqua:anthropics/claude-code" = "2.1.278"
+"aqua:anthropics/claude-code" = "2.1.280"
 "aqua:atuinsh/atuin" = "18.22.0"
 "aqua:aristocratos/btop" = { version = "1.4.7", os = ["linux"] }
 "aqua:sharkdp/bat" = "0.26.1"

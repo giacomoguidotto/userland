@@ -189,7 +189,7 @@ func t3Authentication(c *Context, action Action) int {
 			continue
 		}
 		w.Info("Use the browser account intended for " + a.label() + ". Switch accounts in the browser if needed. This login is saved only for this T3 profile.")
-		yes, code := w.ConfirmDone("Sign in to " + a.label() + " now?")
+		yes, code := w.ConfirmDoneYes("Sign in to " + a.label() + " now?")
 		if code != 0 {
 			return code
 		}

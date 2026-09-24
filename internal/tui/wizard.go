@@ -113,6 +113,11 @@ func (w Wizard) ConfirmDone(prompt string) (bool, int) {
 	return code == 0 && (strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")), code
 }
 
+func (w Wizard) ConfirmDoneYes(prompt string) (bool, int) {
+	answer, code := w.InputLine(prompt + " [Y/n]")
+	return code == 0 && (answer == "" || strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes")), code
+}
+
 // CommandOutput presents browser-login instructions, including device codes,
 // inside the TUI. It is not a diagnostic log and must not be used for secrets.
 type CommandOutput struct {

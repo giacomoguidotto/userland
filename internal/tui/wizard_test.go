@@ -34,6 +34,20 @@ func TestWizardStopsOnEOFOrCtrlC(t *testing.T) {
 	}
 }
 
+func TestWizardConfirmDoneYesDefaultsToYes(t *testing.T) {
+	var output bytes.Buffer
+	w := Wizard{Render: New(&output, []string{"USERLAND_UI_MODE=plain"}), Input: strings.NewReader("\nn\n")}
+	if confirmed, code := w.ConfirmDoneYes("Sign in?"); !confirmed || code != 0 {
+		t.Fatalf("empty answer should confirm: %v %d", confirmed, code)
+	}
+	if confirmed, code := w.ConfirmDoneYes("Sign in?"); confirmed || code != 0 {
+		t.Fatalf("n should decline: %v %d", confirmed, code)
+	}
+	if !strings.Contains(output.String(), "Sign in? [Y/n]: ") {
+		t.Fatalf("missing default-yes prompt: %q", output.String())
+	}
+}
+
 func TestWizardCommandOutputRendersDeviceInstructionsWithoutANSI(t *testing.T) {
 	var output bytes.Buffer
 	o := CommandOutput{Wizard: Wizard{Render: New(&output, []string{"USERLAND_UI_MODE=plain"})}}

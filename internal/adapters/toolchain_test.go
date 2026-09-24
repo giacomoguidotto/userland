@@ -42,7 +42,7 @@ func TestShippedConfigUsesNativeClaudeCodeDistribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(contents), `"aqua:anthropics/claude-code" = "2.1.278"`) {
+	if !strings.Contains(string(contents), `"aqua:anthropics/claude-code" = "2.1.280"`) {
 		t.Fatal("Claude Code must use the native Aqua distribution")
 	}
 }

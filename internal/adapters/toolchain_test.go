@@ -106,8 +106,8 @@ func TestShippedConfigManagesOnePasswordAgentPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(policy), `vault = "Personal"`) {
-		t.Fatal("shipped 1Password agent policy must enable the Personal vault")
+	if !strings.Contains(string(policy), `item = "life/auth"`) {
+		t.Fatal("shipped 1Password agent policy must select life/auth")
 	}
 }
 

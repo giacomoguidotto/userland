@@ -1,4 +1,4 @@
 # Userland-managed 1Password SSH agent policy.
-# Keep the vault name in the declaration, not the key material.
+# Select the exact GitHub authentication key without depending on its vault name.
 [[ssh-keys]]
-vault = "Personal"
+item = "life/auth"

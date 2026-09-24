@@ -24,8 +24,8 @@ agent_config_ready() {
     printf '1Password SSH agent config is missing: %s\n' "$path"
     return 1
   }
-  grep -Eq '^[[:space:]]*vault[[:space:]]*=[[:space:]]*"Personal"[[:space:]]*$' "$path" || {
-    printf '1Password SSH agent config does not enable the Personal vault: %s\n' "$path"
+  grep -Eq '^[[:space:]]*item[[:space:]]*=[[:space:]]*"life/auth"[[:space:]]*$' "$path" || {
+    printf '1Password SSH agent config does not select life/auth: %s\n' "$path"
     return 1
   }
 }
@@ -87,7 +87,7 @@ diagnose_ssh() {
   local socket expected key_status sign_status output
   printf '%s\n' 'GitHub SSH diagnostic (no private key or secret output)'
   if agent_config_ready >/dev/null 2>&1; then
-    printf '%s\n' 'PASS agent config: Personal vault enabled'
+    printf '%s\n' 'PASS agent config: life/auth selected'
   else
     printf 'FAIL agent config: %s\n' "$(agent_config_ready 2>&1)"
   fi

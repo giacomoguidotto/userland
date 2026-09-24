@@ -92,6 +92,7 @@ var registry = []adapter{
 	{name: "power-management", label: "Power management", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: powerManagement},
 	{name: "login-items", label: "Login items", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: loginItems, enabled: machineClosureEnabled},
 	{name: "raycast", label: "Raycast configuration", area: plan.AreaApps, action: "configure", attention: plan.Blocked, run: raycast, directApply: true},
+	{name: "t3-accounts", label: "T3 provider accounts", area: plan.AreaApps, action: "configure", attention: plan.Automatic, run: t3Accounts, directApply: true},
 	{name: "shell-cache", label: "Shell cache", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: shellCache},
 	{name: "manual-apps", label: "Manual applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: manualApps},
 	{name: "repository-snapshot", label: "Repository snapshot", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: repositorySnapshot},

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "defaultModelSelection": {
+    "instanceId": "codex",
+    "model": "gpt-6-astra",
+    "options": [{ "id": "reasoningEffort", "value": "high" }, { "id": "serviceTier", "value": "default" }]
+  },
+  "textGenerationModelSelection": {
+    "instanceId": "claude_beta",
+    "model": "claude-fable-5-1",
+    "options": [{ "id": "effort", "value": "low" }, { "id": "contextWindow", "value": "200k" }]
+  },
+  "providerInstances": {
+    "claudeAgent": { "driver": "claudeAgent", "displayName": "alpha", "accentColor": "#2563eb", "enabled": true, "config": { "autoCompactWindow": "", "binaryPath": "claude", "customModels": [], "homePath": "~/.claude-t3/alpha", "launchArgs": "" } },
+    "codex": { "driver": "codex", "displayName": "alpha", "accentColor": "#2563eb", "enabled": true, "config": { "binaryPath": "codex", "customModels": [], "homePath": "~/.codex", "shadowHomePath": "~/.codex-t3/alpha" } },
+    "codex_beta": { "driver": "codex", "displayName": "beta", "accentColor": "#16a34a", "enabled": true, "config": { "binaryPath": "codex", "customModels": [], "homePath": "~/.codex", "shadowHomePath": "~/.codex-t3/beta" } },
+    "codex_gamma": { "driver": "codex", "displayName": "gamma", "accentColor": "#ea580c", "enabled": true, "config": { "binaryPath": "codex", "customModels": [], "homePath": "~/.codex", "shadowHomePath": "~/.codex-t3/gamma" } },
+    "codex_delta": { "driver": "codex", "displayName": "delta", "accentColor": "#7c3aed", "enabled": true, "config": { "binaryPath": "codex", "customModels": [], "homePath": "~/.codex", "shadowHomePath": "~/.codex-t3/delta" } },
+    "claude_beta": { "driver": "claudeAgent", "displayName": "beta", "accentColor": "#16a34a", "enabled": true, "config": { "autoCompactWindow": "", "binaryPath": "claude", "customModels": [], "homePath": "~/.claude-t3/beta", "launchArgs": "" } }
+  }
+}

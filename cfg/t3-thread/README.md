@@ -18,6 +18,8 @@ The executable is `~/.local/bin/t3-thread`. Releases are under `~/.local/share/t
 
 Mac configuration: `~/.config/t3-thread/config.json` points to the versioned Mac profile. VM configuration points to the installed VM profile. The Mac profile supports `mac` locally and `vm` through `ssh trellis-remote-dev`. The VM profile supports its local `vm` server. VM-to-Mac access requires an independently configured reachable SSH route; none is opened implicitly.
 
+The credential-free provider account declaration lives in `profiles/accounts.json`. Userland merges it into T3's settings without copying authentication state. It creates the named Codex and Claude instances and leaves each account's login for the attended authentication step.
+
 ## Operation safety
 
 Use `--server` explicitly. Discovery checks the expected T3 environment UUID before obtaining credentials or dispatching commands. The controller uses an official short-lived T3 CLI auth session, revokes it in `finally`, and uses loopback on the owning machine. SSH forwards a JSON request on stdin; credentials do not cross machines or enter the versioned profiles.

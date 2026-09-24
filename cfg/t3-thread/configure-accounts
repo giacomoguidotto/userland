@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+home=${HOME:?}
+settings=${T3_SETTINGS_PATH:-$home/.t3/userdata/settings.json}
+declaration=${USERLAND_T3_ACCOUNTS_DECLARATION:-$(cd "$(dirname "$0")" && pwd)/profiles/accounts.json}
+[[ -f "$declaration" ]] || { printf '%s\n' "T3 account declaration is missing: $declaration" >&2; exit 1; }
+[[ -f "$settings" ]] || { printf '%s\n' "T3 settings are not initialized yet: $settings" >&2; exit 2; }
+command -v jq >/dev/null 2>&1 || { printf '%s\n' 'jq is required to merge T3 account settings.' >&2; exit 1; }
+
+if [[ "${1:-}" == "--check" ]]; then
+  jq --slurpfile declaration "$declaration" -e '
+    ($declaration[0]) as $d |
+    ($d.providerInstances | to_entries | map({key: .key, value: {displayName: .value.displayName, driver: .value.driver, enabled: .value.enabled}}) | from_entries) as $wanted |
+    ((.providerInstances // {}) | with_entries(.value |= {displayName, driver, enabled})) == $wanted
+  ' "$settings" >/dev/null
+  printf '%s\n' 'T3 provider accounts are configured; authentication was not checked.'
+  exit 0
+fi
+
+tmp=$(mktemp "${settings}.accounts.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+jq --arg home "$home" --slurpfile declaration "$declaration" '
+  ($declaration[0]) as $d |
+  .defaultModelSelection = $d.defaultModelSelection |
+  .textGenerationModelSelection = $d.textGenerationModelSelection |
+  .providerInstances = ((.providerInstances // {}) * $d.providerInstances) |
+  .providerInstances |= with_entries(
+    .value.config.homePath |= gsub("^~/"; ($home + "/")) |
+    .value.config.shadowHomePath? |= if . then gsub("^~/"; ($home + "/")) else . end
+  )
+' "$settings" >"$tmp"
+chmod 600 "$tmp"
+mv "$tmp" "$settings"
+printf '%s\n' 'T3 provider accounts synchronized; authentication was not changed.'

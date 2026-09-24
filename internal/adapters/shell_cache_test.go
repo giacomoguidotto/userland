@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/giacomoguidotto/userland/internal/plan"
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
@@ -80,5 +81,47 @@ func TestShippedShellScopesMiseToolsAndGcloudPrompt(t *testing.T) {
 	}
 	if !strings.Contains(string(starship), "[gcloud]\ndetect_env_vars = ['CLOUDSDK_ROOT_DIR']") {
 		t.Fatalf("Starship gcloud module is not scoped to the realm tool environment: %q", starship)
+	}
+}
+
+// An existing cache must not prevent sync from installing a newly pinned tool.
+func TestPlanExistingShellCacheBeforeToolUpgrade(t *testing.T) {
+	base := t.TempDir()
+	cache := filepath.Join(base, "cache")
+	if err := os.MkdirAll(filepath.Join(cache, "zsh"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"init.zsh", "mise-env.zsh"} {
+		if err := os.WriteFile(filepath.Join(cache, "zsh", name), []byte("old cache\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mise := filepath.Join(base, "mise")
+	if err := os.WriteFile(mise, []byte("#!/bin/sh\necho 'mise ERROR Tool not installed: aqua:anthropics/claude-code@2.1.280' >&2\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	env := platform.NewEnvironment([]string{"USERLAND_ROOT=" + base, "USERLAND_CACHE_DIR=" + cache, "USERLAND_MISE=" + mise})
+	original := registry
+	t.Cleanup(func() { registry = original })
+	registry = []adapter{{name: "shell-cache", label: "Shell cache", area: plan.AreaFS, action: "update", attention: plan.Blocked, run: shellCache}}
+	value := plan.New()
+	result := Run(context.Background(), env, Plan, nil, false, value)
+	if result.Code != 0 {
+		t.Fatalf("personal state inspection failed (exit %d): %#v", result.Code, result.Events)
+	}
+	if len(value.Items()) != 1 || value.Items()[0].Handling != plan.Automatic {
+		t.Fatalf("expected cache rebuild in plan: %#v", value.Items())
+	}
+	for _, name := range []string{"init.zsh", "mise-env.zsh"} {
+		data, err := os.ReadFile(filepath.Join(cache, "zsh", name))
+		if err != nil || string(data) != "old cache\n" {
+			t.Fatalf("planning changed cache: %q %v", data, err)
+		}
+	}
+	for _, action := range []Action{Doctor, Apply} {
+		c := &Context{Context: context.Background(), Env: env}
+		if code := shellCache(c, action); code == 0 {
+			t.Fatalf("%v concealed unavailable tool environment", action)
+		}
 	}
 }

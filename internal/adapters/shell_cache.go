@@ -35,6 +35,13 @@ func shellCache(c *Context, action Action) int {
 	}
 	environment, err := globalMiseEnvironment(c)
 	if err != nil {
+		// Planning runs before Toolchain health installs newly pinned tools. A
+		// missing tool therefore makes the cache look unavailable even though
+		// the apply phase can generate it after installation.
+		if action == Plan {
+			c.Log(Change, "static Zsh initialization cache will be generated after pinned tools are installed")
+			return 0
+		}
 		c.Log(Attention, "static global tool environment could not be generated: "+err.Error())
 		if action == Doctor {
 			return 2

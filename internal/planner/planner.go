@@ -128,6 +128,14 @@ func execute(ctx context.Context, environ []string, out io.Writer, standalone bo
 	if err := r.nativeTask("Inspecting personal state", func() ([]byte, error) {
 		result := adapters.Run(ctx, r.machine, adapters.Plan, nil, false, value)
 		if result.Code != 0 {
+			details := make([]string, 0, len(result.Events))
+			for _, event := range result.Events {
+				details = append(details, string(event.Level)+": "+event.Message)
+			}
+			detail := strings.Join(details, "\n")
+			if detail != "" {
+				return []byte(detail + "\n"), fmt.Errorf("personal state inspection failed (exit %d): %s", result.Code, strings.ReplaceAll(detail, "\n", "; "))
+			}
 			return nil, fmt.Errorf("personal state inspection failed (exit %d)", result.Code)
 		}
 		return nil, nil

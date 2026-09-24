@@ -89,7 +89,7 @@ func TestClearDockWritesAndVerifiesBothPersistentArrays(t *testing.T) {
 case "$1 $2 $3" in
   "write com.apple.dock persistent-apps") printf '%s\n' "apps" >> "$USERLAND_DOCK_CALLS" ;;
   "write com.apple.dock persistent-others") printf '%s\n' "others" >> "$USERLAND_DOCK_CALLS" ;;
-  "read com.apple.dock persistent-apps"|"read com.apple.dock persistent-others") printf '()\n' ;;
+  "read com.apple.dock persistent-apps"|"read com.apple.dock persistent-others") printf '(\n)\n' ;;
   *) exit 1 ;;
 esac
 `

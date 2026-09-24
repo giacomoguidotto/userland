@@ -285,7 +285,12 @@ func clearDock(ctx context.Context, env platform.Environment, render tui.Rendere
 			return result.Code
 		}
 		check := platform.Run(ctx, env.List, nil, "defaults", "read", "com.apple.dock", key)
-		value := strings.TrimSpace(string(check.Output))
+		value := strings.Map(func(r rune) rune {
+			if r == ' ' || r == '\t' || r == '\r' || r == '\n' {
+				return -1
+			}
+			return r
+		}, string(check.Output))
 		if check.Code == 0 && value != "" && value != "()" {
 			appendLog(runLog, "Verify Dock "+key, check.Output)
 			render.Status(tui.StatusError, "Dock "+key+" was not cleared")

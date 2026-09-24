@@ -159,7 +159,12 @@ case "${1:-}" in
   --check)
     missing=()
     for stage in agent ssh github-cli codex; do
-      check_stage "$stage" || missing+=("$stage")
+      if ! check_stage "$stage"; then
+        missing+=("$stage")
+        if [[ "$stage" == ssh ]]; then
+          diagnose_ssh || true
+        fi
+      fi
     done
     if (( ${#missing[@]} )); then
       printf 'personal authentication needs setup: %s\n' "${missing[*]}"

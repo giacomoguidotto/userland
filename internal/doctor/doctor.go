@@ -285,6 +285,10 @@ func diagnosticSummary(label, output string) string {
 		return "GitHub SSH authentication failed. Check life/auth in the 1Password SSH agent and approve terminal access, then rerun sync."
 	case strings.Contains(output, "com.apple.dock") && (strings.Contains(output, "persistent-apps") || strings.Contains(output, "persistent-others")):
 		return "Dock still contains pinned items. Run userland sync to clear them; machine-state details are in the log."
+	case strings.Contains(lower, "agent has no identities"), strings.Contains(lower, "fail agent inventory"):
+		return "1Password SSH agent is available but has no identities. Enable life/auth in 1Password, then rerun userland sync."
+	case strings.Contains(lower, "fail agent signing"):
+		return "1Password offered life/auth but refused signing. Approve the terminal request in 1Password, then rerun userland sync."
 	case label == "Toolchain", label == "Machine state":
 		return label + " needs attention. Run userland sync; diagnostic details are in the log."
 	}

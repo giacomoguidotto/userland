@@ -1,6 +1,16 @@
 [user]
 	name = Giacomo Guidotto
 	email = giacomo.guidotto@gmail.com
+	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINoa9KM7X6vxq/mXeA86sKpOGeszjDOJi8qIhVOVcmxS
+
+[gpg]
+	format = ssh
+
+[gpg "ssh"]
+	program = ~/.local/bin/userland-git-sign
+
+[commit]
+	gpgsign = true
 
 [init]
 	defaultBranch = main

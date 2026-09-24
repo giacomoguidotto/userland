@@ -2,3 +2,6 @@
 # Select the exact GitHub authentication key without depending on its vault name.
 [[ssh-keys]]
 item = "life/auth"
+
+[[ssh-keys]]
+item = "life/sign"

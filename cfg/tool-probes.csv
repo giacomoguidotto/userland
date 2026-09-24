@@ -2,6 +2,7 @@ mise_tool,command,version_probe_arguments,platforms
 node,node,--version,
 op,op,--version,
 npm:@openai/codex,codex,--version,
+npm:@anthropic-ai/claude-code,claude,--version,
 aqua:atuinsh/atuin,atuin,--version,
 aqua:aristocratos/btop,btop,--version,linux
 aqua:sharkdp/bat,bat,--version,

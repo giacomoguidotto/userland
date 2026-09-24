@@ -1,0 +1,10 @@
+#!/bin/sh
+# Git passes only the public signing key. 1Password keeps the private key.
+if [ -x /Applications/1Password.app/Contents/MacOS/op-ssh-sign ]; then
+  exec /Applications/1Password.app/Contents/MacOS/op-ssh-sign "$@"
+fi
+if command -v op-ssh-sign >/dev/null 2>&1; then
+  exec op-ssh-sign "$@"
+fi
+printf '%s\n' '1Password op-ssh-sign is unavailable; open 1Password and enable Git commit signing.' >&2
+exit 127

@@ -21,6 +21,10 @@ var personalAuthStages = []authenticationStage{
 	{id: "codex", title: "Codex CLI", instruction: "Complete the browser login, then return here. Credentials must be stored in the system keyring.", browserLogin: true},
 }
 
+func sshFailureNeedsManualAgentAction(detail string) bool {
+	return strings.Contains(detail, "FAIL agent config") || strings.Contains(detail, "FAIL agent inventory") || strings.Contains(detail, "FAIL agent signing")
+}
+
 func personalAuthWizard(c *Context, script string) int {
 	w := tui.Wizard{Render: tui.New(c.Output, c.Env.List), Input: c.Stdin}
 	total := len(personalAuthStages) + 1
@@ -47,11 +51,12 @@ func personalAuthWizard(c *Context, script string) int {
 					output := &tui.CommandOutput{Wizard: w}
 					_, _ = output.Write(diagnostic.Output)
 					output.Flush()
-					if strings.Contains(detail, "FAIL agent inventory") || strings.Contains(detail, "FAIL agent signing") {
-						w.Info("Check that life/auth is available in the 1Password SSH agent and approve any access request in 1Password.")
-					} else {
-						w.Info("Resolve the failed SSH check shown above, then retry.")
+					if sshFailureNeedsManualAgentAction(detail) {
+						w.Info("The 1Password agent cannot use life/auth yet. Enable or approve that key in 1Password, then rerun sync.")
+						c.Log(Attention, "GitHub SSH is waiting for life/auth in the 1Password agent; retrying now cannot change the result")
+						return 2
 					}
+					w.Info("Resolve the failed SSH check shown above, then retry.")
 				}
 				if code := w.Continue("Retry the SSH connection"); code != 0 {
 					return code

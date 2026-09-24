@@ -69,6 +69,21 @@ func TestRegisteredSSHKeyDoesNotOpenRegistration(t *testing.T) {
 	}
 }
 
+func TestSSHAgentFailuresDoNotOfferADeadEndRetry(t *testing.T) {
+	for _, detail := range []string{
+		"FAIL agent config: 1Password SSH agent config is missing",
+		"FAIL agent inventory: life/auth is not offered",
+		"FAIL agent signing: life/auth was refused",
+	} {
+		if !sshFailureNeedsManualAgentAction(detail) {
+			t.Fatalf("manual agent failure was not classified: %q", detail)
+		}
+	}
+	if sshFailureNeedsManualAgentAction("FAIL GitHub: did not accept life/auth") {
+		t.Fatal("GitHub-only failure should retain the retry path")
+	}
+}
+
 func TestSSHAgentPathWithSpacesParsesInOpenSSH(t *testing.T) {
 	ssh, err := exec.LookPath("ssh")
 	if err != nil {

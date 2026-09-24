@@ -26,18 +26,9 @@ import (
 
 func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr io.Writer, terminal bool) int {
 	env := platform.NewEnvironment(environ)
-	started := time.Now()
-	if encoded := env.Get("USERLAND_SYNC_STARTED_AT"); encoded != "" {
-		if nanoseconds, err := strconv.ParseInt(encoded, 10, 64); err == nil {
-			candidate := time.Unix(0, nanoseconds)
-			if !candidate.After(started) {
-				started = candidate
-			}
-		}
-	} else {
-		environ = env.With("USERLAND_SYNC_STARTED_AT", strconv.FormatInt(started.UnixNano(), 10))
-		env = platform.NewEnvironment(environ)
-	}
+	started := syncStart(env, time.Now(), os.Getppid())
+	environ = env.With("USERLAND_SYNC_STARTED_AT", strconv.FormatInt(started.UnixNano(), 10))
+	env = platform.NewEnvironment(environ)
 	render := tui.NewAt(stdout, environ, started)
 	if err := env.Validate(); err != nil {
 		tui.New(stderr, environ).Status(tui.StatusError, err.Error())
@@ -653,13 +644,24 @@ func appendAdapterLog(path, label string, events []adapters.Event) {
 	appendLog(path, label, []byte(output.String()))
 }
 
+func syncStart(env platform.Environment, now time.Time, parentPID int) time.Time {
+	if env.Get("USERLAND_SYNC_PARENT_PID") == strconv.Itoa(parentPID) {
+		if nanoseconds, err := strconv.ParseInt(env.Get("USERLAND_SYNC_STARTED_AT"), 10, 64); err == nil {
+			if started := time.Unix(0, nanoseconds); !started.After(now) {
+				return started
+			}
+		}
+	}
+	return now
+}
+
 func restart(ctx context.Context, env platform.Environment, stdin io.Reader, stdout, stderr io.Writer) int {
 	executable, err := os.Executable()
 	if err != nil {
 		return 1
 	}
 	command := exec.CommandContext(ctx, executable, "sync")
-	command.Env = env.With("USERLAND_REFRESHED", "1")
+	command.Env = env.With("USERLAND_REFRESHED", "1", "USERLAND_SYNC_PARENT_PID", strconv.Itoa(os.Getpid()))
 	command.Stdin, command.Stdout, command.Stderr = stdin, stdout, stderr
 	if err := command.Run(); err == nil {
 		return 0

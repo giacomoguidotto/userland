@@ -5,13 +5,31 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	stdsync "sync"
 	"testing"
+	"time"
 
 	"github.com/giacomoguidotto/userland/internal/platform"
 	"github.com/giacomoguidotto/userland/internal/tui"
 )
+
+func TestSyncStartIgnoresStaleShellTimestamp(t *testing.T) {
+	now := time.Now()
+	old := now.Add(-21 * time.Hour)
+	for _, test := range []struct {
+		parent string
+		want   time.Time
+	}{
+		{"", now}, {"123", now}, {"456", old},
+	} {
+		env := platform.NewEnvironment([]string{"USERLAND_SYNC_STARTED_AT=" + strconv.FormatInt(old.UnixNano(), 10), "USERLAND_SYNC_PARENT_PID=" + test.parent})
+		if got := syncStart(env, now, 456); !got.Equal(test.want) {
+			t.Fatalf("parent %q: got %s, want %s", test.parent, got, test.want)
+		}
+	}
+}
 
 type lockedBuffer struct {
 	mu stdsync.Mutex

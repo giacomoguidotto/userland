@@ -520,11 +520,11 @@ func (r Renderer) wordmark() {
 var semanticVersion = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 
 func (r Renderer) version() string {
-	if version := r.env["USERLAND_VERSION"]; semanticVersion.MatchString(version) {
-		return version
-	}
 	root := r.env["USERLAND_ROOT"]
 	if root == "" {
+		if version := r.env["USERLAND_VERSION"]; semanticVersion.MatchString(version) {
+			return version
+		}
 		return ""
 	}
 	stage := filepath.Join(root, ".userland-stage-version")
@@ -544,6 +544,11 @@ func (r Renderer) version() string {
 	}
 	if version := filepath.Base(root); semanticVersion.MatchString(version) && filepath.Base(filepath.Dir(root)) == "releases" {
 		return version
+	}
+	if contents, err := os.ReadFile(filepath.Join(root, ".userland-release")); err == nil {
+		if version := strings.SplitN(string(contents), "\n", 2)[0]; semanticVersion.MatchString(version) {
+			return version
+		}
 	}
 	return ""
 }

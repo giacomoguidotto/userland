@@ -32,6 +32,21 @@ func TestShippedToolProbesCoverPinnedUserTools(t *testing.T) {
 	}
 }
 
+func TestShippedConfigRunsClaudeCodePostinstall(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate repository root")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
+	contents, err := os.ReadFile(filepath.Join(root, "cfg", "mise.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(contents), `"npm:@anthropic-ai/claude-code" = { version = "2.1.278", npm_args = "--ignore-scripts=false" }`) {
+		t.Fatal("Claude Code must run its native-binary postinstall script")
+	}
+}
+
 func TestShippedConfigDoesNotInstallDockerByDefault(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {

@@ -298,6 +298,13 @@ url = "https://nodejs.org/dist/v24.19.0/node-v24.19.0-win-x64.zip"
 version = "2.1.278"
 backend = "npm:@anthropic-ai/claude-code"
 
+[[tools."npm:@anthropic-ai/claude-code"]]
+version = "2.1.278"
+backend = "npm:@anthropic-ai/claude-code"
+
+[tools."npm:@anthropic-ai/claude-code".options]
+npm_args = "--ignore-scripts=false"
+
 [[tools."npm:@openai/codex"]]
 version = "0.148.0"
 backend = "npm:@openai/codex"

@@ -11,8 +11,7 @@ locked = true
 node = "24.19.0"
 op = "2.39.0"
 "npm:@openai/codex" = "0.148.0"
-# Claude's package postinstall downloads its platform-native executable.
-"npm:@anthropic-ai/claude-code" = { version = "2.1.278", npm_args = "--ignore-scripts=false" }
+"aqua:anthropics/claude-code" = "2.1.278"
 "aqua:atuinsh/atuin" = "18.22.0"
 "aqua:aristocratos/btop" = { version = "1.4.7", os = ["linux"] }
 "aqua:sharkdp/bat" = "0.26.1"

@@ -32,7 +32,7 @@ func TestShippedToolProbesCoverPinnedUserTools(t *testing.T) {
 	}
 }
 
-func TestShippedConfigRunsClaudeCodePostinstall(t *testing.T) {
+func TestShippedConfigUsesNativeClaudeCodeDistribution(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot locate repository root")
@@ -42,8 +42,8 @@ func TestShippedConfigRunsClaudeCodePostinstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(contents), `"npm:@anthropic-ai/claude-code" = { version = "2.1.278", npm_args = "--ignore-scripts=false" }`) {
-		t.Fatal("Claude Code must run its native-binary postinstall script")
+	if !strings.Contains(string(contents), `"aqua:anthropics/claude-code" = "2.1.278"`) {
+		t.Fatal("Claude Code must use the native Aqua distribution")
 	}
 }
 

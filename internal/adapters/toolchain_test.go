@@ -88,6 +88,29 @@ func TestShippedConfigLeavesOnlyRunningAppsInDock(t *testing.T) {
 	}
 }
 
+func TestShippedConfigManagesOnePasswordAgentPolicy(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate repository root")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
+	contents, err := os.ReadFile(filepath.Join(root, "cfg", "mise.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := string(contents)
+	if !strings.Contains(config, `"~/.config/1Password/ssh/agent.toml" = { source = "home/1Password/ssh/agent.toml", mode = "symlink" }`) {
+		t.Fatal("shipped config must manage the 1Password SSH agent policy")
+	}
+	policy, err := os.ReadFile(filepath.Join(root, "cfg", "home", "1Password", "ssh", "agent.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(policy), `vault = "Personal"`) {
+		t.Fatal("shipped 1Password agent policy must enable the Personal vault")
+	}
+}
+
 func TestToolProbeDistinguishesMissingFromBroken(t *testing.T) {
 	base := t.TempDir()
 	mise := filepath.Join(base, "mise")

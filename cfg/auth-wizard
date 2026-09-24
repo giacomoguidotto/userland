@@ -14,6 +14,21 @@ agent_socket() {
   done
   return 1
 }
+agent_config_path() {
+  printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/1Password/ssh/agent.toml"
+}
+agent_config_ready() {
+  local path
+  path=$(agent_config_path)
+  [[ -f "$path" ]] || {
+    printf '1Password SSH agent config is missing: %s\n' "$path"
+    return 1
+  }
+  grep -Eq '^[[:space:]]*vault[[:space:]]*=[[:space:]]*"Personal"[[:space:]]*$' "$path" || {
+    printf '1Password SSH agent config does not enable the Personal vault: %s\n' "$path"
+    return 1
+  }
+}
 agent_ready() {
   agent_socket >/dev/null
 }
@@ -71,6 +86,11 @@ ssh_ready() {
 diagnose_ssh() {
   local socket expected key_status sign_status output
   printf '%s\n' 'GitHub SSH diagnostic (no private key or secret output)'
+  if agent_config_ready >/dev/null 2>&1; then
+    printf '%s\n' 'PASS agent config: Personal vault enabled'
+  else
+    printf 'FAIL agent config: %s\n' "$(agent_config_ready 2>&1)"
+  fi
   socket=$(agent_socket) || { printf '%s\n' 'FAIL agent socket: unavailable'; return 1; }
   printf '%s\n' 'PASS agent socket: available'
   expected=$(key_file) || { printf '%s\n' 'FAIL expected public key: missing or invalid'; return 1; }

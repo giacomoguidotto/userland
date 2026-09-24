@@ -51,6 +51,7 @@ op = "2.39.0"
 "~/.ssh/config" = { source = "home/ssh/config", mode = "symlink" }
 "~/.ssh/life-auth.pub" = { source = "home/ssh/life-auth.pub", mode = "symlink" }
 "~/.ssh/userland-known_hosts" = { source = "home/ssh/userland-known_hosts", mode = "symlink" }
+"~/.config/1Password/ssh/agent.toml" = { source = "home/1Password/ssh/agent.toml", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.codex/skills/t3-code-threads" = { source = "agents/skills/t3-code-threads", mode = "symlink" }
 "~/.codex/config.toml" = { source = "codex/config.toml", mode = "symlink" }

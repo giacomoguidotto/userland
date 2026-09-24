@@ -283,6 +283,8 @@ func diagnosticSummary(label, output string) string {
 		return "GitHub host verification failed. Rerun sync to reconcile the managed host key; details are in the log."
 	case strings.Contains(lower, "signing failed"), strings.Contains(lower, "permission denied (publickey)"):
 		return "GitHub SSH authentication failed. Check life/auth in the 1Password SSH agent and approve terminal access, then rerun sync."
+	case strings.Contains(lower, "fail agent config"), strings.Contains(lower, "agent config is missing"), strings.Contains(lower, "does not enable the personal vault"):
+		return "1Password SSH agent configuration is missing the Personal vault. Rerun userland sync to install the managed agent policy, then unlock 1Password."
 	case strings.Contains(output, "com.apple.dock") && (strings.Contains(output, "persistent-apps") || strings.Contains(output, "persistent-others")):
 		return "Dock still contains pinned items. Run userland sync to clear them; machine-state details are in the log."
 	case strings.Contains(lower, "agent has no identities"), strings.Contains(lower, "fail agent inventory"):

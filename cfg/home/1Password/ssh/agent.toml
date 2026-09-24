@@ -1,0 +1,4 @@
+# Userland-managed 1Password SSH agent policy.
+# Keep the vault name in the declaration, not the key material.
+[[ssh-keys]]
+vault = "Personal"

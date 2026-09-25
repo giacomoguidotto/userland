@@ -462,8 +462,6 @@ HOME="$dirty_home" \
 assert_checkout_refused dirty "$dirty_home" "$dirty_status"
 grep -Fq 'the installer will not overwrite them' "$work/dirty-output" ||
   fail "dirty checkout refusal did not explain the safety policy"
-grep -Fq 'git -C "$HOME/.userland" status --short' "$work/dirty-output" ||
-  fail "dirty checkout refusal did not provide an inspection command"
 grep -Fq 'git -C "$HOME/.userland" stash push --include-untracked' "$work/dirty-output" ||
   fail "dirty checkout refusal did not provide a preservation command"
 

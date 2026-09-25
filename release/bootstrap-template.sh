@@ -267,7 +267,6 @@ recover_checkout_changes() (
   [ -n "$checkout_status" ] || exit 0
   if [ "${USERLAND_NO_TTY:-0}" = 1 ] || ! (exec 9<>/dev/tty) 2>/dev/null; then
     printf 'userland: %s has local changes; the installer will not overwrite them\n' "$recovery_checkout" >&2
-    printf '%s\n' 'userland: review them with: git -C "$HOME/.userland" status --short' >&2
     printf '%s\n' 'userland: keep them with: git -C "$HOME/.userland" stash push --include-untracked' >&2
     printf '%s\n' 'userland: then rerun: curl -fsSL https://userland.guidotto.dev | sh' >&2
     exit 1

@@ -217,6 +217,55 @@ report_migration_notice() {
   rm "$migration_notice"
 }
 
+# This runs before sync, including when stdin contains the downloaded script.
+# Keep diff output and answers on the terminal, out of the transaction log.
+recover_checkout_changes() (
+  recovery_checkout=$1
+  checkout_status=$(checkout_git "$recovery_checkout" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) ||
+    die "could not read checkout status"
+  [ -n "$checkout_status" ] || exit 0
+  if [ "${USERLAND_NO_TTY:-0}" = 1 ] || ! (exec 9<>/dev/tty) 2>/dev/null; then
+    printf 'userland: %s has local changes; the installer will not overwrite them\n' "$recovery_checkout" >&2
+    printf '%s\n' 'userland: review them with: git -C "$HOME/.userland" status --short' >&2
+    printf '%s\n' 'userland: keep them with: git -C "$HOME/.userland" stash push --include-untracked' >&2
+    printf '%s\n' 'userland: then rerun: curl -fsSL https://userland.guidotto.dev | sh' >&2
+    exit 1
+  fi
+  exec 9<>/dev/tty
+  printf '\n ◆  Local configuration changes\n │\n' >&9
+  printf '%s\n' "$checkout_status" >&9
+  # Show staged and unstaged changes separately, including changes that cancel
+  # each other out relative to HEAD. Never invoke external diff programs.
+  checkout_git "$recovery_checkout" --no-pager diff --no-ext-diff --no-textconv --color=never >&9 2>&9 || exit 1
+  checkout_git "$recovery_checkout" --no-pager diff --cached --no-ext-diff --no-textconv --color=never >&9 2>&9 || exit 1
+  printf ' │\n ·  Untracked files are listed above; their contents are not shown.\n' >&9
+  while :; do
+    printf ' ·  Stash saves tracked and untracked changes for later. Restore discards tracked changes only.\n ?  [s] Stash and continue / [r] Restore tracked files / [c] Cancel [s] › ' >&9
+    IFS= read -r recovery_choice <&9 || exit 1
+    case "$recovery_choice" in
+      '' | s | S | stash)
+        checkout_git "$recovery_checkout" stash push --include-untracked -m "userland before $tag" >&9 2>&9 || exit 1
+        printf ' ✓  Saved local changes in git stash; continuing installation.\n' >&9
+        ;;
+      r | R | restore)
+        printf ' ?  Discard ALL staged and unstaged tracked changes? Type restore to confirm › ' >&9
+        IFS= read -r recovery_confirmation <&9 || exit 1
+        [ "$recovery_confirmation" = restore ] || continue
+        checkout_git "$recovery_checkout" restore --source=HEAD --staged --worktree -- . >&9 2>&9 || exit 1
+        printf ' ✓  Restored tracked files.\n' >&9
+        ;;
+      c | C | cancel)
+        printf ' ·  Installation cancelled; remaining local changes kept.\n' >&9
+        exit 1
+        ;;
+      *) continue ;;
+    esac
+    remaining=$(checkout_git "$recovery_checkout" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) || exit 1
+    [ -n "$remaining" ] || exit 0
+    printf ' !  Local changes remain. Nested repositories must be handled separately.\n%s\n' "$remaining" >&9
+  done
+)
+
 validate_checkout_identity() {
   checkout_path=$1
   [ ! -L "$checkout_path" ] || die "$checkout_path must not be a symlink"
@@ -235,16 +284,6 @@ validate_checkout_identity() {
     die "$checkout_path has no origin"
   [ "$origin" = "$repository" ] || die "$checkout_path has an unexpected origin: $origin"
 
-  checkout_status=$(checkout_git "$checkout_path" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) ||
-    die "could not read checkout status"
-  if [ -n "$checkout_status" ]; then
-    printf 'userland: %s has local changes; the installer will not overwrite them\n' "$checkout_path" >&2
-    printf '%s\n' 'userland: review them with: git -C "$HOME/.userland" status --short' >&2
-    printf '%s\n' 'userland: keep them with: git -C "$HOME/.userland" stash push --include-untracked' >&2
-    printf '%s\n' 'userland: then rerun: curl -fsSL https://userland.guidotto.dev | sh' >&2
-    exit 1
-  fi
-
   branch=$(checkout_git "$checkout_path" symbolic-ref --quiet --short HEAD 2>/dev/null) ||
     die "$checkout_path is not on a branch"
   [ "$branch" = main ] || die "$checkout_path is on $branch, not main"
@@ -256,6 +295,21 @@ validate_checkout_identity() {
     die "$checkout_path/cfg/mise.toml is not a regular file"
   [ -f "$checkout_path/cmd/userland/main.go" ] && [ ! -L "$checkout_path/cmd/userland/main.go" ] ||
     die "$checkout_path/cmd/userland/main.go is not a regular file"
+
+  if [ "${2:-}" = recover ]; then
+    recover_checkout_changes "$checkout_path"
+  else
+    checkout_status=$(checkout_git "$checkout_path" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) ||
+      die "could not read checkout status"
+    if [ -n "$checkout_status" ]; then
+      printf 'userland: %s has local changes; the installer will not overwrite them\n' "$checkout_path" >&2
+      printf '%s\n' 'userland: review them with: git -C "$HOME/.userland" status --short' >&2
+      printf '%s\n' 'userland: keep them with: git -C "$HOME/.userland" stash push --include-untracked' >&2
+      printf '%s\n' 'userland: then rerun: curl -fsSL https://userland.guidotto.dev | sh' >&2
+      exit 1
+    fi
+
+  fi
 }
 
 validate_checkout() {
@@ -290,7 +344,7 @@ validate_checkout() {
 prepare_checkout() {
   checkout_path=$1
   migrate_obsolete_nvim_submodule "$checkout_path"
-  validate_checkout_identity "$checkout_path"
+  validate_checkout_identity "$checkout_path" recover
   previous_head=$(checkout_git "$checkout_path" rev-parse 'HEAD^{commit}' 2>/dev/null) ||
     die "could not resolve the checkout commit"
 

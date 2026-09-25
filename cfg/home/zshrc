@@ -10,6 +10,7 @@ alias l="eza -la --icons --git --sort type"
 alias lt="l --tree --level=2 --long"
 alias la="eza --tree"
 alias tp="btop"
+alias lz="lazygit"
 alias v="nvim"
 alias x="exit"
 if (( ! ${+aliases[ul]} && ! ${+functions[ul]} )); then

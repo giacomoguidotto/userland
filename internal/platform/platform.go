@@ -139,6 +139,35 @@ func RunObserved(ctx context.Context, environ []string, stdin io.Reader, observe
 	return run(ctx, environ, stdin, observer, name, args...)
 }
 
+// RunInteractive runs a command with the controlling terminal attached to all
+// three standard streams. Some interactive runtimes require this instead of a
+// pipe: on macOS Bun's terminal watcher can fail with EINVAL/kqueue when its
+// output is captured by a pipe.
+func RunInteractive(ctx context.Context, environ []string, name string, args ...string) Result {
+	if !strings.ContainsRune(name, os.PathSeparator) {
+		if resolved, ok := LookPath(environ, name); ok {
+			name = resolved
+		}
+	}
+	terminal, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return Result{Code: 1, Err: err}
+	}
+	defer terminal.Close()
+	command := exec.CommandContext(ctx, name, args...)
+	command.Env = environ
+	command.Stdin, command.Stdout, command.Stderr = terminal, terminal, terminal
+	err = command.Run()
+	if err == nil {
+		return Result{}
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return Result{Code: exit.ExitCode()}
+	}
+	return Result{Code: 1, Err: err}
+}
+
 func run(ctx context.Context, environ []string, stdin io.Reader, observer io.Writer, name string, args ...string) Result {
 	if !strings.ContainsRune(name, os.PathSeparator) {
 		if resolved, ok := LookPath(environ, name); ok {

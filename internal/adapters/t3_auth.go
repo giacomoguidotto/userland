@@ -166,10 +166,10 @@ func classifyT3Auth(driver string, result platform.Result) (t3AuthState, string)
 }
 
 // Resolve a missing PATH entry independently of other tools pending installation.
-func (a t3AuthAccount) run(c *Context, ctx context.Context, stdin io.Reader, observer io.Writer, args ...string) platform.Result {
+func (a t3AuthAccount) resolve(c *Context, ctx context.Context) (string, error) {
 	environ := a.environ(c)
 	if path, ok := platform.LookPath(environ, a.Config.BinaryPath); ok {
-		return platform.RunObserved(ctx, environ, stdin, observer, path, args...)
+		return path, nil
 	}
 	invocation := c.Env.MiseInvocation("which", a.Config.BinaryPath)
 	invocation.Environ = environ
@@ -177,9 +177,25 @@ func (a t3AuthAccount) run(c *Context, ctx context.Context, stdin io.Reader, obs
 	resolved := platform.RunInvocation(ctx, nil, invocation)
 	path := strings.TrimSpace(string(resolved.Output))
 	if resolved.Code != 0 || !filepath.IsAbs(path) || !executable(path) {
-		return platform.Result{Code: 1, Err: fmt.Errorf("%s executable could not be resolved", a.Config.BinaryPath)}
+		return "", fmt.Errorf("%s executable could not be resolved", a.Config.BinaryPath)
 	}
-	return platform.RunObserved(ctx, environ, stdin, observer, path, args...)
+	return path, nil
+}
+
+func (a t3AuthAccount) run(c *Context, ctx context.Context, stdin io.Reader, observer io.Writer, args ...string) platform.Result {
+	path, err := a.resolve(c, ctx)
+	if err != nil {
+		return platform.Result{Code: 1, Err: err}
+	}
+	return platform.RunObserved(ctx, a.environ(c), stdin, observer, path, args...)
+}
+
+func (a t3AuthAccount) runInteractive(c *Context, ctx context.Context, args ...string) platform.Result {
+	path, err := a.resolve(c, ctx)
+	if err != nil {
+		return platform.Result{Code: 1, Err: err}
+	}
+	return platform.RunInteractive(ctx, a.environ(c), path, args...)
 }
 
 func (a t3AuthAccount) prepare(c *Context) error {
@@ -268,9 +284,18 @@ func t3Authentication(c *Context, action Action) int {
 		if a.Driver == "codex" {
 			args = []string{"-c", `cli_auth_credentials_store="keyring"`, "login"}
 		}
-		output := &tui.CommandOutput{Wizard: w}
-		result := limitedRun(c, func() platform.Result { return a.run(c, c.Context, c.Stdin, output, args...) })
-		output.Flush()
+		var result platform.Result
+		if a.Driver == "claudeAgent" {
+			// Claude Code is a Bun application. Keep its stdio attached to the
+			// controlling terminal; Bun's macOS kqueue watcher rejects the pipe
+			// used by CommandOutput with EINVAL before login can begin.
+			w.Render.ClearTask()
+			result = limitedRun(c, func() platform.Result { return a.runInteractive(c, c.Context, args...) })
+		} else {
+			output := &tui.CommandOutput{Wizard: w}
+			result = limitedRun(c, func() platform.Result { return a.run(c, c.Context, c.Stdin, output, args...) })
+			output.Flush()
+		}
 		if c.Context.Err() != nil || result.Code == 130 {
 			return 130
 		}

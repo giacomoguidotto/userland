@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -117,14 +118,21 @@ func (a t3AuthAccount) check(c *Context) bool {
 	}
 	ctx, cancel := context.WithTimeout(c.Context, 15*time.Second)
 	defer cancel()
-	result := limitedRun(c, func() platform.Result { return platform.Run(ctx, a.environ(c), nil, a.Config.BinaryPath, args...) })
-	if result.Code != 0 {
-		return false
-	}
-	if a.Driver == "codex" {
-		return result.Code == 0
-	}
+	result := limitedRun(c, func() platform.Result { return a.run(c, ctx, nil, nil, args...) })
 	return result.Code == 0
+}
+
+// run uses the installed tool directly when the current shell exposes it.
+// During sync the static global PATH may still be stale, so fall back to
+// `mise exec` before declaring an authenticated profile missing.
+func (a t3AuthAccount) run(c *Context, ctx context.Context, stdin io.Reader, observer io.Writer, args ...string) platform.Result {
+	environ := a.environ(c)
+	if _, ok := platform.LookPath(environ, a.Config.BinaryPath); ok {
+		return platform.RunObserved(ctx, environ, stdin, observer, a.Config.BinaryPath, args...)
+	}
+	invocation := c.Env.MiseInvocation(append([]string{"exec", "--", a.Config.BinaryPath}, args...)...)
+	invocation.Environ = append(environ, "MISE_OVERRIDE_CONFIG_FILENAMES=mise.toml", "MISE_QUIET=true", "MISE_AUTO_INSTALL=0", "MISE_EXEC_AUTO_INSTALL=0")
+	return platform.RunInvocationObserved(ctx, stdin, observer, invocation)
 }
 
 func (a t3AuthAccount) prepare(c *Context) error {
@@ -183,7 +191,7 @@ func t3Authentication(c *Context, action Action) int {
 			continue
 		}
 		w.Stage(index+1, len(accounts), "T3 · "+a.label())
-		if _, ok := platform.LookPath(a.environ(c), a.Config.BinaryPath); !ok {
+		if _, ok := platform.LookPath(a.environ(c), a.Config.BinaryPath); !ok && !executable(c.Env.Mise) {
 			c.Log(Attention, a.label()+" CLI is unavailable: "+a.Config.BinaryPath)
 			incomplete = true
 			continue
@@ -208,7 +216,7 @@ func t3Authentication(c *Context, action Action) int {
 			args = []string{"-c", `cli_auth_credentials_store="keyring"`, "login"}
 		}
 		output := &tui.CommandOutput{Wizard: w}
-		result := runWithObserved(c, a.environ(c), c.Stdin, output, a.Config.BinaryPath, args...)
+		result := limitedRun(c, func() platform.Result { return a.run(c, c.Context, c.Stdin, output, args...) })
 		output.Flush()
 		if c.Context.Err() != nil || result.Code == 130 {
 			return 130

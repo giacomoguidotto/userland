@@ -234,10 +234,12 @@ recover_checkout_changes() (
   exec 9<>/dev/tty
   printf '\n ◆  Local configuration changes\n │\n' >&9
   printf '%s\n' "$checkout_status" >&9
-  # Show staged and unstaged changes separately, including changes that cancel
-  # each other out relative to HEAD. Never invoke external diff programs.
-  checkout_git "$recovery_checkout" --no-pager diff --no-ext-diff --no-textconv --color=never >&9 2>&9 || exit 1
-  checkout_git "$recovery_checkout" --no-pager diff --cached --no-ext-diff --no-textconv --color=never >&9 2>&9 || exit 1
+  # Show a compact summary. The full patch is still available with the
+  # printed git command, but the recovery prompt should remain readable.
+  printf ' ·  Changed lines by file: added / removed\n' >&9
+  checkout_git "$recovery_checkout" --no-pager diff --numstat >&9 2>&9 || exit 1
+  checkout_git "$recovery_checkout" --no-pager diff --cached --numstat >&9 2>&9 || exit 1
+  printf ' ·  Full patch: git -C "$HOME/.userland" diff HEAD\n' >&9
   printf ' │\n ·  Untracked files are listed above; their contents are not shown.\n' >&9
   while :; do
     printf ' ·  Stash saves tracked and untracked changes for later. Restore discards tracked changes only.\n ?  [s] Stash and continue / [r] Restore tracked files / [c] Cancel [s] › ' >&9

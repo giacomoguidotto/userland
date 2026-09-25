@@ -85,7 +85,7 @@ func loginItems(c *Context, action Action) int {
 		expected := path + "\t" + hidden
 		if inspect.Code == 0 && strings.TrimSpace(string(inspect.Output)) == expected {
 			c.Log(Current, name+" login item matches")
-			if (name == "Wispr Flow" || name == "Shottr") && action == Apply {
+			if startsImmediately(name) && action == Apply {
 				if code := startLoginApplication(c, name); code != 0 {
 					return code
 				}
@@ -107,13 +107,17 @@ func loginItems(c *Context, action Action) int {
 			return 1
 		}
 		c.Log(Changed, name+" login item configured")
-		if name == "Wispr Flow" || name == "Shottr" {
+		if startsImmediately(name) {
 			if code := startLoginApplication(c, name); code != 0 {
 				return code
 			}
 		}
 	}
 	return code
+}
+
+func startsImmediately(name string) bool {
+	return name == "Wispr Flow" || name == "Shottr" || name == "Screen Studio"
 }
 
 func startLoginApplication(c *Context, name string) int {

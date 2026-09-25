@@ -841,6 +841,14 @@ cleanup_stale_current_links
 install_command_link "$release_dir/bin/userland"
 MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$release_dir/cfg/mise.toml" >/dev/null
 
+trust_checkout_mise_configs() {
+  trust_checkout=$1
+  for trust_config in "$trust_checkout/cfg/mise.toml" "$trust_checkout/.mise/config.toml"; do
+    [ -f "$trust_config" ] || continue
+    MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$trust_config" >/dev/null || return 1
+  done
+}
+
 if [ -L "$repo_dir" ]; then
   die "$repo_dir must not be a symlink"
 elif [ -d "$repo_dir/.git" ]; then
@@ -857,7 +865,7 @@ else
   create_materialized_checkout
 fi
 
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
+trust_checkout_mise_configs "$repo_dir" || die "could not trust the Userland checkout's Mise configuration"
 materialize_checkout_command() {
   mkdir -p "$repo_dir/bin"
   checkout_command_tmp=$repo_dir/bin/.userland.$$
@@ -951,7 +959,7 @@ fi
 
 validate_checkout "$repo_dir"
 report_migration_notice
-MISE_QUIET=1 "$release_dir/bin/mise" trust --yes "$repo_dir/cfg/mise.toml" >/dev/null
+trust_checkout_mise_configs "$repo_dir" || die "could not trust the Userland checkout's Mise configuration"
 install_command_link "$repo_dir/bin/userland"
 
 # A first bootstrap is usually launched from Terminal.app. Move the completed

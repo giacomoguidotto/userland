@@ -14,7 +14,7 @@ fail() {
 tag=v1.2.3
 commit=0123456789abcdef0123456789abcdef01234567
 fixture="$work/fixture/userland-1.2.3"
-mkdir -p "$fixture/bin" "$fixture/cfg" "$fixture/cmd/userland"
+mkdir -p "$fixture/bin" "$fixture/cfg" "$fixture/.mise" "$fixture/cmd/userland"
 printf '%s\n' 'package main' >"$fixture/cmd/userland/main.go"
 mkdir -p "$fixture/cfg/docker/cli-plugins"
 ln -s /opt/homebrew/lib/docker/cli-plugins/docker-compose \
@@ -52,6 +52,7 @@ exit 0
 EOF
 chmod +x "$fixture/bin/userland" "$fixture/bin/mise"
 printf 'min_version = "2026.9.6"\n' >"$fixture/cfg/mise.toml"
+printf 'min_version = "2026.9.6"\n' >"$fixture/.mise/config.toml"
 tar -czf "$work/userland-v1.2.3.tar.gz" -C "$work/fixture" userland-1.2.3
 archive_sha=$(shasum -a 256 "$work/userland-v1.2.3.tar.gz" | awk '{ print $1 }')
 
@@ -105,11 +106,12 @@ if [ "$1" = clone ]; then
     mkdir -p "$destination"
     exit 12
   fi
-  mkdir -p "$destination/.git" "$destination/bin" "$destination/cfg" "$destination/cmd/userland"
+  mkdir -p "$destination/.git" "$destination/bin" "$destination/cfg" "$destination/.mise" "$destination/cmd/userland"
   cp "$TEST_REPO_COMMAND" "$destination/bin/userland"
   chmod +x "$destination/bin/userland"
   printf '%s\n' 'package main' >"$destination/cmd/userland/main.go"
   printf 'min_version = "2026.9.6"\n' >"$destination/cfg/mise.toml"
+  printf 'min_version = "2026.9.6"\n' >"$destination/.mise/config.toml"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-head"
   printf '%s\n' "${TEST_GIT_REMOTE_MAIN:-$TEST_COMMIT}" >"$destination/.git/test-remote-main"
   printf '%s\n' "$TEST_COMMIT" >"$destination/.git/test-fetched-commit"
@@ -276,6 +278,8 @@ if grep -Fq 'userland is ready' "$work/rerun-output"; then
 fi
 grep -Fq "$attention_home/.userland/cfg/mise.toml" "$work/rerun-trust" ||
   fail "safe checkout was not trusted"
+grep -Fq "$attention_home/.userland/.mise/config.toml" "$work/rerun-trust" ||
+  fail "Userland development checkout was not trusted"
 [ "$(readlink "$attention_home/.local/bin/userland")" = "$attention_home/.userland/bin/userland" ] ||
   fail "safe rerun did not restore the repository link"
 [ "$(readlink "$attention_home/.local/share/userland/current")" = "$attention_home/.local/share/userland/releases/$tag" ] ||

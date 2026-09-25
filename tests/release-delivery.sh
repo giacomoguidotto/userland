@@ -103,5 +103,6 @@ for target in linux-arm64 linux-x64; do
 done
 
 "$test_dir/release-bootstrap.sh"
+python3 "$test_dir/release-recovery.py"
 
 printf 'release delivery tests passed\n'

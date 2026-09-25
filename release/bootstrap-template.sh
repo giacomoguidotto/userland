@@ -219,6 +219,47 @@ report_migration_notice() {
 
 # This runs before sync, including when stdin contains the downloaded script.
 # Keep diff output and answers on the terminal, out of the transaction log.
+review_checkout_diff() (
+  review_checkout=$1
+  umask 077
+  review_dir=$(mktemp -d "${TMPDIR:-/tmp}/userland-diff.XXXXXX") || exit 1
+  trap 'rm -rf "$review_dir"' EXIT
+  trap 'exit 130' HUP INT TERM
+  checkout_git "$review_checkout" --no-pager diff --no-color --no-ext-diff --no-textconv --cached -- >"$review_dir/staged" 2>&9 || exit 1
+  checkout_git "$review_checkout" --no-pager diff --no-color --no-ext-diff --no-textconv -- >"$review_dir/unstaged" 2>&9 || exit 1
+  if [ ! -s "$review_dir/staged" ] && [ ! -s "$review_dir/unstaged" ]; then
+    printf ' ·  No tracked file patches to review.\n' >&9
+    exit 0
+  fi
+  {
+    if [ -s "$review_dir/staged" ]; then
+      printf 'Staged changes\n\n'
+      cat "$review_dir/staged"
+    fi
+    if [ -s "$review_dir/unstaged" ]; then
+      printf '\nUnstaged changes\n\n'
+      cat "$review_dir/unstaged"
+    fi
+  } >"$review_dir/patch"
+
+  # Invoke Delta directly so bootstrap_git can keep ignoring global Git
+  # settings while Delta still reads the user's theme and layout. Its output
+  # must be the terminal even though the installer itself arrived over a pipe.
+  cd "$review_checkout" || exit 1
+  if command -v delta >/dev/null 2>&1; then
+    printf ' ·  Reviewing the full patch in Delta. Press q to return to the recovery choices.\n' >&9
+    if delta --paging always --pager 'less -R' --line-numbers <"$review_dir/patch" >&9 2>&9; then
+      exit 0
+    fi
+    printf ' ·  Delta could not display the patch; showing the unified diff.\n' >&9
+  fi
+  if command -v less >/dev/null 2>&1; then
+    printf ' ·  Reviewing the full patch. Press q to return to the recovery choices.\n' >&9
+    less -R <"$review_dir/patch" >&9 2>&9 && exit 0
+  fi
+  cat "$review_dir/patch" >&9
+)
+
 recover_checkout_changes() (
   recovery_checkout=$1
   checkout_status=$(checkout_git "$recovery_checkout" status --porcelain=v1 --untracked-files=all --ignore-submodules=none) ||
@@ -234,12 +275,7 @@ recover_checkout_changes() (
   exec 9<>/dev/tty
   printf '\n ◆  Local configuration changes\n │\n' >&9
   printf '%s\n' "$checkout_status" >&9
-  # Show a compact summary. The full patch is still available with the
-  # printed git command, but the recovery prompt should remain readable.
-  printf ' ·  Changed lines by file: added / removed\n' >&9
-  checkout_git "$recovery_checkout" --no-pager diff --numstat >&9 2>&9 || exit 1
-  checkout_git "$recovery_checkout" --no-pager diff --cached --numstat >&9 2>&9 || exit 1
-  printf ' ·  Full patch: git -C "$HOME/.userland" diff HEAD\n' >&9
+  review_checkout_diff "$recovery_checkout" || exit 1
   printf ' │\n ·  Untracked files are listed above; their contents are not shown.\n' >&9
   while :; do
     printf ' ·  Stash saves tracked and untracked changes for later. Restore discards tracked changes only.\n ?  [s] Stash and continue / [r] Restore tracked files / [c] Cancel [s] › ' >&9

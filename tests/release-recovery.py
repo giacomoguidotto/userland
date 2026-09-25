@@ -105,7 +105,8 @@ read -r answer </dev/tty
                 self.assertIn(b'+value = "working"', output)
                 self.assertNotIn(b'untracked content must not be displayed', output)
                 if viewer == 'delta':
-                    self.assertIn(b'--paging always', output)
+                    self.assertIn(b'--paging always --pager less -R -X', output)
+                self.assertNotIn(b'MM config.toml', output)
                 if action == 's':
                     self.assertEqual(git('status', '--porcelain'), b'')
                     self.assertIn(b'userland before', git('stash', 'list'))

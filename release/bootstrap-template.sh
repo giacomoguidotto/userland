@@ -247,15 +247,15 @@ review_checkout_diff() (
   # must be the terminal even though the installer itself arrived over a pipe.
   cd "$review_checkout" || exit 1
   if command -v delta >/dev/null 2>&1; then
-    printf ' ·  Reviewing the full patch in Delta. Press q to return to the recovery choices.\n' >&9
-    if delta --paging always --pager 'less -R' --line-numbers <"$review_dir/patch" >&9 2>&9; then
+    printf ' ·  Reviewing the full patch in Delta inline. Press q to return to the recovery choices.\n' >&9
+    if delta --paging always --pager 'less -R -X' --line-numbers <"$review_dir/patch" >&9 2>&9; then
       exit 0
     fi
     printf ' ·  Delta could not display the patch; showing the unified diff.\n' >&9
   fi
   if command -v less >/dev/null 2>&1; then
-    printf ' ·  Reviewing the full patch. Press q to return to the recovery choices.\n' >&9
-    less -R <"$review_dir/patch" >&9 2>&9 && exit 0
+    printf ' ·  Reviewing the full patch inline. Press q to return to the recovery choices.\n' >&9
+    less -R -X <"$review_dir/patch" >&9 2>&9 && exit 0
   fi
   cat "$review_dir/patch" >&9
 )
@@ -274,7 +274,6 @@ recover_checkout_changes() (
   fi
   exec 9<>/dev/tty
   printf '\n ◆  Local configuration changes\n │\n' >&9
-  printf '%s\n' "$checkout_status" >&9
   review_checkout_diff "$recovery_checkout" || exit 1
   printf ' │\n ·  Untracked files are listed above; their contents are not shown.\n' >&9
   while :; do

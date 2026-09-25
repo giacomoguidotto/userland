@@ -62,7 +62,7 @@ repo_dir=$HOME/.userland
 legacy_repo_dir="$data_dir/repo"
 bin_dir=${USERLAND_BIN_DIR:-$HOME/.local/bin}
 : "${USERLAND_ORIGINAL_PATH:=${PATH:-}}"
-PATH="$HOME/.local/share/mise/shims:$bin_dir:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+PATH="$bin_dir:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export PATH USERLAND_ORIGINAL_PATH
 
 die() {

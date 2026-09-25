@@ -108,9 +108,19 @@ func (a t3AuthAccount) environ(c *Context) []string {
 	return append(clean, "CLAUDE_CONFIG_DIR="+a.home)
 }
 
-func (a t3AuthAccount) check(c *Context) bool {
-	if info, err := os.Stat(a.home); err != nil || !info.IsDir() {
-		return false
+type t3AuthState uint8
+
+const (
+	t3AuthUnknown t3AuthState = iota
+	t3AuthReady
+	t3AuthLoggedOut
+)
+
+func (a t3AuthAccount) check(c *Context) (t3AuthState, string) {
+	if info, err := os.Stat(a.home); os.IsNotExist(err) {
+		return t3AuthLoggedOut, "profile home is not created yet"
+	} else if err != nil || !info.IsDir() {
+		return t3AuthUnknown, "profile home is unavailable"
 	}
 	args := []string{"auth", "status", "--json"}
 	if a.Driver == "codex" {
@@ -119,20 +129,57 @@ func (a t3AuthAccount) check(c *Context) bool {
 	ctx, cancel := context.WithTimeout(c.Context, 15*time.Second)
 	defer cancel()
 	result := limitedRun(c, func() platform.Result { return a.run(c, ctx, nil, nil, args...) })
-	return result.Code == 0
+	if ctx.Err() != nil {
+		return t3AuthUnknown, "status command timed out or was cancelled"
+	}
+	return classifyT3Auth(a.Driver, result)
 }
 
-// run uses the installed tool directly when the current shell exposes it.
-// During sync the static global PATH may still be stale, so fall back to
-// `mise exec` before declaring an authenticated profile missing.
+// A process failure is not evidence of missing credentials. Only the CLI's
+// explicit logged-out response can start a login flow. Do not surface raw
+// command output, which may contain account data or environment values.
+func classifyT3Auth(driver string, result platform.Result) (t3AuthState, string) {
+	if result.Err != nil {
+		return t3AuthUnknown, "status command could not start"
+	}
+	if driver == "codex" {
+		if result.Code == 0 {
+			return t3AuthReady, ""
+		}
+		if result.Code == 1 && strings.TrimSpace(string(result.Output)) == "Not logged in" {
+			return t3AuthLoggedOut, ""
+		}
+	} else {
+		var status struct {
+			LoggedIn *bool `json:"loggedIn"`
+		}
+		if json.Unmarshal(result.Output, &status) == nil && status.LoggedIn != nil {
+			if result.Code == 0 && *status.LoggedIn {
+				return t3AuthReady, ""
+			}
+			if !*status.LoggedIn && (result.Code == 0 || result.Code == 1) {
+				return t3AuthLoggedOut, ""
+			}
+		}
+	}
+	return t3AuthUnknown, fmt.Sprintf("status command did not return an authentication result (exit %d)", result.Code)
+}
+
+// Resolve a missing PATH entry independently of other tools pending installation.
 func (a t3AuthAccount) run(c *Context, ctx context.Context, stdin io.Reader, observer io.Writer, args ...string) platform.Result {
 	environ := a.environ(c)
-	if _, ok := platform.LookPath(environ, a.Config.BinaryPath); ok {
-		return platform.RunObserved(ctx, environ, stdin, observer, a.Config.BinaryPath, args...)
+	if path, ok := platform.LookPath(environ, a.Config.BinaryPath); ok {
+		return platform.RunObserved(ctx, environ, stdin, observer, path, args...)
 	}
-	invocation := c.Env.MiseInvocation(append([]string{"exec", "--", a.Config.BinaryPath}, args...)...)
-	invocation.Environ = append(environ, "MISE_OVERRIDE_CONFIG_FILENAMES=mise.toml", "MISE_QUIET=true", "MISE_AUTO_INSTALL=0", "MISE_EXEC_AUTO_INSTALL=0")
-	return platform.RunInvocationObserved(ctx, stdin, observer, invocation)
+	invocation := c.Env.MiseInvocation("which", a.Config.BinaryPath)
+	invocation.Environ = environ
+	invocation = invocation.WithEnvironment("MISE_OVERRIDE_CONFIG_FILENAMES", "mise.toml", "MISE_QUIET", "true", "MISE_AUTO_INSTALL", "0", "MISE_EXEC_AUTO_INSTALL", "0")
+	resolved := platform.RunInvocation(ctx, nil, invocation)
+	path := strings.TrimSpace(string(resolved.Output))
+	if resolved.Code != 0 || !filepath.IsAbs(path) || !executable(path) {
+		return platform.Result{Code: 1, Err: fmt.Errorf("%s executable could not be resolved", a.Config.BinaryPath)}
+	}
+	return platform.RunObserved(ctx, environ, stdin, observer, path, args...)
 }
 
 func (a t3AuthAccount) prepare(c *Context) error {
@@ -174,12 +221,18 @@ func t3Authentication(c *Context, action Action) int {
 		if c.Context.Err() != nil {
 			return 130
 		}
-		if a.check(c) {
+		state, reason := a.check(c)
+		if state == t3AuthReady {
 			c.Log(Current, a.label()+" is authenticated")
 			continue
 		}
 		if c.Context.Err() != nil {
 			return 130
+		}
+		if state == t3AuthUnknown {
+			c.Log(Attention, a.label()+" authentication could not be checked: "+reason+"; credentials were not changed")
+			incomplete = true
+			continue
 		}
 		if action == Plan {
 			c.Log(Manual, a.label()+" needs account login")
@@ -222,7 +275,8 @@ func t3Authentication(c *Context, action Action) int {
 			return 130
 		}
 		// No receipt or successful command alone can stand in for a profile check.
-		if result.Code != 0 || !a.check(c) {
+		verified, _ := a.check(c)
+		if result.Code != 0 || verified != t3AuthReady {
 			c.Log(Attention, fmt.Sprintf("%s login was not verified (exit %d); rerun sync to retry this profile", a.label(), result.Code))
 			incomplete = true
 			continue

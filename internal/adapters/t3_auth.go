@@ -286,11 +286,16 @@ func t3Authentication(c *Context, action Action) int {
 		}
 		var result platform.Result
 		if a.Driver == "claudeAgent" {
-			// Claude Code is a Bun application. Keep its stdio attached to the
-			// controlling terminal; Bun's macOS kqueue watcher rejects the pipe
-			// used by CommandOutput with EINVAL before login can begin.
+			// Claude Code is a Bun application. Give it a real terminal for input
+			// so it does not open /dev/tty itself, while RunInteractive keeps
+			// stdout/stderr off a TTY because Bun's macOS kqueue watcher rejects
+			// its tty.WriteStream with EINVAL. Replay the captured output when it
+			// exits so login instructions remain visible in the wizard.
+			output := &tui.CommandOutput{Wizard: w}
 			w.Render.ClearTask()
 			result = limitedRun(c, func() platform.Result { return a.runInteractive(c, c.Context, args...) })
+			_, _ = output.Write(result.Output)
+			output.Flush()
 		} else {
 			output := &tui.CommandOutput{Wizard: w}
 			result = limitedRun(c, func() platform.Result { return a.run(c, c.Context, c.Stdin, output, args...) })

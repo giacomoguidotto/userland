@@ -139,10 +139,10 @@ func RunObserved(ctx context.Context, environ []string, stdin io.Reader, observe
 	return run(ctx, environ, stdin, observer, name, args...)
 }
 
-// RunInteractive runs a command with the controlling terminal attached to all
-// three standard streams. Some interactive runtimes require this instead of a
-// pipe: on macOS Bun's terminal watcher can fail with EINVAL/kqueue when its
-// output is captured by a pipe.
+// RunInteractive gives a command a controlling terminal for input while
+// keeping output on regular files. This is a deliberate compromise for
+// runtimes that need to read from /dev/tty but crash when Bun tries to create
+// a macOS tty.WriteStream for stdout or stderr (EINVAL/kqueue).
 func RunInteractive(ctx context.Context, environ []string, name string, args ...string) Result {
 	if !strings.ContainsRune(name, os.PathSeparator) {
 		if resolved, ok := LookPath(environ, name); ok {
@@ -154,18 +154,55 @@ func RunInteractive(ctx context.Context, environ []string, name string, args ...
 		return Result{Code: 1, Err: err}
 	}
 	defer terminal.Close()
+	stdout, err := os.CreateTemp("", "userland-interactive-stdout-")
+	if err != nil {
+		return Result{Code: 1, Err: err}
+	}
+	stdoutName := stdout.Name()
+	defer os.Remove(stdoutName)
+	stderr, err := os.CreateTemp("", "userland-interactive-stderr-")
+	if err != nil {
+		stdout.Close()
+		return Result{Code: 1, Err: err}
+	}
+	stderrName := stderr.Name()
+	defer os.Remove(stderrName)
 	command := exec.CommandContext(ctx, name, args...)
 	command.Env = environ
-	command.Stdin, command.Stdout, command.Stderr = terminal, terminal, terminal
+	command.Stdin, command.Stdout, command.Stderr = terminal, stdout, stderr
 	err = command.Run()
+	closeStdoutErr := stdout.Close()
+	closeStderrErr := stderr.Close()
+	output, readErr := readInteractiveOutput(stdoutName, stderrName)
+	if err == nil && closeStdoutErr != nil {
+		err = closeStdoutErr
+	}
+	if err == nil && closeStderrErr != nil {
+		err = closeStderrErr
+	}
+	if err == nil && readErr != nil {
+		err = readErr
+	}
 	if err == nil {
-		return Result{}
+		return Result{Output: output}
 	}
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
-		return Result{Code: exit.ExitCode()}
+		return Result{Output: output, Code: exit.ExitCode()}
 	}
-	return Result{Code: 1, Err: err}
+	return Result{Output: output, Code: 1, Err: err}
+}
+
+func readInteractiveOutput(stdoutName, stderrName string) ([]byte, error) {
+	stdout, stdoutErr := os.ReadFile(stdoutName)
+	stderr, stderrErr := os.ReadFile(stderrName)
+	if stdoutErr != nil {
+		return nil, stdoutErr
+	}
+	if stderrErr != nil {
+		return nil, stderrErr
+	}
+	return append(stdout, stderr...), nil
 }
 
 func run(ctx context.Context, environ []string, stdin io.Reader, observer io.Writer, name string, args ...string) Result {

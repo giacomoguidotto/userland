@@ -29,3 +29,9 @@ bindkey jj vi-cmd-mode
 if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/init.zsh" ]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/init.zsh"
 fi
+
+# Recover Starship if an older or incomplete cache predates the installed tool.
+if (( $+commands[starship] )) && [[ -z ${_userland_starship_loaded:-} ]]; then
+  eval "$(starship init zsh)"
+fi
+unset _userland_starship_loaded

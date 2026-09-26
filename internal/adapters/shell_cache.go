@@ -104,6 +104,9 @@ func shellCache(c *Context, action Action) int {
 			// A later tool upgrade can remove the path captured in this cache.
 			// Keep a new terminal usable until the next sync regenerates it.
 			fmt.Fprintf(&output, "if (( $+commands[%s] )); then\n", command.name)
+			if command.name == "starship" {
+				output.WriteString("  _userland_starship_loaded=1\n")
+			}
 			output.Write(result.Output)
 			output.WriteString("fi\n")
 		}
@@ -140,7 +143,7 @@ func shellCache(c *Context, action Action) int {
 
 func shellFingerprint(c *Context, environment miseShellEnvironment) string {
 	hash := sha256.New()
-	hash.Write([]byte("userland-shell-cache-v5\n"))
+	hash.Write([]byte("userland-shell-cache-v6\n"))
 	for _, path := range environment.BinPaths {
 		fmt.Fprintf(hash, "path\t%s\n", path)
 	}

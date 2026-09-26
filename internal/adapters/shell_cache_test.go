@@ -92,6 +92,13 @@ func TestShippedShellScopesMiseToolsAndGcloudPrompt(t *testing.T) {
 	if !strings.Contains(string(zshenv), "userland/zsh/mise-env.zsh") {
 		t.Fatalf("zshenv does not load the static global tool environment: %q", zshenv)
 	}
+	zshrc, err := os.ReadFile(filepath.Join(root, "cfg", "home", "zshrc"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(zshrc), `eval "$(starship init zsh)"`) {
+		t.Fatalf("zshrc has no Starship recovery path: %q", zshrc)
+	}
 	starship, err := os.ReadFile(filepath.Join(root, "cfg", "xdg", "starship", "config.toml"))
 	if err != nil {
 		t.Fatal(err)

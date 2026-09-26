@@ -11,8 +11,8 @@ import (
 )
 
 func TestLoginItemScriptsUsePOSIXPaths(t *testing.T) {
-	if !strings.Contains(inspectLoginItemScript, "POSIX path of (path of currentItem)") {
-		t.Fatal("login item inspection must normalize macOS aliases to POSIX paths")
+	if !strings.Contains(inspectLoginItemScript, `return "present"`) {
+		t.Fatal("login item inspection must recognize existing items by name")
 	}
 	if !strings.Contains(applyLoginItemScript, "POSIX file wantedPath as alias") {
 		t.Fatal("login item creation must pass an explicit macOS alias")

@@ -14,11 +14,16 @@ if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh" ]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh"
 fi
 
-# Userland's shell fragment is separate from the user's normal .zshrc so
-# other setup tools can own that file without creating a repository conflict.
-# Load it after Mise's paths so generated hooks can find their tools.
-if [ -r "$XDG_CONFIG_HOME/userland/zshrc" ]; then
-  source "$XDG_CONFIG_HOME/userland/zshrc"
+# Load the interactive fragment at the first prompt. macOS and local setup
+# files can still change PROMPT during startup, so loading it from zshenv is
+# too early for prompt hooks.
+if [[ -o interactive ]] && [ -r "$XDG_CONFIG_HOME/userland/zshrc" ]; then
+  autoload -Uz add-zsh-hook
+  _userland_load_interactive() {
+    add-zsh-hook -d precmd _userland_load_interactive
+    source "$XDG_CONFIG_HOME/userland/zshrc"
+  }
+  add-zsh-hook precmd _userland_load_interactive
 fi
 
 # Desktop 1Password takes precedence; remote sessions may forward an agent.

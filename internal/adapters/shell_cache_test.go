@@ -92,11 +92,11 @@ func TestShippedShellScopesMiseToolsAndGcloudPrompt(t *testing.T) {
 	if !strings.Contains(string(zshenv), "userland/zsh/mise-env.zsh") {
 		t.Fatalf("zshenv does not load the static global tool environment: %q", zshenv)
 	}
-	fragmentIndex := strings.Index(string(zshenv), `source "$XDG_CONFIG_HOME/userland/zshrc"`)
+	fragmentIndex := strings.Index(string(zshenv), `_userland_load_interactive()`)
 	pathIndex := strings.Index(string(zshenv), `export PATH=`)
 	miseIndex := strings.Index(string(zshenv), "userland/zsh/mise-env.zsh")
 	if fragmentIndex < pathIndex || fragmentIndex < miseIndex {
-		t.Fatalf("zshenv sources the interactive fragment before tool paths: %q", zshenv)
+		t.Fatalf("zshenv schedules the interactive fragment before tool paths: %q", zshenv)
 	}
 	zshrc, err := os.ReadFile(filepath.Join(root, "cfg", "home", "zshrc"))
 	if err != nil {

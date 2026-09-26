@@ -14,7 +14,8 @@ var inspectLoginItemScript = `on run argv
 set wantedName to item 1 of argv
 tell application "System Events"
   if exists login item wantedName then
-    return "present"
+    set currentItem to login item wantedName
+    return (POSIX path of (path of currentItem as alias)) & tab & (hidden of currentItem as text)
   end if
 end tell
 return "missing"
@@ -26,11 +27,31 @@ set wantedPath to item 2 of argv
 set wantedHidden to (item 3 of argv is "true")
 set wantedAlias to POSIX file wantedPath as alias
 tell application "System Events"
-  if not (exists login item wantedName) then
+  if exists login item wantedName then
+    set currentItem to login item wantedName
+    set currentPath to POSIX path of (path of currentItem as alias)
+    if currentPath is not wantedPath or (hidden of currentItem) is not wantedHidden then
+      delete currentItem
+      make login item at end with properties {name:wantedName, path:wantedAlias, hidden:wantedHidden}
+    end if
+  else
     make login item at end with properties {name:wantedName, path:wantedAlias, hidden:wantedHidden}
   end if
 end tell
 end run`
+
+func resolveLoginItemPath(c *Context, path string) string {
+	candidates := []string{path}
+	if strings.HasPrefix(path, "/Applications/") {
+		candidates = append(candidates, homePath(c, "Applications", strings.TrimPrefix(path, "/Applications/")))
+	}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return path
+}
 
 func loginItems(c *Context, action Action) int {
 	if !c.Env.IsMacOS() {
@@ -63,7 +84,7 @@ func loginItems(c *Context, action Action) int {
 	}
 	code := 0
 	for _, row := range rows {
-		name, path, hidden := row[0], row[1], row[2]
+		name, path, hidden := row[0], resolveLoginItemPath(c, row[1]), row[2]
 		if name == "" || !filepath.IsAbs(path) || hidden != "true" && hidden != "false" {
 			c.Log(Attention, "invalid login item declaration for "+name)
 			return 1
@@ -81,7 +102,8 @@ func loginItems(c *Context, action Action) int {
 			code = 2
 			continue
 		}
-		if strings.TrimSpace(string(inspect.Output)) == "present" {
+		expected := path + "\t" + hidden
+		if strings.TrimSpace(string(inspect.Output)) == expected {
 			c.Log(Current, name+" login item matches")
 			continue
 		}
@@ -100,6 +122,11 @@ func loginItems(c *Context, action Action) int {
 			return 1
 		}
 		c.Log(Changed, name+" login item configured")
+		verify := runWith(c, c.Env.List, nil, osascript, "-e", inspectLoginItemScript, "--", name)
+		if verify.Code != 0 || strings.TrimSpace(string(verify.Output)) != expected {
+			c.Log(Attention, name+" login item could not be verified after configuration")
+			code = 2
+		}
 	}
 	return code
 }

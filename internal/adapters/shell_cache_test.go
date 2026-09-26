@@ -59,6 +59,23 @@ esac
 	}
 }
 
+func TestShellToolPathFindsPinnedToolsInMiseBinPaths(t *testing.T) {
+	base := t.TempDir()
+	bin := filepath.Join(base, "starship-bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	starship := filepath.Join(bin, "starship")
+	if err := os.WriteFile(starship, []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := platform.NewEnvironment([]string{"PATH=/usr/bin:/bin"})
+	path, ok := shellToolPath(&Context{Env: env}, miseShellEnvironment{BinPaths: []string{bin}}, "starship")
+	if !ok || path != starship {
+		t.Fatalf("shell cache did not resolve pinned tool: %q, %v", path, ok)
+	}
+}
+
 func TestShippedShellScopesMiseToolsAndGcloudPrompt(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {

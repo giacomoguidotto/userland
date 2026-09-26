@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
 var shellEnvironmentName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -94,7 +96,7 @@ func shellCache(c *Context, action Action) int {
 		{"atuin", []string{"init", "zsh"}}, {"fzf", []string{"--zsh"}},
 		{"starship", []string{"init", "zsh"}}, {"zoxide", []string{"init", "zsh"}},
 	} {
-		if path, ok := platformCommand(c, command.name); ok {
+		if path, ok := shellToolPath(c, environment, command.name); ok {
 			result := run(c, path, command.args...)
 			if result.Code != 0 {
 				return result.Code
@@ -138,7 +140,7 @@ func shellCache(c *Context, action Action) int {
 
 func shellFingerprint(c *Context, environment miseShellEnvironment) string {
 	hash := sha256.New()
-	hash.Write([]byte("userland-shell-cache-v4\n"))
+	hash.Write([]byte("userland-shell-cache-v5\n"))
 	for _, path := range environment.BinPaths {
 		fmt.Fprintf(hash, "path\t%s\n", path)
 	}
@@ -154,7 +156,7 @@ func shellFingerprint(c *Context, environment miseShellEnvironment) string {
 		hash.Write(contents)
 	}
 	for _, name := range []string{"atuin", "fzf", "starship", "zoxide"} {
-		if path, ok := platformCommand(c, name); ok {
+		if path, ok := shellToolPath(c, environment, name); ok {
 			result := run(c, path, "--version")
 			fmt.Fprintf(hash, "%s\t%s\t%s\n", name, path, firstLine(result.Output))
 		}
@@ -169,6 +171,17 @@ func shellFingerprint(c *Context, environment miseShellEnvironment) string {
 		}
 	}
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func shellToolPath(c *Context, environment miseShellEnvironment, name string) (string, bool) {
+	paths := append([]string(nil), environment.BinPaths...)
+	for _, entry := range c.Env.List {
+		if strings.HasPrefix(entry, "PATH=") {
+			paths = append(paths, strings.TrimPrefix(entry, "PATH="))
+			break
+		}
+	}
+	return platform.LookPath(c.Env.With("PATH", strings.Join(paths, string(os.PathListSeparator))), name)
 }
 
 func shellCacheCurrent(path, fingerprint string) bool {

@@ -245,7 +245,9 @@ review_checkout_diff() (
   # Invoke Delta directly so bootstrap_git can keep ignoring global Git
   # settings while Delta still reads the user's theme and layout. Its output
   # must be the terminal even though the installer itself arrived over a pipe.
-  cd "$review_checkout" || exit 1
+  # Delta is often a Mise shim. Run it outside the checkout so a local
+  # .mise/config.toml cannot block the recovery viewer before trust setup.
+  cd / || exit 1
   if command -v delta >/dev/null 2>&1; then
     printf ' ·  Reviewing the full patch in Delta inline. Press q to return to the recovery choices.\n' >&9
     if delta --paging always --pager 'less -R -X' --line-numbers <"$review_dir/patch" >&9 2>&9; then

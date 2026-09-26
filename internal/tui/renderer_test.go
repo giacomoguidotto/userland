@@ -54,6 +54,21 @@ func TestRichTaskSpinnerAdvancesFrames(t *testing.T) {
 	}
 }
 
+func TestRichStatusClearsLiveTask(t *testing.T) {
+	var output synchronizedBuffer
+	renderer := New(&output, richEnvironment())
+
+	renderer.BeginTask("Apply managed files transactionally")
+	renderer.Status(StatusInfo, "checking legacy workspace links")
+
+	result := output.String()
+	clear := strings.LastIndex(result, "\x1b[2K")
+	message := strings.LastIndex(result, "checking legacy workspace links")
+	if clear < 0 || message < 0 || clear > message {
+		t.Fatalf("status did not clear the live task before writing: %q", result)
+	}
+}
+
 func TestRichPlanUsesSemanticColorAndCurrentHeadings(t *testing.T) {
 	var output bytes.Buffer
 	renderer := New(&output, richEnvironment())

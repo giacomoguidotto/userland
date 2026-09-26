@@ -160,6 +160,11 @@ func (r Renderer) Usage() {
 }
 
 func (r Renderer) Status(status Status, message string) {
+	// Status messages are permanent lines. Clear a live rich task first so a
+	// status emitted by an operation cannot leave the spinner stranded above it.
+	if r.mode == ModeRich {
+		r.ClearTask()
+	}
 	plain := "error"
 	symbol := "x"
 	tint := r.red

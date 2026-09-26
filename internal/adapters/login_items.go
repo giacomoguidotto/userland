@@ -15,7 +15,7 @@ set wantedName to item 1 of argv
 tell application "System Events"
   if exists login item wantedName then
     set currentItem to login item wantedName
-    return (path of currentItem as text) & tab & (hidden of currentItem as text)
+    return (POSIX path of (path of currentItem)) & tab & (hidden of currentItem as text)
   end if
 end tell
 return "missing"
@@ -25,15 +25,16 @@ var applyLoginItemScript = `on run argv
 set wantedName to item 1 of argv
 set wantedPath to item 2 of argv
 set wantedHidden to (item 3 of argv is "true")
+set wantedAlias to POSIX file wantedPath as alias
 tell application "System Events"
   if exists login item wantedName then
     set currentItem to login item wantedName
     if (path of currentItem as text) is not wantedPath or (hidden of currentItem) is not wantedHidden then
       delete currentItem
-      make login item at end with properties {name:wantedName, path:wantedPath, hidden:wantedHidden}
+      make login item at end with properties {name:wantedName, path:wantedAlias, hidden:wantedHidden}
     end if
   else
-    make login item at end with properties {name:wantedName, path:wantedPath, hidden:wantedHidden}
+    make login item at end with properties {name:wantedName, path:wantedAlias, hidden:wantedHidden}
   end if
 end tell
 end run`

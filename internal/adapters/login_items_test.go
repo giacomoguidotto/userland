@@ -10,6 +10,15 @@ import (
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
+func TestLoginItemScriptsUsePOSIXPaths(t *testing.T) {
+	if !strings.Contains(inspectLoginItemScript, "POSIX path of (path of currentItem)") {
+		t.Fatal("login item inspection must normalize macOS aliases to POSIX paths")
+	}
+	if !strings.Contains(applyLoginItemScript, "POSIX file wantedPath as alias") {
+		t.Fatal("login item creation must pass an explicit macOS alias")
+	}
+}
+
 func TestLoginItemsAppliesOnlyDeclaredApplications(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "root")

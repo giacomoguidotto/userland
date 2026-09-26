@@ -46,12 +46,12 @@ op = "2.39.0"
 # including the two tools without upstream Mac archives, are declared above.
 
 [dotfiles]
-"~/.zshrc" = { source = "home/zshrc", mode = "symlink" }
+"~/.config/userland/zshrc" = { source = "home/zshrc", mode = "symlink" }
 "~/.zshenv" = { source = "home/zshenv", mode = "symlink" }
 "~/.hushlogin" = { source = "home/hushlogin", mode = "symlink" }
 "~/.local/bin/userland-secrets" = { source = "home/bin/userland-secrets", mode = "symlink" }
 "~/.local/bin/userland-git-sign" = { source = "home/bin/userland-git-sign", mode = "symlink" }
-"~/.ssh/config" = { source = "home/ssh/config", mode = "symlink" }
+"~/.config/userland/ssh/config" = { source = "home/ssh/config", mode = "symlink" }
 "~/.ssh/life-auth.pub" = { source = "home/ssh/life-auth.pub", mode = "symlink" }
 "~/.ssh/userland-known_hosts" = { source = "home/ssh/userland-known_hosts", mode = "symlink" }
 "~/.config/1Password/ssh/agent.toml" = { source = "home/1Password/ssh/agent.toml", mode = "symlink" }

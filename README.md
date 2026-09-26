@@ -54,16 +54,16 @@ Userland writes a static Zsh cache containing direct paths for only the tools in
 
 ## Local tool configuration
 
-Installers must not append to `~/.ssh/config` or `~/.zshrc`: these are symlinks into this repository. Userland loads separate, machine-local files instead:
+Userland does not symlink `~/.ssh/config` or `~/.zshrc`. It stores its own fragments separately and creates regular entrypoint files when needed, so other setup tools can edit the conventional files normally:
 
 | Local file | Owner and behavior |
 | --- | --- |
-| `~/.ssh/config.d/trellis.conf` | Trellis writes its `Host trellis-remote-dev` stanza. SSH includes `config.d/*.conf` before the versioned hosts. Keep settings inside explicit `Host` blocks. |
-| `${XDG_CONFIG_HOME:-~/.config}/zsh/conf.d/trellis.zsh` | Trellis writes its completion loader. Zsh sources `conf.d/*.zsh` alphabetically after Userland's completion initialization. |
+| `~/.config/userland/ssh/config` | Versioned Userland SSH fragment, included by the regular `~/.ssh/config`. Other tools may append their own `Host` blocks to `~/.ssh/config`. |
+| `~/.config/userland/zshrc` | Versioned Userland shell fragment, sourced from `~/.zshenv`. Other tools may append their setup to `~/.zshrc`. |
 
-These directories are outside the checkout and are not managed or cleaned by Userland. Installers create them as needed and update only their own file. Shell snippets can source generated completions from `~/.local/share/trellis/completions/trellis.zsh`; they do not need to run `mise activate` again.
+The `~/.config/userland` fragments are managed by Userland. The regular entrypoint files are not managed after creation, and Userland refuses to replace an unrelated symlink. Shell setup tools can write their normal completion code to `~/.zshrc` and SSH hosts to `~/.ssh/config`.
 
-Existing Trellis marker blocks must be moved into these local files before discarding their changes in the checkout. Keep unrelated edits. The Codex trust entry for `/Users/giacomo` is versioned in `cfg/codex/config.toml`, as part of the personal baseline.
+The Codex trust entry for `/Users/giacomo` is versioned in `cfg/codex/config.toml`, as part of the personal baseline.
 
 ## Repository map
 

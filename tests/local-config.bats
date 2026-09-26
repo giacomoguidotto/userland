@@ -2,40 +2,45 @@
 
 setup() {
   ROOT=$(CDPATH= cd -- "$BATS_TEST_DIRNAME/.." && pwd)
+  export ROOT
   export HOME="$BATS_TEST_TMPDIR/home"
   export XDG_CONFIG_HOME="$HOME/config with spaces"
   export XDG_CACHE_HOME="$HOME/cache"
-  mkdir -p "$HOME" "$XDG_CONFIG_HOME/zsh/conf.d" "$XDG_CACHE_HOME/userland/zsh"
+  mkdir -p "$HOME" "$XDG_CONFIG_HOME/userland" "$XDG_CACHE_HOME/userland/zsh"
 }
 
-@test "local Zsh snippets load after completion setup without modifying managed files" {
+@test "Trellis can append normal Zsh setup beside Userland" {
   command -v zsh >/dev/null || skip "zsh is required"
-  cp "$ROOT/cfg/home/zshrc" "$BATS_TEST_TMPDIR/baseline"
-  ln -s "$ROOT/cfg/home/zshrc" "$HOME/.zshrc"
+  cp "$ROOT/cfg/home/zshrc" "$XDG_CONFIG_HOME/userland/zshrc"
   printf 'autoload -Uz compinit; compinit -d "$HOME/.zcompdump"\n' >"$XDG_CACHE_HOME/userland/zsh/init.zsh"
-  printf '_trellis() { :; }; compdef _trellis trellis\n' >"$XDG_CONFIG_HOME/zsh/conf.d/trellis.zsh"
-  run zsh -f -i -c 'source "$HOME/.zshrc"; print -r -- "${_comps[trellis]}"'
+  printf '_trellis() { :; }; compdef _trellis trellis\n' >"$HOME/.zshrc"
+  run zsh -f -i -c 'source "$ROOT/cfg/home/zshenv"; source "$HOME/.zshrc"; print -r -- "${_comps[trellis]}"'
   [ "$status" -eq 0 ]
   [[ "$output" == *"_trellis"* ]]
-  cmp "$BATS_TEST_TMPDIR/baseline" "$ROOT/cfg/home/zshrc"
-  [ -L "$HOME/.zshrc" ]
+  grep -q '_trellis' "$HOME/.zshrc"
 }
 
-@test "Zsh starts with no local snippets and skips them in noninteractive shells" {
+@test "Zsh skips Userland's interactive fragment in noninteractive shells" {
   command -v zsh >/dev/null || skip "zsh is required"
-  run zsh -f -i -c 'source "$1"' -- "$ROOT/cfg/home/zshrc"
+  cp "$ROOT/cfg/home/zshrc" "$XDG_CONFIG_HOME/userland/zshrc"
+  run zsh -f -i -c 'source "$1"' -- "$ROOT/cfg/home/zshenv"
   [ "$status" -eq 0 ]
-  printf 'exit 72\n' >"$XDG_CONFIG_HOME/zsh/conf.d/trellis.zsh"
-  run zsh -f -c 'source "$1"' -- "$ROOT/cfg/home/zshrc"
+  printf 'exit 72\n' >>"$XDG_CONFIG_HOME/userland/zshrc"
+  run zsh -f -c 'source "$1"; print ok' -- "$ROOT/cfg/home/zshenv"
   [ "$status" -eq 0 ]
+  [ "$output" = ok ]
 }
 
 @test "SSH loads local hosts without leaking their settings into Userland hosts" {
   command -v ssh >/dev/null || skip "ssh is required"
-  mkdir -p "$HOME/.ssh/config.d"
+  mkdir -p "$HOME/.ssh" "$HOME/.config/userland/ssh"
   # OpenSSH expands ~ using passwd rather than the fixture HOME.
-  sed "s|~/.ssh/config.d|$HOME/.ssh/config.d|" "$ROOT/cfg/home/ssh/config" >"$HOME/.ssh/config"
-  printf 'Host trellis-remote-dev\n  HostName vm.example.invalid\n  User trellis\n  Port 2222\n' >"$HOME/.ssh/config.d/trellis.conf"
+  {
+    printf 'Include %s\n' "$HOME/.config/userland/ssh/config"
+    cat "$ROOT/cfg/home/ssh/config"
+    printf '%s\n' 'Host trellis-remote-dev' '  HostName vm.example.invalid' '  User trellis' '  Port 2222'
+  } >"$HOME/.ssh/config"
+  cp "$ROOT/cfg/home/ssh/config" "$HOME/.config/userland/ssh/config"
   run ssh -G -F "$HOME/.ssh/config" trellis-remote-dev
   [ "$status" -eq 0 ]
   [[ "$output" == *"hostname vm.example.invalid"* ]]

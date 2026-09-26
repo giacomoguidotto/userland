@@ -135,6 +135,9 @@ func (m Manager) Apply(ctx context.Context) int {
 	if err := m.Recover(); err != nil || m.Prune() != nil {
 		return 1
 	}
+	if err := m.ensureComposableFiles(); err != nil {
+		return 1
+	}
 	result := m.Env.RunMise(ctx, nil, "bootstrap", "dotfiles", "status", "--json")
 	if result.Code != 0 {
 		return result.Code
@@ -178,6 +181,62 @@ func (m Manager) Apply(ctx context.Context) int {
 		return 1
 	}
 	return 0
+}
+
+// ensureComposableFiles keeps the two conventional startup files available as
+// regular files. Other setup tools are free to edit them; Userland's own
+// declarations live in the separate fragments applied by mise.
+func (m Manager) ensureComposableFiles() error {
+	files := []struct {
+		target  string
+		source  string
+		include string
+	}{
+		{filepath.Join(m.Env.Home, ".zshrc"), filepath.Join(m.Env.Root, "cfg/home/zshrc"), ""},
+		{filepath.Join(m.Env.Home, ".ssh/config"), filepath.Join(m.Env.Root, "cfg/home/ssh/config"), "Include ~/.config/userland/ssh/config"},
+	}
+	for _, file := range files {
+		info, err := os.Lstat(file.target)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err == nil && info.Mode()&os.ModeSymlink == 0 {
+			if file.include == "" {
+				continue
+			}
+			contents, readErr := os.ReadFile(file.target)
+			if readErr != nil {
+				return readErr
+			}
+			if !strings.Contains(string(contents), file.include) {
+				updated := []byte(file.include + "\n" + string(contents))
+				if writeErr := os.WriteFile(file.target, updated, info.Mode().Perm()); writeErr != nil {
+					return writeErr
+				}
+			}
+			continue
+		}
+		if info != nil && info.Mode()&os.ModeSymlink != 0 {
+			resolved, resolveErr := filepath.EvalSymlinks(file.target)
+			if resolveErr != nil || (resolved != file.source && !m.ownedLegacy(resolved)) {
+				return fmt.Errorf("refusing to replace unmanaged symlink: %s", file.target)
+			}
+			if err := os.Remove(file.target); err != nil {
+				return err
+			}
+		}
+		if err := os.MkdirAll(filepath.Dir(file.target), 0o700); err != nil {
+			return err
+		}
+		contents := "# Managed Userland entrypoint. Other tools may append their own configuration.\n"
+		if file.include != "" {
+			contents += file.include + "\n"
+		}
+		if err := os.WriteFile(file.target, []byte(contents), 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func statusApplied(value status) bool {

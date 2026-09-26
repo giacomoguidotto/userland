@@ -27,17 +27,12 @@ func (w Wizard) Stage(index, total int, title string) {
 func (w Wizard) Info(message string) { w.Render.Status(StatusInfo, message) }
 
 func (w Wizard) InputLine(prompt string) (string, int) {
-	w.Render.ClearTask()
-	if w.Render.Rich() {
-		fmt.Fprintf(w.Render.out, " %s?%s  %s %s›%s ", w.Render.cyan, w.Render.reset, w.Render.redact(prompt), w.Render.cyan, w.Render.reset)
-	} else {
-		fmt.Fprintf(w.Render.out, "%s: ", w.Render.redact(prompt))
+	if file, ok := w.Input.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
+		return w.inputTerminal(file, prompt)
 	}
+	w.writePrompt(prompt)
 	if w.Input == nil {
 		return "", 3
-	}
-	if file, ok := w.Input.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
-		return w.inputTerminal(file)
 	}
 	// Do not buffer past a prompt: subprocesses and later stages share this input.
 	var answer strings.Builder
@@ -63,11 +58,21 @@ func (w Wizard) InputLine(prompt string) (string, int) {
 	}
 }
 
-func (w Wizard) inputTerminal(file *os.File) (string, int) {
+func (w Wizard) writePrompt(prompt string) {
+	w.Render.ClearTask()
+	if w.Render.Rich() {
+		fmt.Fprintf(w.Render.out, " %s?%s  %s %s›%s ", w.Render.cyan, w.Render.reset, w.Render.redact(prompt), w.Render.cyan, w.Render.reset)
+	} else {
+		fmt.Fprintf(w.Render.out, "%s: ", w.Render.redact(prompt))
+	}
+}
+
+func (w Wizard) inputTerminal(file *os.File, prompt string) (string, int) {
 	state, err := term.MakeRaw(int(file.Fd()))
 	if err != nil {
 		return "", 1
 	}
+	w.writePrompt(prompt)
 	defer func() {
 		_ = term.Restore(int(file.Fd()), state)
 		fmt.Fprintln(w.Render.out)

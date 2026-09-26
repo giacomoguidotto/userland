@@ -34,6 +34,8 @@ def without_realm_help(data: bytes) -> bytes:
         b"realm remove <name-or-path>",
         b"Detach configuration without deleting its checkout",
         b"nuke      Remove everything under the home folder",
+        b"userland sync --non-interactive",
+        b"Apply automatic work without prompts or browser login",
     )
     result = b"".join(line for line in data.splitlines(keepends=True) if not any(value in line for value in omitted))
     return result.replace(b"\r\n\r\n\r\n   completions", b"\r\n\r\n   completions")

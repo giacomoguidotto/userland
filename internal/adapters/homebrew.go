@@ -591,6 +591,9 @@ func authenticateHomebrew(c *Context) platform.Result {
 		return platform.Result{}
 	}
 	if len(c.SudoPassword) == 0 {
+		if !c.Terminal || c.Env.Bool("USERLAND_NON_INTERACTIVE") {
+			return runWithObserved(c, c.Env.List, nil, c.Output, "/usr/bin/sudo", "-n", "-v")
+		}
 		return runWithObserved(c, c.Env.List, c.Stdin, c.Output, "/usr/bin/sudo", "-v")
 	}
 	input := append(append([]byte(nil), c.SudoPassword...), '\n')

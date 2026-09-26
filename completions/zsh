@@ -18,6 +18,7 @@ _userland() {
   fi
 
   case ${words[2]} in
+    sync) _arguments '1:option:(--non-interactive)' ;;
     doctor) _arguments '1:option:(--json)' ;;
     realm)
       if (( CURRENT == 3 )); then

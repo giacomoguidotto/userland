@@ -57,7 +57,9 @@ func Run(ctx context.Context, invocation Invocation) ExitCode {
 		}
 		return ExitSuccess
 	case "sync":
-		if len(invocation.Args) != 1 {
+		if len(invocation.Args) == 2 && invocation.Args[1] == "--non-interactive" {
+			invocation.Environ = nonInteractiveEnvironment(invocation.Environ)
+		} else if len(invocation.Args) != 1 {
 			return usageError(invocation, "sync does not accept arguments")
 		}
 		return runSync(ctx, invocation)
@@ -84,6 +86,15 @@ func Run(ctx context.Context, invocation Invocation) ExitCode {
 		renderer.Status(tui.StatusError, "unknown command: "+command)
 		return ExitUsage
 	}
+}
+
+func nonInteractiveEnvironment(environ []string) []string {
+	return platform.NewEnvironment(environ).With(
+		"USERLAND_NON_INTERACTIVE", "1",
+		"USERLAND_ASSUME_YES", "1",
+		"USERLAND_NO_TTY", "1",
+		"USERLAND_UI_MODE", "plain",
+	)
 }
 
 func runRealm(ctx context.Context, invocation Invocation) ExitCode {
@@ -172,7 +183,7 @@ func runDoctorJSON(ctx context.Context, invocation Invocation) ExitCode {
 
 func runSync(ctx context.Context, invocation Invocation) ExitCode {
 	terminal := false
-	if file, ok := invocation.Stdin.(*os.File); ok {
+	if file, ok := invocation.Stdin.(*os.File); ok && !platform.NewEnvironment(invocation.Environ).Bool("USERLAND_NON_INTERACTIVE") {
 		terminal = term.IsTerminal(int(file.Fd()))
 	}
 	return ExitCode(usersync.Run(ctx, invocation.Environ, invocation.Stdin, invocation.Stdout, invocation.Stderr, terminal))

@@ -87,7 +87,7 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		render.Status(tui.StatusError, err.Error())
 		return 1
 	}
-	if approved.Summary().Blocked != 0 {
+	if approved.Summary().Blocked != 0 && !env.Bool("USERLAND_NON_INTERACTIVE") {
 		render.Status(tui.StatusError, "Resolve the blocked plan items before syncing")
 		return 2
 	}
@@ -117,10 +117,12 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	// already installed on an earlier run.
 	if env.IsMacOS() && (len(missingPackages) != 0 || hasPrivilegedChanges(approved)) {
 		var result platform.Result
-		var passwordCode int
-		sudoPassword, passwordCode = render.Secret(taskStdin, "Administrator password")
-		if passwordCode != 0 {
-			return passwordCode
+		if !env.Bool("USERLAND_NON_INTERACTIVE") {
+			var passwordCode int
+			sudoPassword, passwordCode = render.Secret(taskStdin, "Administrator password")
+			if passwordCode != 0 {
+				return passwordCode
+			}
 		}
 		code := nativeTask(ctx, render, "Authenticate macOS administrator access", func() int {
 			result = adapters.AuthenticateHomebrew(ctx, env, sudoPassword, stdout, terminal)
@@ -128,6 +130,10 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 		})
 		appendBootstrapLog(runLog, "Authenticate macOS administrator access", result, "sudo -v")
 		if code != 0 {
+			if env.Bool("USERLAND_NON_INTERACTIVE") {
+				render.Status(tui.StatusAttention, "Administrator access is unavailable without prompting; authenticate sudo separately, then rerun")
+				return 2
+			}
 			if detail := lastOutputLine(result.Output); detail != "" {
 				render.Status(tui.StatusInfo, "sudo: "+detail)
 			}

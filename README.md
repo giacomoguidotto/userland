@@ -52,6 +52,19 @@ The personal authentication wizard runs inside the Userland TUI and follows the 
 
 Userland writes a static Zsh cache containing direct paths for only the tools in `cfg/mise.toml`. It does not put the shared Mise shim directory on the global path. Project toolchains stay inside their repository.
 
+## Local tool configuration
+
+Installers must not append to `~/.ssh/config` or `~/.zshrc`: these are symlinks into this repository. Userland loads separate, machine-local files instead:
+
+| Local file | Owner and behavior |
+| --- | --- |
+| `~/.ssh/config.d/trellis.conf` | Trellis writes its `Host trellis-remote-dev` stanza. SSH includes `config.d/*.conf` before the versioned hosts. Keep settings inside explicit `Host` blocks. |
+| `${XDG_CONFIG_HOME:-~/.config}/zsh/conf.d/trellis.zsh` | Trellis writes its completion loader. Zsh sources `conf.d/*.zsh` alphabetically after Userland's completion initialization. |
+
+These directories are outside the checkout and are not managed or cleaned by Userland. Installers create them as needed and update only their own file. Shell snippets can source generated completions from `~/.local/share/trellis/completions/trellis.zsh`; they do not need to run `mise activate` again.
+
+Existing Trellis marker blocks must be moved into these local files before discarding their changes in the checkout. Keep unrelated edits. The Codex trust entry for `/Users/giacomo` is versioned in `cfg/codex/config.toml`, as part of the personal baseline.
+
 ## Repository map
 
 | Folder | Contents |

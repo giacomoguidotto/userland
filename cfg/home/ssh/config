@@ -1,3 +1,6 @@
+# Machine-local hosts belong here, outside the Userland checkout.
+Include ~/.ssh/config.d/*.conf
+
 # 1Password supplies the agent socket on macOS and Linux. Keep the socket in
 # SSH_AUTH_SOCK rather than embedding a machine-specific path in this file.
 Host life-github

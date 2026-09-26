@@ -2,3 +2,6 @@
 # declares this preference; no token or exported session is stored here.
 cli_auth_credentials_store = "keyring"
 mcp_oauth_credentials_store = "keyring"
+
+[projects."/Users/giacomo"]
+trust_level = "trusted"

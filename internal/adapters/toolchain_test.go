@@ -32,6 +32,32 @@ func TestShippedToolProbesCoverPinnedUserTools(t *testing.T) {
 	}
 }
 
+func TestShippedHarnessProbesRequireDeclaredVersions(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate repository root")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(filename), "..", ".."))
+	versions, err := declaredToolVersions(filepath.Join(root, "cfg", "mise.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if versions["npm:@openai/codex"] == "" || versions["aqua:anthropics/claude-code"] == "" {
+		t.Fatalf("harness versions are not declared: %#v", versions)
+	}
+	probes, complete := toolProbes(&Context{Env: platform.NewEnvironment([]string{"USERLAND_ROOT=" + root})})
+	if !complete {
+		t.Fatal("tool probe manifest is incomplete")
+	}
+	for _, probe := range probes {
+		if probe.id == "npm:@openai/codex" || probe.id == "aqua:anthropics/claude-code" {
+			if probe.version != versions[probe.id] {
+				t.Fatalf("probe %s does not require %s: %#v", probe.id, versions[probe.id], probe)
+			}
+		}
+	}
+}
+
 func TestShippedConfigUsesNativeClaudeCodeDistribution(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {

@@ -65,14 +65,15 @@ func (c *Context) ReportProgress(current, total int, detail string) {
 }
 
 type adapter struct {
-	name        string
-	label       string
-	area        plan.Area
-	action      plan.Action
-	attention   plan.Handling
-	run         func(*Context, Action) int
-	enabled     func(platform.Environment) bool
-	directApply bool
+	name              string
+	label             string
+	area              plan.Area
+	action            plan.Action
+	attention         plan.Handling
+	run               func(*Context, Action) int
+	enabled           func(platform.Environment) bool
+	directApply       bool
+	blocksOnAttention bool
 }
 
 var registry = []adapter{
@@ -80,6 +81,8 @@ var registry = []adapter{
 	{name: "homebrew-apps", label: "Homebrew applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: homebrew},
 	{name: "macos-bloat", label: "Optional macOS applications", area: plan.AreaCleanup, action: "remove", attention: plan.Automatic, run: macosBloat},
 	{name: "android-sdk", label: "Android development tools", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: androidSDK, directApply: true, enabled: androidSDKEnabled},
+	{name: "browser-ready", label: "Browser readiness", area: plan.AreaApps, action: "configure", attention: plan.Attended, run: browserReady, directApply: true, blocksOnAttention: true, enabled: machineClosureEnabled},
+	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions, directApply: true, blocksOnAttention: true},
 	{name: "personal-auth", label: "Personal authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: personalAuthentication, enabled: machineClosureEnabled, directApply: true},
 	{name: "personal-repos", label: "Personal repositories", area: plan.AreaFS, action: "clone", attention: plan.Blocked, run: personalRepositories},
 	{name: "realm-selection", label: "Realm selection", area: plan.AreaFS, action: "configure", attention: plan.Attended, run: realmSelection, enabled: machineClosureEnabled, directApply: true},
@@ -87,7 +90,6 @@ var registry = []adapter{
 	{name: "realm-homebrew-apps", label: "Realm applications", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: realmHomebrew, enabled: realmsEnabled},
 	{name: "realm-toolchains", label: "Realm toolchains", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: realmToolchains, enabled: realmsEnabled},
 	{name: "realm-auth", label: "Realm authentication", area: plan.AreaOS, action: "configure", attention: plan.Attended, run: realmAuthentication, enabled: realmAuthenticationEnabled, directApply: true},
-	{name: "browser-extensions", label: "Browser extensions", area: plan.AreaApps, action: "install", attention: plan.Blocked, run: browserExtensions, directApply: true},
 	{name: "file-handlers", label: "File handlers", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: fileHandlers},
 	{name: "power-management", label: "Power management", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: powerManagement},
 	{name: "login-items", label: "Login items", area: plan.AreaOS, action: "set", attention: plan.Automatic, run: loginItems, enabled: machineClosureEnabled},
@@ -168,6 +170,10 @@ func runSerialRegistry(ctx context.Context, env platform.Environment, action Act
 		result.Events = append(result.Events, invocation.Events...)
 		if code == 2 {
 			result.Attention = true
+			if item.blocksOnAttention {
+				result.Code = 3
+				return result
+			}
 			continue
 		}
 		if code != 0 {

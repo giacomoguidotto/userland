@@ -190,15 +190,15 @@ func (a t3AuthAccount) run(c *Context, ctx context.Context, stdin io.Reader, obs
 	return platform.RunObserved(ctx, a.environ(c), stdin, observer, path, args...)
 }
 
-func (a t3AuthAccount) runInteractive(c *Context, ctx context.Context, args ...string) platform.Result {
+func (a t3AuthAccount) runInteractive(c *Context, ctx context.Context, stdin io.Reader, args ...string) platform.Result {
 	path, err := a.resolve(c, ctx)
 	if err != nil {
 		return platform.Result{Code: 1, Err: err}
 	}
-	// Claude's auth command only needs the browser and OAuth callback. Giving
-	// Bun an EOF pipe keeps readline non-TTY; closing a Darwin tty stream is
-	// what triggers its EINVAL/kqueue failure.
-	return platform.RunInteractive(ctx, a.environ(c), strings.NewReader(""), path, args...)
+	// Claude's Bun runtime requires a real terminal descriptor on macOS. Passing
+	// an in-memory reader makes os/exec create a pipe; Bun tries to register that
+	// pipe with kqueue and exits with EINVAL before opening the browser.
+	return platform.RunInteractive(ctx, a.environ(c), stdin, path, args...)
 }
 
 func (a t3AuthAccount) prepare(c *Context) error {
@@ -294,7 +294,7 @@ func t3Authentication(c *Context, action Action) int {
 			// captured output when it exits so login instructions remain visible.
 			output := &tui.CommandOutput{Wizard: w}
 			w.Render.ClearTask()
-			result = limitedRun(c, func() platform.Result { return a.runInteractive(c, c.Context, args...) })
+			result = limitedRun(c, func() platform.Result { return a.runInteractive(c, c.Context, c.Stdin, args...) })
 			_, _ = output.Write(result.Output)
 			output.Flush()
 		} else {

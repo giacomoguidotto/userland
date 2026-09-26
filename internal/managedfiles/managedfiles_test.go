@@ -68,11 +68,27 @@ func TestEnsureComposableFilesPreservesExistingSetup(t *testing.T) {
 	}
 	zshrc, _ := os.ReadFile(filepath.Join(manager.Env.Home, ".zshrc"))
 	ssh, _ := os.ReadFile(filepath.Join(manager.Env.Home, ".ssh/config"))
-	if !strings.Contains(string(zshrc), "trellis shell setup") || strings.Contains(string(zshrc), "userland/zshrc") {
+	if !strings.Contains(string(zshrc), "trellis shell setup") || !strings.Contains(string(zshrc), userlandZshrcInclude) {
 		t.Fatalf("shell setup was not preserved: %q", zshrc)
 	}
 	if !strings.Contains(string(ssh), "Host trellis-remote-dev") || !strings.Contains(string(ssh), "userland/ssh/config") {
 		t.Fatalf("ssh setup was not preserved: %q", ssh)
+	}
+}
+
+func TestPlanComposableFilesRequestsMissingStartupInclude(t *testing.T) {
+	manager := testManager(t)
+	if err := os.WriteFile(filepath.Join(manager.Env.Home, ".zshrc"), []byte("# trellis\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	value := plan.New()
+	manager.PlanComposable(value)
+	items := value.Items()
+	if len(items) != 2 {
+		t.Fatalf("expected zshrc and ssh config repairs, got %#v", items)
+	}
+	if items[0].Target != filepath.Join(manager.Env.Home, ".zshrc") || !strings.Contains(items[0].Detail, "include") {
+		t.Fatalf("unexpected zshrc plan: %#v", items[0])
 	}
 }
 

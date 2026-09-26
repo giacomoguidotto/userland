@@ -12,9 +12,8 @@ setup() {
 @test "Trellis can append normal Zsh setup beside Userland" {
   command -v zsh >/dev/null || skip "zsh is required"
   cp "$ROOT/cfg/home/zshrc" "$XDG_CONFIG_HOME/userland/zshrc"
-  printf 'autoload -Uz compinit; compinit -d "$HOME/.zcompdump"\n' >"$XDG_CACHE_HOME/userland/zsh/init.zsh"
-  printf '_trellis() { :; }; compdef _trellis trellis\n' >"$HOME/.zshrc"
-  run zsh -f -i -c 'source "$ROOT/cfg/home/zshenv"; source "$HOME/.zshrc"; print -r -- "${_comps[trellis]}"'
+  printf 'if [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshrc" ]; then source "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshrc"; fi\n_trellis() { :; }; compdef _trellis trellis\n' >"$HOME/.zshrc"
+  run env PATH=/usr/bin:/bin zsh -f -i -c 'source "$ROOT/cfg/home/zshenv"; source "$HOME/.zshrc"; print -r -- "${_comps[trellis]}"'
   [ "$status" -eq 0 ]
   [[ "$output" == *"_trellis"* ]]
   grep -q '_trellis' "$HOME/.zshrc"

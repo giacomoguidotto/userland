@@ -125,6 +125,7 @@ func execute(ctx context.Context, environ []string, out io.Writer, standalone bo
 		}
 	}
 	managedfiles.Manager{Env: r.machine}.PlanLegacy(value)
+	managedfiles.Manager{Env: r.machine}.PlanComposable(value)
 	if err := r.nativeTask("Inspecting personal state", func() ([]byte, error) {
 		result := adapters.Run(ctx, r.machine, adapters.Plan, nil, false, value)
 		if result.Code != 0 {

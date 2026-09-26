@@ -171,10 +171,10 @@ printf '%s\n' "$TEST_CODEX"
 	}
 }
 
-func TestClaudeLoginUsesNonTTYInput(t *testing.T) {
+func TestClaudeLoginUsesConfiguredInput(t *testing.T) {
 	base := t.TempDir()
 	cli := filepath.Join(base, "claude")
-	if err := os.WriteFile(cli, []byte("#!/bin/sh\n[ -t 0 ] && exit 41\nprintf 'Login successful.\\n'\n"), 0700); err != nil {
+	if err := os.WriteFile(cli, []byte("#!/bin/sh\nprintf 'Login successful.\\n'\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	c := &Context{
@@ -183,7 +183,7 @@ func TestClaudeLoginUsesNonTTYInput(t *testing.T) {
 	}
 	a := t3AuthAccount{Driver: "claudeAgent", home: base}
 	a.Config.BinaryPath = "claude"
-	result := a.runInteractive(c, context.Background(), "auth", "login", "--claudeai")
+	result := a.runInteractive(c, context.Background(), strings.NewReader(""), "auth", "login", "--claudeai")
 	if result.Code != 0 {
 		t.Fatalf("Claude login received a TTY: exit=%d err=%v output=%q", result.Code, result.Err, result.Output)
 	}

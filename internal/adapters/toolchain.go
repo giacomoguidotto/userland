@@ -17,6 +17,7 @@ type toolProbe struct {
 	command   string
 	args      []string
 	platforms []string
+	version   string
 }
 
 type toolProblem struct {
@@ -145,6 +146,13 @@ func toolProbes(c *Context) ([]toolProbe, bool) {
 	if err != nil {
 		return probes, false
 	}
+	versions, err := declaredToolVersions(filepath.Join(c.Env.Root, "cfg", "mise.toml"))
+	if err != nil {
+		return probes, false
+	}
+	for index := range probes {
+		probes[index].version = versions[probes[index].id]
+	}
 	sort.Strings(probed)
 	sort.Strings(declared)
 	return probes, strings.Join(unique(probed), "\n") == strings.Join(unique(declared), "\n")
@@ -175,6 +183,36 @@ func declaredTools(path string) ([]string, error) {
 		result = append(result, strings.Trim(key, `"`))
 	}
 	return result, scanner.Err()
+}
+
+func declaredToolVersions(path string) (map[string]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	versions := make(map[string]string)
+	inside := false
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "[tools]" {
+			inside = true
+			continue
+		}
+		if strings.HasPrefix(line, "[") {
+			inside = false
+		}
+		if !inside || !strings.Contains(line, "=") {
+			continue
+		}
+		key, value, _ := strings.Cut(line, "=")
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
+			versions[strings.Trim(strings.TrimSpace(key), `"`)] = strings.Trim(value, `"`)
+		}
+	}
+	return versions, scanner.Err()
 }
 
 func unique(values []string) []string {
@@ -274,7 +312,11 @@ func probeState(c *Context, probe toolProbe) toolProbeState {
 	// because an unrelated tool is unavailable and make a healthy tool look
 	// corrupted. Disable both auto-install settings for the probe itself.
 	invocation = invocation.WithEnvironment("MISE_QUIET", "true", "MISE_AUTO_INSTALL", "0", "MISE_EXEC_AUTO_INSTALL", "0")
-	if runInvocation(c, nil, invocation).Code != 0 {
+	result := runInvocation(c, nil, invocation)
+	if result.Code != 0 {
+		return toolBroken
+	}
+	if probe.version != "" && !strings.Contains(string(result.Output), probe.version) {
 		return toolBroken
 	}
 	return toolReady

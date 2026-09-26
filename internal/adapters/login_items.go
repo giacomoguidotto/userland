@@ -76,13 +76,13 @@ func loginItems(c *Context, action Action) int {
 			return 1
 		}
 		inspect := runWith(c, c.Env.List, nil, osascript, "-e", inspectLoginItemScript, "--", name)
-		if inspect.Code == 0 && strings.TrimSpace(string(inspect.Output)) == "present" {
+		if inspect.Code != 0 {
+			c.Log(Attention, fmt.Sprintf("could not inspect %s login item: %s", name, strings.TrimSpace(string(inspect.Output))))
+			code = 2
+			continue
+		}
+		if strings.TrimSpace(string(inspect.Output)) == "present" {
 			c.Log(Current, name+" login item matches")
-			if startsImmediately(name) && action == Apply {
-				if code := startLoginApplication(c, name); code != 0 {
-					return code
-				}
-			}
 			continue
 		}
 		if action == Plan {
@@ -100,28 +100,6 @@ func loginItems(c *Context, action Action) int {
 			return 1
 		}
 		c.Log(Changed, name+" login item configured")
-		if startsImmediately(name) {
-			if code := startLoginApplication(c, name); code != 0 {
-				return code
-			}
-		}
 	}
 	return code
-}
-
-func startsImmediately(name string) bool {
-	// Capture apps must be started by macOS at login. Opening them during sync
-	// restores their last window and can put a screenshot or recording panel on
-	// screen. Wispr Flow has no capture window, so it remains available now.
-	return name == "Wispr Flow"
-}
-
-func startLoginApplication(c *Context, name string) int {
-	launched := run(c, "open", "-gj", "-a", name)
-	if launched.Code != 0 {
-		c.Log(Attention, "could not start "+name+": "+strings.TrimSpace(string(launched.Output)))
-		return 2
-	}
-	c.Log(Changed, "started "+name)
-	return 0
 }

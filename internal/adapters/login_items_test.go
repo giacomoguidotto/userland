@@ -58,18 +58,6 @@ func TestLoginItemsAppliesOnlyDeclaredApplications(t *testing.T) {
 	}
 }
 
-func TestCaptureAppsAreNotStartedDuringSync(t *testing.T) {
-	if startsImmediately("Shottr") {
-		t.Fatal("Shottr should be left for macOS to start at login")
-	}
-	if startsImmediately("Screen Studio") {
-		t.Fatal("Screen Studio should be left for macOS to start at login")
-	}
-	if !startsImmediately("Wispr Flow") {
-		t.Fatal("Wispr Flow should remain available immediately")
-	}
-}
-
 func shellSingleQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

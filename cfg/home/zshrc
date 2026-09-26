@@ -1,5 +1,27 @@
-# This fragment is sourced from zshenv. Ignore it for non-interactive shells.
+# This fragment is sourced from ~/.zshrc. Ignore it for non-interactive shells.
 [[ ${-} = ${-/i/} ]] && return
+
+# Keep interactive setup in the conventional startup file. macOS sources its
+# global /etc/zshrc after .zshenv, so prompt and completion hooks must be loaded
+# here rather than from .zshenv.
+if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh" ]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh"
+fi
+
+autoload -Uz compinit
+_userland_zcompdump="${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/zcompdump"
+if [ -r "$_userland_zcompdump" ]; then
+  compinit -C -d "$_userland_zcompdump"
+else
+  compinit -d "$_userland_zcompdump"
+fi
+unset _userland_zcompdump
+
+if (( $+commands[fzf] )); then eval "$(fzf --zsh)"; fi
+if (( $+commands[atuin] )); then eval "$(atuin init zsh)"; fi
+if (( $+commands[zoxide] )); then eval "$(zoxide init zsh)"; fi
+if (( $+commands[starship] )); then eval "$(starship init zsh)"; fi
+if (( $+commands[mise] )); then eval "$(mise completion zsh)"; fi
 
 alias ..="cd .."
 alias ...="cd ../.."
@@ -23,15 +45,3 @@ mkcd() { mkdir -p "$1" && cd "$1"; }
 klp() { for p in "$@"; do lsof -ti ":$p" | xargs kill -9 2>/dev/null && echo "killed port $p" || echo "no process on port $p"; done; }
 
 bindkey jj vi-cmd-mode
-
-# Userland generates this file during sync. Shell startup reads static text and
-# never invokes completion generators, Homebrew, or mise activation hooks.
-if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/init.zsh" ]; then
-  source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/init.zsh"
-fi
-
-# Recover Starship if an older or incomplete cache predates the installed tool.
-if (( $+commands[starship] )) && [[ -z ${_userland_starship_loaded:-} ]]; then
-  eval "$(starship init zsh)"
-fi
-unset _userland_starship_loaded

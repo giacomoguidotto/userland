@@ -217,6 +217,26 @@ report_migration_notice() {
   rm "$migration_notice"
 }
 
+find_delta_viewer() {
+  delta_path=$(command -v delta 2>/dev/null || :)
+  case "$delta_path" in
+    */mise/shims/*)
+      # A Mise shim can inherit an untrusted project config from the checkout
+      # being repaired. Use the already-installed binary instead of executing
+      # that shim through the project configuration.
+      for candidate in "$HOME"/.local/share/mise/installs/delta/*/bin/delta "$HOME"/.local/share/mise/installs/delta/*/delta; do
+        if [ -x "$candidate" ]; then
+          printf '%s\n' "$candidate"
+          return 0
+        fi
+      done
+      ;;
+  esac
+  if [ -x "$delta_path" ]; then
+    printf '%s\n' "$delta_path"
+  fi
+}
+
 # This runs before sync, including when stdin contains the downloaded script.
 # Keep diff output and answers on the terminal, out of the transaction log.
 review_checkout_diff() (
@@ -248,9 +268,10 @@ review_checkout_diff() (
   # Delta is often a Mise shim. Run it outside the checkout so a local
   # .mise/config.toml cannot block the recovery viewer before trust setup.
   cd / || exit 1
-  if command -v delta >/dev/null 2>&1; then
+  delta_viewer=$(find_delta_viewer)
+  if [ -n "$delta_viewer" ]; then
     printf ' ·  Reviewing the full patch in Delta inline. Press q to return to the recovery choices.\n' >&9
-    if delta --paging always --pager 'less -R -X' --line-numbers <"$review_dir/patch" >&9 2>&9; then
+    if "$delta_viewer" --paging always --pager 'less -R -X' --line-numbers <"$review_dir/patch" >&9 2>&9; then
       exit 0
     fi
     printf ' ·  Delta could not display the patch; showing the unified diff.\n' >&9

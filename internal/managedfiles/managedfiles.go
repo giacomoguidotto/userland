@@ -45,6 +45,10 @@ type manifestEntry struct {
 	Presence string
 }
 
+const userlandZshrcInclude = `if [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshrc" ]; then
+  source "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshrc"
+fi`
+
 func (m Manager) PlanLegacy(value *plan.Plan) {
 	for _, path := range m.legacyPaths() {
 		m.walkLegacy(path, func(link, source string) {
@@ -57,6 +61,28 @@ func (m Manager) PlanLegacy(value *plan.Plan) {
 		_ = value.Add(plan.Item{Area: plan.AreaCleanup, Action: "review", Handling: plan.Blocked, Ownership: "userland", Target: checkout, Detail: "unrecognized legacy checkout requires review", Proof: "legacy-checkout:" + checkout})
 	} else if isDirectory(filepath.Join(checkout, ".git")) {
 		_ = value.Add(plan.Item{Area: plan.AreaCleanup, Action: "release", Handling: plan.Automatic, Ownership: "userland", Target: checkout, Detail: "move to Trash after managed links migrate and doctor passes", Proof: "legacy-checkout:" + checkout})
+	}
+}
+
+// PlanComposable reports repairs to the conventional startup files. These
+// files belong to the user, so they are not represented as mise dotfiles.
+func (m Manager) PlanComposable(value *plan.Plan) {
+	for _, file := range m.composableFiles() {
+		info, err := os.Lstat(file.target)
+		if errors.Is(err, os.ErrNotExist) {
+			_ = value.Add(plan.Item{Area: plan.AreaFS, Action: "configure", Handling: plan.Automatic, Ownership: "userland", Target: file.target, Detail: "create composable startup file", Proof: "composable:" + file.target})
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		contents, readErr := os.ReadFile(file.target)
+		if readErr == nil && file.include != "" && !strings.Contains(string(contents), file.include) {
+			_ = value.Add(plan.Item{Area: plan.AreaFS, Action: "configure", Handling: plan.Automatic, Ownership: "userland", Target: file.target, Detail: "add Userland startup include", Proof: "composable:" + file.target})
+		}
 	}
 }
 
@@ -135,9 +161,6 @@ func (m Manager) Apply(ctx context.Context) int {
 	if err := m.Recover(); err != nil || m.Prune() != nil {
 		return 1
 	}
-	if err := m.ensureComposableFiles(); err != nil {
-		return 1
-	}
 	result := m.Env.RunMise(ctx, nil, "bootstrap", "dotfiles", "status", "--json")
 	if result.Code != 0 {
 		return result.Code
@@ -147,6 +170,9 @@ func (m Manager) Apply(ctx context.Context) int {
 		return 1
 	}
 	if statusApplied(before) {
+		if err := m.ensureComposableFiles(); err != nil {
+			return 1
+		}
 		return 0
 	}
 	directory, id, err := m.begin(before, result.Output)
@@ -154,7 +180,9 @@ func (m Manager) Apply(ctx context.Context) int {
 		return 1
 	}
 	code := 0
-	if err := m.prepareLegacy(); err != nil {
+	if err := m.ensureComposableFiles(); err != nil {
+		code = 1
+	} else if err := m.prepareLegacy(); err != nil {
 		code = 1
 	}
 	if code == 0 {
@@ -187,60 +215,70 @@ func (m Manager) Apply(ctx context.Context) int {
 // regular files. Other setup tools are free to edit them; Userland's own
 // declarations live in the separate fragments applied by mise.
 func (m Manager) ensureComposableFiles() error {
-	files := []struct {
-		target  string
-		source  string
-		include string
-	}{
-		{filepath.Join(m.Env.Home, ".zshrc"), filepath.Join(m.Env.Root, "cfg/home/zshrc"), ""},
-		{filepath.Join(m.Env.Home, ".ssh/config"), filepath.Join(m.Env.Root, "cfg/home/ssh/config"), "Include ~/.config/userland/ssh/config"},
-	}
-	for _, file := range files {
-		info, err := os.Lstat(file.target)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if err == nil && info.Mode()&os.ModeSymlink == 0 {
-			if file.include == "" {
-				continue
-			}
-			contents, readErr := os.ReadFile(file.target)
-			if readErr != nil {
-				return readErr
-			}
-			if !strings.Contains(string(contents), file.include) {
-				updated := []byte(file.include + "\n" + string(contents))
-				if writeErr := os.WriteFile(file.target, updated, info.Mode().Perm()); writeErr != nil {
-					return writeErr
-				}
-			}
-			continue
-		}
-		if info != nil && info.Mode()&os.ModeSymlink != 0 {
-			resolved, resolveErr := filepath.EvalSymlinks(file.target)
-			canonicalSource, sourceErr := filepath.EvalSymlinks(file.source)
-			if sourceErr != nil {
-				canonicalSource = file.source
-			}
-			if resolveErr != nil || (resolved != canonicalSource && !m.ownedLegacy(resolved)) {
-				return fmt.Errorf("refusing to replace unmanaged symlink: %s", file.target)
-			}
-			if err := os.Remove(file.target); err != nil {
-				return err
-			}
-		}
-		if err := os.MkdirAll(filepath.Dir(file.target), 0o700); err != nil {
-			return err
-		}
-		contents := "# Managed Userland entrypoint. Other tools may append their own configuration.\n"
-		if file.include != "" {
-			contents += file.include + "\n"
-		}
-		if err := os.WriteFile(file.target, []byte(contents), 0o600); err != nil {
+	for _, file := range m.composableFiles() {
+		if err := m.ensureComposableFile(file.target, file.source, file.include); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (m Manager) composableFiles() []struct {
+	target  string
+	source  string
+	include string
+} {
+	return []struct {
+		target  string
+		source  string
+		include string
+	}{
+		{filepath.Join(m.Env.Home, ".zshrc"), filepath.Join(m.Env.Root, "cfg/home/zshrc"), userlandZshrcInclude},
+		{filepath.Join(m.Env.Home, ".ssh/config"), filepath.Join(m.Env.Root, "cfg/home/ssh/config"), "Include ~/.config/userland/ssh/config"},
+	}
+}
+
+func (m Manager) ensureComposableFile(target, source, include string) error {
+	info, err := os.Lstat(target)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if err == nil && info.Mode()&os.ModeSymlink == 0 {
+		contents, readErr := os.ReadFile(target)
+		if readErr != nil {
+			return readErr
+		}
+		if include == "" || strings.Contains(string(contents), include) {
+			return nil
+		}
+		updated := append([]byte{}, contents...)
+		if len(updated) != 0 && updated[len(updated)-1] != '\n' {
+			updated = append(updated, '\n')
+		}
+		updated = append(updated, []byte(include+"\n")...)
+		return os.WriteFile(target, updated, info.Mode().Perm())
+	}
+	if info != nil && info.Mode()&os.ModeSymlink != 0 {
+		resolved, resolveErr := filepath.EvalSymlinks(target)
+		canonicalSource, sourceErr := filepath.EvalSymlinks(source)
+		if sourceErr != nil {
+			canonicalSource = source
+		}
+		if resolveErr != nil || (resolved != canonicalSource && !m.ownedLegacy(resolved)) {
+			return fmt.Errorf("refusing to replace unmanaged symlink: %s", target)
+		}
+		if err := os.Remove(target); err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return err
+	}
+	contents := "# Managed Userland entrypoint. Other tools may append their own configuration.\n"
+	if include != "" {
+		contents += include + "\n"
+	}
+	return os.WriteFile(target, []byte(contents), 0o600)
 }
 
 func statusApplied(value status) bool {
@@ -306,6 +344,14 @@ func (m Manager) begin(value status, encoded []byte) (string, string, error) {
 				return "", "", err
 			}
 			seen[target] = true
+		}
+	}
+	for _, file := range m.composableFiles() {
+		if exists(file.target) && !seen[file.target] {
+			if err := snapshot(directory, len(seen)+1, file.target); err != nil {
+				return "", "", err
+			}
+			seen[file.target] = true
 		}
 	}
 	if err := atomicWrite(filepath.Join(recovery, "active"), []byte(id+"\n"), 0o600); err != nil {

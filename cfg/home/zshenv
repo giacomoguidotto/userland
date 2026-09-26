@@ -14,18 +14,6 @@ if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh" ]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh"
 fi
 
-# Load the interactive fragment at the first prompt. macOS and local setup
-# files can still change PROMPT during startup, so loading it from zshenv is
-# too early for prompt hooks.
-if [[ -o interactive ]] && [ -r "$XDG_CONFIG_HOME/userland/zshrc" ]; then
-  autoload -Uz add-zsh-hook
-  _userland_load_interactive() {
-    add-zsh-hook -d precmd _userland_load_interactive
-    source "$XDG_CONFIG_HOME/userland/zshrc"
-  }
-  add-zsh-hook precmd _userland_load_interactive
-fi
-
 # Desktop 1Password takes precedence; remote sessions may forward an agent.
 if [ -S "$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" ]; then
   export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"

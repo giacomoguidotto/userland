@@ -6,18 +6,19 @@ export REACT_EDITOR="$EDITOR"
 export GIT_PAGER="delta"
 export STARSHIP_CONFIG="$XDG_CONFIG_HOME/starship/config.toml"
 
-# Userland's shell fragment is separate from the user's normal .zshrc so
-# other setup tools can own that file without creating a repository conflict.
-if [ -r "$XDG_CONFIG_HOME/userland/zshrc" ]; then
-  source "$XDG_CONFIG_HOME/userland/zshrc"
-fi
-
 # Keep the global path static. Mise writes only the pinned tools declared in
 # cfg/mise.toml to this directory; project toolchains stay project-local.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 
 if [ -r "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh" ]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/userland/zsh/mise-env.zsh"
+fi
+
+# Userland's shell fragment is separate from the user's normal .zshrc so
+# other setup tools can own that file without creating a repository conflict.
+# Load it after Mise's paths so generated hooks can find their tools.
+if [ -r "$XDG_CONFIG_HOME/userland/zshrc" ]; then
+  source "$XDG_CONFIG_HOME/userland/zshrc"
 fi
 
 # Desktop 1Password takes precedence; remote sessions may forward an agent.

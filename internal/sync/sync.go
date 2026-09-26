@@ -326,13 +326,11 @@ func packageTaskInput(env platform.Environment, stdin io.Reader) (io.Reader, fun
 	if env.Bool("USERLAND_NO_TTY") {
 		return nil, func() {}
 	}
-	if terminal, err := os.Open("/dev/tty"); err == nil {
-		return terminal, func() { _ = terminal.Close() }
-	}
 	if file, ok := stdin.(*os.File); ok {
 		if info, err := file.Stat(); err == nil && info.Mode()&os.ModeCharDevice == 0 {
 			return nil, func() {}
 		}
+		return file, func() {}
 	}
 	return stdin, func() {}
 }

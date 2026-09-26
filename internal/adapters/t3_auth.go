@@ -195,7 +195,7 @@ func (a t3AuthAccount) runInteractive(c *Context, ctx context.Context, args ...s
 	if err != nil {
 		return platform.Result{Code: 1, Err: err}
 	}
-	return platform.RunInteractive(ctx, a.environ(c), path, args...)
+	return platform.RunInteractive(ctx, a.environ(c), c.Stdin, path, args...)
 }
 
 func (a t3AuthAccount) prepare(c *Context) error {
@@ -286,11 +286,10 @@ func t3Authentication(c *Context, action Action) int {
 		}
 		var result platform.Result
 		if a.Driver == "claudeAgent" {
-			// Claude Code is a Bun application. Give it a real terminal for input
-			// so it does not open /dev/tty itself, while RunInteractive keeps
-			// stdout/stderr off a TTY because Bun's macOS kqueue watcher rejects
-			// its tty.WriteStream with EINVAL. Replay the captured output when it
-			// exits so login instructions remain visible in the wizard.
+			// Claude Code is a Bun application. Preserve the terminal device that
+			// started Userland instead of reopening /dev/tty, whose macOS kqueue
+			// alias makes Bun exit with EINVAL. Replay captured output when it exits
+			// so login instructions remain visible in the wizard.
 			output := &tui.CommandOutput{Wizard: w}
 			w.Render.ClearTask()
 			result = limitedRun(c, func() platform.Result { return a.runInteractive(c, c.Context, args...) })

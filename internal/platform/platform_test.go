@@ -14,7 +14,7 @@ func TestRunInteractivePTYHelper(t *testing.T) {
 	if os.Getenv("USERLAND_PLATFORM_PTY_HELPER") != "1" {
 		return
 	}
-	result := RunInteractive(context.Background(), []string{"PATH=/bin:/usr/bin"}, "/bin/sh", "-c", "test -t 0 && ! test -t 1 && ! test -t 2 && printf 'stdout\\n' && printf 'stderr\\n' >&2")
+	result := RunInteractive(context.Background(), []string{"PATH=/bin:/usr/bin"}, os.Stdin, "/bin/sh", "-c", "test -t 0 && ! test -t 1 && ! test -t 2 && printf 'stdout\\n' && printf 'stderr\\n' >&2")
 	if string(result.Output) != "stdout\nstderr\n" {
 		fmt.Fprintf(os.Stdout, "OUTPUT:%q\n", result.Output)
 		os.Exit(1)

@@ -903,7 +903,15 @@ run_sync() {
 
 sync_status=0
 if [ "${USERLAND_NO_TTY:-0}" != 1 ] && tty -s 2>/dev/null </dev/tty; then
-  if run_sync </dev/tty; then
+  # Pass the terminal device itself to the Go process. Reopening /dev/tty
+  # makes Bun treat the alias as a kqueue stream on macOS and Claude login
+  # exits with EINVAL. tty resolves it to the real /dev/ttys* device.
+  sync_tty=$(tty </dev/tty 2>/dev/null || :)
+  case "$sync_tty" in
+    /dev/*) ;;
+    *) sync_tty=/dev/tty ;;
+  esac
+  if run_sync <"$sync_tty"; then
     :
   else
     sync_status=$?

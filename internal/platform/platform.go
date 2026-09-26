@@ -139,21 +139,19 @@ func RunObserved(ctx context.Context, environ []string, stdin io.Reader, observe
 	return run(ctx, environ, stdin, observer, name, args...)
 }
 
-// RunInteractive gives a command a controlling terminal for input while
-// keeping output on regular files. This is a deliberate compromise for
-// runtimes that need to read from /dev/tty but crash when Bun tries to create
-// a macOS tty.WriteStream for stdout or stderr (EINVAL/kqueue).
-func RunInteractive(ctx context.Context, environ []string, name string, args ...string) Result {
+// RunInteractive gives a command the caller's terminal for input while
+// keeping output on regular files. The caller must pass the terminal file
+// itself instead of making us reopen /dev/tty: Bun's macOS runtime attempts to
+// watch that alias with kqueue and exits with EINVAL.
+func RunInteractive(ctx context.Context, environ []string, stdin io.Reader, name string, args ...string) Result {
 	if !strings.ContainsRune(name, os.PathSeparator) {
 		if resolved, ok := LookPath(environ, name); ok {
 			name = resolved
 		}
 	}
-	terminal, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		return Result{Code: 1, Err: err}
+	if stdin == nil {
+		return Result{Code: 1, Err: errors.New("interactive command has no terminal input")}
 	}
-	defer terminal.Close()
 	stdout, err := os.CreateTemp("", "userland-interactive-stdout-")
 	if err != nil {
 		return Result{Code: 1, Err: err}
@@ -169,7 +167,7 @@ func RunInteractive(ctx context.Context, environ []string, name string, args ...
 	defer os.Remove(stderrName)
 	command := exec.CommandContext(ctx, name, args...)
 	command.Env = environ
-	command.Stdin, command.Stdout, command.Stderr = terminal, stdout, stderr
+	command.Stdin, command.Stdout, command.Stderr = stdin, stdout, stderr
 	err = command.Run()
 	closeStdoutErr := stdout.Close()
 	closeStderrErr := stderr.Close()

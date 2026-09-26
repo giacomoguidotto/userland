@@ -28,6 +28,26 @@ func TestLoginItemMatchNormalizesTrailingSeparators(t *testing.T) {
 	}
 }
 
+func TestCaptureAppLoginItemsUseObservableVisibility(t *testing.T) {
+	rows, err := readCSV(filepath.Join("..", "..", "cfg", "login-items.csv"), "name", "path", "hidden")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"Screen Studio": true, "Shottr": true}
+	for _, row := range rows {
+		if !want[row[0]] {
+			continue
+		}
+		if row[2] != "false" {
+			t.Fatalf("%s must use the visibility state macOS reports for application login items", row[0])
+		}
+		delete(want, row[0])
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing capture app login item declarations: %v", want)
+	}
+}
+
 func TestLoginItemsAppliesOnlyDeclaredApplications(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
@@ -72,7 +92,8 @@ func TestResolveLoginItemPathFallsBackToUserApplications(t *testing.T) {
 	base := t.TempDir()
 	root := filepath.Join(base, "root")
 	userApplications := filepath.Join(base, "Applications")
-	if err := os.MkdirAll(filepath.Join(userApplications, "Shottr.app"), 0o700); err != nil {
+	application := "Userland Login Item Fixture.app"
+	if err := os.MkdirAll(filepath.Join(userApplications, application), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	env := platform.NewEnvironment([]string{
@@ -81,8 +102,8 @@ func TestResolveLoginItemPathFallsBackToUserApplications(t *testing.T) {
 		"USERLAND_UNAME=Darwin",
 	})
 	c := &Context{Context: context.Background(), Env: env}
-	got := resolveLoginItemPath(c, "/Applications/Shottr.app")
-	want := filepath.Join(userApplications, "Shottr.app")
+	got := resolveLoginItemPath(c, filepath.Join("/Applications", application))
+	want := filepath.Join(userApplications, application)
 	if got != want {
 		t.Fatalf("resolveLoginItemPath() = %q, want %q", got, want)
 	}

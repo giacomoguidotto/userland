@@ -195,7 +195,10 @@ func (a t3AuthAccount) runInteractive(c *Context, ctx context.Context, args ...s
 	if err != nil {
 		return platform.Result{Code: 1, Err: err}
 	}
-	return platform.RunInteractive(ctx, a.environ(c), c.Stdin, path, args...)
+	// Claude's auth command only needs the browser and OAuth callback. Giving
+	// Bun an EOF pipe keeps readline non-TTY; closing a Darwin tty stream is
+	// what triggers its EINVAL/kqueue failure.
+	return platform.RunInteractive(ctx, a.environ(c), strings.NewReader(""), path, args...)
 }
 
 func (a t3AuthAccount) prepare(c *Context) error {
@@ -286,10 +289,9 @@ func t3Authentication(c *Context, action Action) int {
 		}
 		var result platform.Result
 		if a.Driver == "claudeAgent" {
-			// Claude Code is a Bun application. Preserve the terminal device that
-			// started Userland instead of reopening /dev/tty, whose macOS kqueue
-			// alias makes Bun exit with EINVAL. Replay captured output when it exits
-			// so login instructions remain visible in the wizard.
+			// Claude Code is a Bun application. Its auth command runs without a TTY
+			// because closing a Darwin tty stream makes Bun exit with EINVAL. Replay
+			// captured output when it exits so login instructions remain visible.
 			output := &tui.CommandOutput{Wizard: w}
 			w.Render.ClearTask()
 			result = limitedRun(c, func() platform.Result { return a.runInteractive(c, c.Context, args...) })

@@ -99,7 +99,11 @@ func shellCache(c *Context, action Action) int {
 			if result.Code != 0 {
 				return result.Code
 			}
+			// A later tool upgrade can remove the path captured in this cache.
+			// Keep a new terminal usable until the next sync regenerates it.
+			fmt.Fprintf(&output, "if (( $+commands[%s] )); then\n", command.name)
 			output.Write(result.Output)
+			output.WriteString("fi\n")
 		}
 	}
 	if executable(c.Env.Mise) {
@@ -107,7 +111,9 @@ func shellCache(c *Context, action Action) int {
 		if result.Code != 0 {
 			return result.Code
 		}
+		output.WriteString("if (( $+commands[mise] )); then\n")
 		output.Write(result.Output)
+		output.WriteString("fi\n")
 		which := runMise(c, "which", "pitchfork")
 		pitchfork := firstLine(which.Output)
 		if which.Code == 0 && executable(pitchfork) {
@@ -115,7 +121,9 @@ func shellCache(c *Context, action Action) int {
 			if result.Code != 0 {
 				return result.Code
 			}
+			output.WriteString("if (( $+commands[pitchfork] )); then\n")
 			output.Write(result.Output)
+			output.WriteString("fi\n")
 		}
 	}
 	if err := writeShellCache(environmentPath, environmentContents); err != nil {
@@ -130,7 +138,7 @@ func shellCache(c *Context, action Action) int {
 
 func shellFingerprint(c *Context, environment miseShellEnvironment) string {
 	hash := sha256.New()
-	hash.Write([]byte("userland-shell-cache-v3\n"))
+	hash.Write([]byte("userland-shell-cache-v4\n"))
 	for _, path := range environment.BinPaths {
 		fmt.Fprintf(hash, "path\t%s\n", path)
 	}

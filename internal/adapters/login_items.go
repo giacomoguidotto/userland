@@ -121,7 +121,9 @@ func startsImmediately(name string) bool {
 }
 
 func startLoginApplication(c *Context, name string) int {
-	launched := run(c, "open", "-g", "-a", name)
+	// Login items should keep their menu-bar and capture services alive without
+	// restoring the last screenshot or opening a recording window.
+	launched := run(c, "open", "-gj", "-a", name)
 	if launched.Code != 0 {
 		c.Log(Attention, "could not start "+name+" now: "+strings.TrimSpace(string(launched.Output)))
 		return 2

@@ -151,18 +151,6 @@ func Run(ctx context.Context, environ []string, stdin io.Reader, stdout, stderr 
 	if code := miseTask(ctx, env, render, runLog, taskStdin, "Install missing rolling packages", missingPackages, "bootstrap", "packages", "apply", "--yes", "--jobs", env.Jobs()); code != 0 {
 		return code
 	}
-	var upgrades []string
-	for _, item := range approved.Items() {
-		if item.Area == plan.AreaApps && item.Action == "upgrade" && strings.HasPrefix(item.Proof, "mise:rolling-upgrade:brew:") {
-			upgrades = append(upgrades, "brew:"+item.Target)
-		}
-	}
-	if len(upgrades) != 0 {
-		args := append([]string{"bootstrap", "packages", "upgrade", "--yes", "--jobs", env.Jobs()}, upgrades...)
-		if code := miseTask(ctx, env, render, runLog, taskStdin, "Upgrade installed rolling packages", trimPrefixes(upgrades, "brew:"), args...); code != 0 {
-			return code
-		}
-	}
 	render.Section("Apply machine state")
 	if code := miseTask(ctx, env, render, runLog, taskStdin, "Install pinned development tools", planTargets(approved, "mise:tool:", ""), "bootstrap", "--yes", "--only", "tools", "--jobs", env.Jobs()); code != 0 {
 		return code
@@ -526,14 +514,6 @@ func planTargets(value *plan.Plan, proofPrefix string, action plan.Action) []str
 		if ok && name != "" {
 			result = append(result, name)
 		}
-	}
-	return result
-}
-
-func trimPrefixes(values []string, prefix string) []string {
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		result = append(result, strings.TrimPrefix(value, prefix))
 	}
 	return result
 }

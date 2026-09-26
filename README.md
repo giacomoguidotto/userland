@@ -54,14 +54,16 @@ Userland writes a static Zsh cache containing direct paths for only the tools in
 
 ## Local tool configuration
 
-Userland does not symlink `~/.ssh/config` or `~/.zshrc`. It stores its own fragments separately and creates regular entrypoint files when needed, so other setup tools can edit the conventional files normally:
+Userland does not symlink mutable global integration points. It stores its own fragments separately and creates regular entrypoint files when needed, so project setup tools do not write into version-controlled sources:
 
 | Local file | Owner and behavior |
 | --- | --- |
 | `~/.config/userland/ssh/config` | Versioned Userland SSH fragment, included by the regular `~/.ssh/config`. Other tools may append their own `Host` blocks to `~/.ssh/config`. |
-| `~/.config/userland/zshrc` | Versioned Userland shell fragment, sourced from `~/.zshenv`. Other tools may append their setup to `~/.zshrc`. |
+| `~/.config/userland/zshenv` | Versioned login-shell fragment, sourced by a regular `~/.zshenv`. |
+| `~/.config/userland/zshrc` | Versioned interactive-shell fragment, sourced by a regular `~/.zshrc`. |
+| `~/.codex/config.toml` | Regular local file. Sync reconciles only Userland's credential-storage policy and preserves project trust and other local settings. |
 
-The `~/.config/userland` fragments are managed by Userland. The regular entrypoint files are not managed after creation, and Userland refuses to replace an unrelated symlink. Shell setup tools can write their normal completion code to `~/.zshrc` and SSH hosts to `~/.ssh/config`.
+The `~/.config/userland` fragments are managed by Userland. The regular entrypoint files remain composable, and Userland refuses to replace an unrelated symlink. Userland does not create a global Mise configuration; repository toolchains belong to their repositories. Sync installs missing declared packages but does not turn convergence into a rolling package upgrade.
 
 The Codex trust entry for `/Users/giacomo` is versioned in `cfg/codex/config.toml`, as part of the personal baseline.
 

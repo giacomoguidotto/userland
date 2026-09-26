@@ -47,7 +47,7 @@ op = "2.39.0"
 
 [dotfiles]
 "~/.config/userland/zshrc" = { source = "home/zshrc", mode = "symlink" }
-"~/.zshenv" = { source = "home/zshenv", mode = "symlink" }
+"~/.config/userland/zshenv" = { source = "home/zshenv", mode = "symlink" }
 "~/.hushlogin" = { source = "home/hushlogin", mode = "symlink" }
 "~/.local/bin/userland-secrets" = { source = "home/bin/userland-secrets", mode = "symlink" }
 "~/.local/bin/userland-git-sign" = { source = "home/bin/userland-git-sign", mode = "symlink" }
@@ -57,7 +57,6 @@ op = "2.39.0"
 "~/.config/1Password/ssh/agent.toml" = { source = "home/1Password/ssh/agent.toml", mode = "symlink" }
 "~/.agents/skills" = { source = "agents/skills", mode = "symlink-each" }
 "~/.codex/skills/t3-code-threads" = { source = "agents/skills/t3-code-threads", mode = "symlink" }
-"~/.codex/config.toml" = { source = "codex/config.toml", mode = "symlink" }
 
 "~/.config/atuin" = { source = "xdg/atuin", mode = "symlink-each" }
 "~/.config/bat" = { source = "xdg/bat", mode = "symlink-each" }
@@ -65,7 +64,6 @@ op = "2.39.0"
 "~/.config/ghostty" = { source = "xdg/ghostty", mode = "symlink-each" }
 "~/.config/git" = { source = "xdg/git", mode = "symlink-each" }
 "~/.config/gh" = { source = "xdg/gh", mode = "symlink-each" }
-"~/.config/mise" = { source = "xdg/mise", mode = "symlink-each" }
 "~/.config/nvim" = { source = "xdg/nvim", mode = "symlink-each" }
 "~/.config/starship" = { source = "xdg/starship", mode = "symlink-each" }
 

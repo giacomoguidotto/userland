@@ -49,6 +49,17 @@ const userlandZshrcInclude = `if [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/userlan
   source "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshrc"
 fi`
 
+const userlandZshenvInclude = `if [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshenv" ]; then
+  source "${XDG_CONFIG_HOME:-$HOME/.config}/userland/zshenv"
+fi`
+
+var codexPolicyKeys = []string{"cli_auth_credentials_store", "mcp_oauth_credentials_store"}
+
+var codexPolicy = map[string]string{
+	"cli_auth_credentials_store":  "cli_auth_credentials_store = \"keyring\"",
+	"mcp_oauth_credentials_store": "mcp_oauth_credentials_store = \"keyring\"",
+}
+
 func (m Manager) PlanLegacy(value *plan.Plan) {
 	for _, path := range m.legacyPaths() {
 		m.walkLegacy(path, func(link, source string) {
@@ -83,6 +94,12 @@ func (m Manager) PlanComposable(value *plan.Plan) {
 		if readErr == nil && file.include != "" && !strings.Contains(string(contents), file.include) {
 			_ = value.Add(plan.Item{Area: plan.AreaFS, Action: "configure", Handling: plan.Automatic, Ownership: "userland", Target: file.target, Detail: "add Userland startup include", Proof: "composable:" + file.target})
 		}
+	}
+	if m.codexConfigNeedsReconciliation() {
+		_ = value.Add(plan.Item{Area: plan.AreaFS, Action: "configure", Handling: plan.Automatic, Ownership: "userland", Target: filepath.Join(m.Env.Home, ".codex/config.toml"), Detail: "reconcile Userland-owned policy while preserving local and project settings", Proof: "composable:codex-policy"})
+	}
+	if m.ownedMiseConfigLink() {
+		_ = value.Add(plan.Item{Area: plan.AreaCleanup, Action: "release", Handling: plan.Automatic, Ownership: "userland", Target: filepath.Join(m.Env.Home, ".config/mise/config.toml"), Detail: "release the global Mise config so toolchains remain project-scoped", Proof: "composable:mise-config"})
 	}
 }
 
@@ -211,12 +228,18 @@ func (m Manager) Apply(ctx context.Context) int {
 	return 0
 }
 
-// ensureComposableFiles keeps the two conventional startup files available as
-// regular files. Other setup tools are free to edit them; Userland's own
-// declarations live in the separate fragments applied by mise.
+// ensureComposableFiles keeps conventional integration points composable.
 func (m Manager) ensureComposableFiles() error {
 	for _, file := range m.composableFiles() {
 		if err := m.ensureComposableFile(file.target, file.source, file.include); err != nil {
+			return err
+		}
+	}
+	if err := m.reconcileCodexConfig(); err != nil {
+		return err
+	}
+	if m.ownedMiseConfigLink() {
+		if err := os.Remove(filepath.Join(m.Env.Home, ".config/mise/config.toml")); err != nil {
 			return err
 		}
 	}
@@ -234,6 +257,7 @@ func (m Manager) composableFiles() []struct {
 		include string
 	}{
 		{filepath.Join(m.Env.Home, ".zshrc"), filepath.Join(m.Env.Root, "cfg/home/zshrc"), userlandZshrcInclude},
+		{filepath.Join(m.Env.Home, ".zshenv"), filepath.Join(m.Env.Root, "cfg/home/zshenv"), userlandZshenvInclude},
 		{filepath.Join(m.Env.Home, ".ssh/config"), filepath.Join(m.Env.Root, "cfg/home/ssh/config"), "Include ~/.config/userland/ssh/config"},
 	}
 }
@@ -279,6 +303,116 @@ func (m Manager) ensureComposableFile(target, source, include string) error {
 		contents += include + "\n"
 	}
 	return os.WriteFile(target, []byte(contents), 0o600)
+}
+
+func topLevelAssignment(contents, key string) string {
+	for _, line := range strings.Split(contents, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		left, _, found := strings.Cut(trimmed, "=")
+		if found && strings.TrimSpace(left) == key {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func reconcileTopLevel(contents string, desired map[string]string) string {
+	lines := strings.Split(strings.TrimSuffix(contents, "\n"), "\n")
+	found := make(map[string]bool, len(desired))
+	for index, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			break
+		}
+		left, _, assignment := strings.Cut(trimmed, "=")
+		key := strings.TrimSpace(left)
+		if replacement, ok := desired[key]; assignment && ok {
+			lines[index] = replacement
+			found[key] = true
+		}
+	}
+	missing := make([]string, 0, len(desired))
+	for _, key := range codexPolicyKeys {
+		if !found[key] {
+			missing = append(missing, desired[key])
+		}
+	}
+	if len(missing) != 0 {
+		lines = append(append(missing, ""), lines...)
+	}
+	return strings.TrimLeft(strings.Join(lines, "\n"), "\n") + "\n"
+}
+
+func (m Manager) codexConfigNeedsReconciliation() bool {
+	target := filepath.Join(m.Env.Home, ".codex/config.toml")
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) || err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	contents, readErr := os.ReadFile(target)
+	if readErr != nil {
+		return false
+	}
+	for key, assignment := range codexPolicy {
+		if topLevelAssignment(string(contents), key) != assignment {
+			return true
+		}
+	}
+	return false
+}
+
+func (m Manager) reconcileCodexConfig() error {
+	target := filepath.Join(m.Env.Home, ".codex/config.toml")
+	mode := os.FileMode(0o600)
+	contents := ""
+	linked := false
+	if info, statErr := os.Lstat(target); statErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			linked = true
+			source, linkErr := resolvedLink(target)
+			expected := filepath.Join(m.Env.Root, "cfg/codex/config.toml")
+			if linkErr != nil || source != expected && !m.ownedLegacy(source) {
+				return fmt.Errorf("refusing to replace unmanaged symlink: %s", target)
+			}
+		} else {
+			mode = info.Mode().Perm()
+		}
+		current, readErr := os.ReadFile(target)
+		if readErr != nil {
+			return readErr
+		}
+		contents = string(current)
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+	next := reconcileTopLevel(contents, codexPolicy)
+	if contents == next && !linked {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return err
+	}
+	return atomicWrite(target, []byte(next), mode)
+}
+
+func (m Manager) ownedMiseConfigLink() bool {
+	target := filepath.Join(m.Env.Home, ".config/mise/config.toml")
+	info, err := os.Lstat(target)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	source, err := resolvedLink(target)
+	if err != nil {
+		return false
+	}
+	expected := filepath.Join(m.Env.Root, "cfg/xdg/mise/config.toml")
+	return source == expected || m.ownedLegacy(source)
 }
 
 func statusApplied(value status) bool {

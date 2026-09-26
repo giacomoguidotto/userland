@@ -2,6 +2,7 @@ package managedfiles
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,8 +85,8 @@ func TestPlanComposableFilesRequestsMissingStartupInclude(t *testing.T) {
 	value := plan.New()
 	manager.PlanComposable(value)
 	items := value.Items()
-	if len(items) != 2 {
-		t.Fatalf("expected zshrc and ssh config repairs, got %#v", items)
+	if len(items) != 4 {
+		t.Fatalf("expected shell, ssh, and Codex repairs, got %#v", items)
 	}
 	if items[0].Target != filepath.Join(manager.Env.Home, ".zshrc") || !strings.Contains(items[0].Detail, "include") {
 		t.Fatalf("unexpected zshrc plan: %#v", items[0])
@@ -94,7 +95,7 @@ func TestPlanComposableFilesRequestsMissingStartupInclude(t *testing.T) {
 
 func TestEnsureComposableFilesMigratesOwnedLinks(t *testing.T) {
 	manager := testManager(t)
-	for _, source := range []string{"cfg/home/zshrc", "cfg/home/ssh/config"} {
+	for _, source := range []string{"cfg/home/zshrc", "cfg/home/zshenv", "cfg/home/ssh/config"} {
 		path := filepath.Join(manager.Env.Root, source)
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
@@ -111,6 +112,7 @@ func TestEnsureComposableFilesMigratesOwnedLinks(t *testing.T) {
 		source string
 	}{
 		{filepath.Join(manager.Env.Home, ".zshrc"), filepath.Join(manager.Env.Root, "cfg/home/zshrc")},
+		{filepath.Join(manager.Env.Home, ".zshenv"), filepath.Join(manager.Env.Root, "cfg/home/zshenv")},
 		{filepath.Join(manager.Env.Home, ".ssh/config"), filepath.Join(manager.Env.Root, "cfg/home/ssh/config")},
 	} {
 		if err := os.Symlink(link.source, link.target); err != nil {
@@ -120,11 +122,71 @@ func TestEnsureComposableFilesMigratesOwnedLinks(t *testing.T) {
 	if err := manager.ensureComposableFiles(); err != nil {
 		t.Fatal(err)
 	}
-	for _, target := range []string{filepath.Join(manager.Env.Home, ".zshrc"), filepath.Join(manager.Env.Home, ".ssh/config")} {
+	for _, target := range []string{filepath.Join(manager.Env.Home, ".zshrc"), filepath.Join(manager.Env.Home, ".zshenv"), filepath.Join(manager.Env.Home, ".ssh/config")} {
 		info, err := os.Lstat(target)
 		if err != nil || info.Mode()&os.ModeSymlink != 0 {
 			t.Fatalf("owned link was not migrated: %s (%v)", target, err)
 		}
+	}
+}
+
+func TestEnsureComposableFilesPreservesCodexProjectSettingsAndReleasesMiseGlobal(t *testing.T) {
+	manager := testManager(t)
+	for _, source := range []string{"cfg/home/zshrc", "cfg/home/zshenv", "cfg/home/ssh/config"} {
+		path := filepath.Join(manager.Env.Root, source)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("fragment\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	codexSource := filepath.Join(manager.Env.Root, "cfg/codex/config.toml")
+	miseSource := filepath.Join(manager.Env.Root, "cfg/xdg/mise/config.toml")
+	for _, source := range []string{codexSource, miseSource} {
+		if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(codexSource, []byte("cli_auth_credentials_store = \"file\"\n\n[projects.\"/work\"]\ntrust_level = \"trusted\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(miseSource, []byte("[settings]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for target, source := range map[string]string{
+		filepath.Join(manager.Env.Home, ".codex/config.toml"):       codexSource,
+		filepath.Join(manager.Env.Home, ".config/mise/config.toml"): miseSource,
+	} {
+		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(source, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manager.ensureComposableFiles(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(filepath.Join(manager.Env.Home, ".codex/config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(contents), "[projects.\"/work\"]") || !strings.Contains(string(contents), "cli_auth_credentials_store = \"keyring\"") {
+		t.Fatalf("Codex reconciliation lost local state or policy: %q", contents)
+	}
+	if err := manager.ensureComposableFiles(); err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := os.ReadFile(filepath.Join(manager.Env.Home, ".codex/config.toml"))
+	if err != nil || string(repeated) != string(contents) {
+		t.Fatalf("second reconciliation changed Codex config: %q (%v)", repeated, err)
+	}
+	if info, err := os.Lstat(filepath.Join(manager.Env.Home, ".codex/config.toml")); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("Codex config remained a symlink: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(manager.Env.Home, ".config/mise/config.toml")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("owned global Mise config was not released: %v", err)
 	}
 }
 

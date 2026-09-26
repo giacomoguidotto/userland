@@ -218,7 +218,11 @@ func (m Manager) ensureComposableFiles() error {
 		}
 		if info != nil && info.Mode()&os.ModeSymlink != 0 {
 			resolved, resolveErr := filepath.EvalSymlinks(file.target)
-			if resolveErr != nil || (resolved != file.source && !m.ownedLegacy(resolved)) {
+			canonicalSource, sourceErr := filepath.EvalSymlinks(file.source)
+			if sourceErr != nil {
+				canonicalSource = file.source
+			}
+			if resolveErr != nil || (resolved != canonicalSource && !m.ownedLegacy(resolved)) {
 				return fmt.Errorf("refusing to replace unmanaged symlink: %s", file.target)
 			}
 			if err := os.Remove(file.target); err != nil {

@@ -117,15 +117,16 @@ func loginItems(c *Context, action Action) int {
 }
 
 func startsImmediately(name string) bool {
-	return name == "Wispr Flow" || name == "Shottr" || name == "Screen Studio"
+	// Capture apps must be started by macOS at login. Opening them during sync
+	// restores their last window and can put a screenshot or recording panel on
+	// screen. Wispr Flow has no capture window, so it remains available now.
+	return name == "Wispr Flow"
 }
 
 func startLoginApplication(c *Context, name string) int {
-	// Login items should keep their menu-bar and capture services alive without
-	// restoring the last screenshot or opening a recording window.
 	launched := run(c, "open", "-gj", "-a", name)
 	if launched.Code != 0 {
-		c.Log(Attention, "could not start "+name+" now: "+strings.TrimSpace(string(launched.Output)))
+		c.Log(Attention, "could not start "+name+": "+strings.TrimSpace(string(launched.Output)))
 		return 2
 	}
 	c.Log(Changed, "started "+name)

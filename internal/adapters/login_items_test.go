@@ -10,15 +10,21 @@ import (
 	"github.com/giacomoguidotto/userland/internal/platform"
 )
 
-func TestLoginItemScriptsUsePOSIXPaths(t *testing.T) {
-	if !strings.Contains(inspectLoginItemScript, "POSIX path of (path of currentItem as alias)") {
-		t.Fatal("login item inspection must normalize macOS aliases to POSIX paths")
+func TestLoginItemScriptsUseStringPaths(t *testing.T) {
+	if !strings.Contains(inspectLoginItemScript, "path of currentItem as text") {
+		t.Fatal("login item inspection must read the path without coercing it through an alias")
 	}
-	if !strings.Contains(applyLoginItemScript, "POSIX file wantedPath as alias") {
-		t.Fatal("login item creation must pass an explicit macOS alias")
+	if strings.Contains(applyLoginItemScript, " as alias") || !strings.Contains(applyLoginItemScript, "path:wantedPath") {
+		t.Fatal("login item creation must pass the declared path as text")
 	}
 	if !strings.Contains(applyLoginItemScript, "delete currentItem") {
 		t.Fatal("login item application must repair an existing item with the wrong path or visibility")
+	}
+}
+
+func TestLoginItemMatchNormalizesTrailingSeparators(t *testing.T) {
+	if !loginItemMatches("/Applications/Shottr.app/\tfalse\n", "/Applications/Shottr.app", "false") {
+		t.Fatal("equivalent macOS login item paths should be idempotent")
 	}
 }
 

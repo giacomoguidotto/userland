@@ -103,11 +103,6 @@ func execute(ctx context.Context, environ []string, out io.Writer, standalone bo
 	if err := importResources(value, output); err != nil {
 		return errors.New("mise returned an unreadable plan; no approval was requested")
 	}
-	output, err = r.miseOutput("Inspecting rolling package upgrades", "bootstrap", "packages", "upgrade", "--dry-run", "--yes", "--jobs", jobs(env))
-	if err != nil {
-		return err
-	}
-	importRolling(value, output)
 	output, err = r.miseOutput("Inspecting managed files", "bootstrap", "dotfiles", "status", "--json")
 	if err != nil {
 		return err
@@ -258,13 +253,13 @@ func importResources(value *plan.Plan, encoded []byte) error {
 			_ = value.Add(plan.Item{Area: plan.AreaCleanup, Action: "remove", Handling: plan.Automatic, Ownership: "declared", Target: resource.ID.Name, Detail: current + " to absent", Proof: proof})
 		case "create", "update":
 			if resource.ID.Kind == "package" {
-				manager, _, _ := strings.Cut(resource.ID.Name, ":")
-				detail := "upgrade through Mise's " + manager + " package backend"
-				action := plan.Action("upgrade")
-				if resource.Action == "create" {
-					action, detail = "install", "install through Mise's "+manager+" package backend"
+				// Rolling operating-system packages are presence declarations. Updating
+				// them is an explicit maintenance action, not convergence drift.
+				if resource.Action == "update" {
+					continue
 				}
-				_ = value.Add(plan.Item{Area: plan.AreaApps, Action: action, Handling: plan.Automatic, Ownership: "declared", Target: strings.TrimPrefix(resource.ID.Name, "brew:"), Detail: detail, Proof: proof})
+				manager, _, _ := strings.Cut(resource.ID.Name, ":")
+				_ = value.Add(plan.Item{Area: plan.AreaApps, Action: "install", Handling: plan.Automatic, Ownership: "declared", Target: strings.TrimPrefix(resource.ID.Name, "brew:"), Detail: "install through Mise's " + manager + " package backend", Proof: proof})
 			} else if resource.ID.Kind == "file" || resource.ID.Kind == "directory" {
 				_ = value.Add(plan.Item{Area: plan.AreaFS, Action: plan.Action(resource.Action), Handling: plan.Automatic, Ownership: "declared", Target: resource.ID.Name, Detail: current + " to " + desired, Proof: proof})
 			} else {
@@ -275,23 +270,6 @@ func importResources(value *plan.Plan, encoded []byte) error {
 		}
 	}
 	return nil
-}
-func importRolling(value *plan.Plan, output []byte) {
-	seen := map[string]bool{}
-	for _, line := range strings.Split(string(output), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 2 || (f[0] != "repair" && f[0] != "pour" && f[0] != "build") || (f[0] != "repair" && !strings.Contains(line, "(requested")) {
-			continue
-		}
-		artifact := strings.TrimSuffix(f[1], ":")
-		i := strings.LastIndex(artifact, "/")
-		if i < 1 || seen[artifact[:i]] {
-			continue
-		}
-		name, version := artifact[:i], artifact[i+1:]
-		seen[name] = true
-		_ = value.Add(plan.Item{Area: plan.AreaApps, Action: "upgrade", Handling: plan.Automatic, Ownership: "declared", Target: name, Detail: "upgrade installed rolling package to " + version, Proof: "mise:rolling-upgrade:brew:" + name})
-	}
 }
 func importDotfiles(value *plan.Plan, encoded []byte) error {
 	var document struct {
@@ -375,12 +353,6 @@ func defaultDomain(domain string) string {
 	default:
 		return domain
 	}
-}
-func jobs(env map[string]string) string {
-	if env["USERLAND_JOBS"] != "" {
-		return env["USERLAND_JOBS"]
-	}
-	return "4"
 }
 func environment(environ []string) map[string]string {
 	values := map[string]string{}

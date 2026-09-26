@@ -48,7 +48,11 @@ for value, expected in [(b'yes\r', b'RESULT:0:yes'), (b'\x03', b'RESULT:130:'), 
             if select.select([master], [], [], .05)[0]: data += os.read(master, 4096)
         proc.wait(timeout=2)
         assert b'\r\n' + expected in data, ('next line did not return to column zero', data)
-        assert termios.tcgetattr(slave) == before, 'terminal mode was not restored'
+        after = termios.tcgetattr(slave)
+        # PENDIN is transient kernel input state, not a configured terminal mode.
+        before[3] &= ~getattr(termios, 'PENDIN', 0)
+        after[3] &= ~getattr(termios, 'PENDIN', 0)
+        assert after == before, ('terminal mode was not restored', before, after)
     finally:
         if proc.poll() is None: proc.kill(); proc.wait()
         os.close(master); os.close(slave)

@@ -15,6 +15,8 @@ def without_help_additions(data: bytes) -> bytes:
         b"realm remove <name-or-path>",
         b"Detach configuration without deleting its checkout",
         b"nuke      Remove everything under the home folder",
+        b"userland sync --non-interactive",
+        b"Apply automatic work without prompts or browser login",
     )
     result = b"".join(line for line in data.splitlines(keepends=True) if not any(value in line for value in omitted))
     while b"\r\n\r\n\r\n" in result:
@@ -35,6 +37,8 @@ def without_completion_additions(data: bytes) -> bytes:
         stripped = line.strip()
         if stripped == b"nuke) choices='--dry-run --yes' ;;":
             continue
+        if stripped == b"sync) choices='--non-interactive' ;;":
+            continue
         if stripped == b"realm)":
             skip_case = True
             continue
@@ -43,6 +47,9 @@ def without_completion_additions(data: bytes) -> bytes:
                 skip_case = False
             continue
         if stripped.startswith(b'export extern "userland realm '):
+            skip_nushell = True
+            continue
+        if stripped == b'export extern "userland sync" [':
             skip_nushell = True
             continue
         if stripped == b'export extern "userland nuke" [':
@@ -63,6 +70,8 @@ def without_completion_additions(data: bytes) -> bytes:
                 b'{ value: realm, description: "Attach or detach private configuration" }',
                 b"-a realm -d 'Attach or detach private configuration'",
                 b"__fish_seen_subcommand_from realm",
+                b"__fish_seen_subcommand_from sync",
+                b"sync) _arguments '1:option:(--non-interactive)' ;;",
             )
         ):
             continue

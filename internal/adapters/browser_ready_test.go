@@ -52,3 +52,30 @@ func TestBrowserReadyRecordsAttendedHeliumSetupAndIsIdempotent(t *testing.T) {
 		t.Fatalf("completed browser setup reopened Helium: %q", data)
 	}
 }
+
+func TestBrowserReadyDoesNotOpenHeliumWithoutInteractiveTerminal(t *testing.T) {
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	state := filepath.Join(base, "state")
+	bin := filepath.Join(base, "bin")
+	for _, directory := range []string{filepath.Join(home, "Applications", "Helium.app"), filepath.Join(state, "receipts"), bin} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	opened := filepath.Join(base, "opened")
+	if err := os.WriteFile(filepath.Join(bin, "open"), []byte("#!/bin/sh\ntouch "+shellSingleQuote(opened)+"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	env := platform.NewEnvironment([]string{
+		"HOME=" + home, "USERLAND_HOME=" + home, "USERLAND_STATE_DIR=" + state,
+		"USERLAND_UNAME=Darwin", "USERLAND_NON_INTERACTIVE=1", "PATH=" + bin,
+	})
+	c := &Context{Context: context.Background(), Env: env, Stdin: strings.NewReader("unexpected\n"), Output: &bytes.Buffer{}, Terminal: false}
+	if code := browserReady(c, Apply); code != 2 {
+		t.Fatalf("browser setup returned %d, want action-required 2", code)
+	}
+	if _, err := os.Stat(opened); !os.IsNotExist(err) {
+		t.Fatal("non-interactive browser setup opened Helium")
+	}
+}

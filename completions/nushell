@@ -22,6 +22,10 @@ export extern "userland doctor" [
     --json
 ]
 
+export extern "userland sync" [
+    --non-interactive
+]
+
 export extern "userland nuke" [
     --dry-run
     --yes

@@ -3,6 +3,14 @@
 # its stage instructions and prompts; this helper never reads terminal input.
 set -euo pipefail
 
+userland_tool() {
+  if [[ -x "${USERLAND_MISE:-}" && -n "${USERLAND_ROOT:-}" ]]; then
+    "$USERLAND_MISE" -C "$USERLAND_ROOT/cfg" exec -- "$@"
+  else
+    command "$@"
+  fi
+}
+
 agent_socket() {
   local candidate
   for candidate in "$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock" \
@@ -136,8 +144,8 @@ check_stage() {
   case "$1" in
     agent) agent_ready ;;
     ssh) ssh_ready ;;
-    github-cli) gh auth status --hostname github.com >/dev/null 2>&1 && ! gh_plaintext ;;
-    codex) codex login status >/dev/null 2>&1 && [[ ! -e "$HOME/.codex/auth.json" ]] ;;
+    github-cli) userland_tool gh auth status --hostname github.com >/dev/null 2>&1 && ! gh_plaintext ;;
+    codex) userland_tool codex login status >/dev/null 2>&1 && [[ ! -e "$HOME/.codex/auth.json" ]] ;;
     *) return 1 ;;
   esac
 }
@@ -149,11 +157,11 @@ apply_stage() {
       open 'https://github.com/settings/ssh/new'
       ;;
     github-cli)
-      if gh_plaintext; then gh auth logout --hostname github.com </dev/null; fi
+      if gh_plaintext; then userland_tool gh auth logout --hostname github.com </dev/null; fi
       open 'https://github.com/login/device'
-      GH_PROMPT_DISABLED=1 gh auth login --hostname github.com --git-protocol https --web
+      GH_PROMPT_DISABLED=1 userland_tool gh auth login --hostname github.com --git-protocol https --web
       if gh_plaintext; then
-        gh auth logout --hostname github.com </dev/null || return 1
+        userland_tool gh auth logout --hostname github.com </dev/null || return 1
         printf '%s\n' 'GitHub CLI could not store the login in the keyring; login was removed.' >&2
         return 1
       fi
@@ -161,7 +169,7 @@ apply_stage() {
     codex)
       # Replace only the old plaintext credential cache; managed config requires keyring storage.
       rm -f "$HOME/.codex/auth.json"
-      codex login
+      userland_tool codex login
       if [[ -e "$HOME/.codex/auth.json" ]]; then
         printf '%s\n' 'Codex wrote auth.json despite the keyring policy; setup is incomplete.' >&2
         return 1

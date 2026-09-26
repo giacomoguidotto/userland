@@ -10,6 +10,7 @@ complete -c userland -n __userland_needs_command -a doctor -d 'Check drift and m
 complete -c userland -n __userland_needs_command -a realm -d 'Attach or detach private configuration'
 complete -c userland -n __userland_needs_command -a completions -d 'Print shell completions'
 complete -c userland -n __userland_needs_command -a help -d 'Show command help'
+complete -c userland -n '__fish_seen_subcommand_from sync' -l non-interactive -d 'Apply without prompts or browser login'
 complete -c userland -n '__fish_seen_subcommand_from doctor' -l json -d 'Print machine-readable status'
 complete -c userland -n '__fish_seen_subcommand_from nuke' -a '--dry-run --yes'
 complete -c userland -n '__fish_seen_subcommand_from realm; and not __fish_seen_subcommand_from list add remove' -a 'list add remove'

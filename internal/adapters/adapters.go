@@ -170,7 +170,7 @@ func runSerialRegistry(ctx context.Context, env platform.Environment, action Act
 		result.Events = append(result.Events, invocation.Events...)
 		if code == 2 {
 			result.Attention = true
-			if item.blocksOnAttention {
+			if item.blocksOnAttention && !env.Bool("USERLAND_NON_INTERACTIVE") {
 				result.Code = 3
 				return result
 			}

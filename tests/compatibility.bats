@@ -148,6 +148,7 @@ reset_machine_fixture() {
     grep -q realm "$TEST_TMPDIR/realm-$shell"
     grep -q add "$TEST_TMPDIR/realm-$shell"
     grep -q remove "$TEST_TMPDIR/realm-$shell"
+    grep -q -- non-interactive "$TEST_TMPDIR/realm-$shell"
   done
   assert_compatible completions
   assert_compatible completions powershell

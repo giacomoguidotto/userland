@@ -156,6 +156,8 @@ func (r Renderer) Usage() {
 	fmt.Fprintf(r.out, "%s  completions <shell>\n", margin)
 	fmt.Fprintf(r.out, "%s            Print Bash, Fish, Nushell, or Zsh completions\n\n", margin)
 	fmt.Fprintf(r.out, "%sAutomation\n", margin)
+	fmt.Fprintf(r.out, "%s  userland sync --non-interactive\n", margin)
+	fmt.Fprintf(r.out, "%s            Apply automatic work without prompts or browser login\n", margin)
 	fmt.Fprintf(r.out, "%s  userland doctor --json\n", margin)
 }
 

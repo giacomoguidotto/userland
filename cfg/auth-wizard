@@ -86,7 +86,7 @@ ssh_ready() {
     printf '%s\n' 'The expected key is listed, but the agent refused a signing test.'
     return 1
   }
-  output=$(SSH_AUTH_SOCK="$socket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -T life-github 2>&1) || true
+  output=$(SSH_AUTH_SOCK="$socket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -T github.com 2>&1) || true
   if [[ "$output" == *"Hi giacomoguidotto! You've successfully authenticated"* ]]; then return 0; fi
   printf '%s\n' "$output"
   return 1
@@ -107,7 +107,7 @@ diagnose_ssh() {
   if (( key_status == 0 )); then printf '%s\n' 'PASS agent inventory: life/auth is offered'; else printf '%s\n' 'FAIL agent inventory: life/auth is not offered'; fi
   if agent_can_sign >/dev/null 2>&1; then sign_status=0; else sign_status=$?; fi
   if (( sign_status == 0 )); then printf '%s\n' 'PASS agent signing: life/auth can sign'; else printf '%s\n' 'FAIL agent signing: life/auth was refused'; fi
-  output=$(SSH_AUTH_SOCK="$socket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -T life-github 2>&1) || true
+  output=$(SSH_AUTH_SOCK="$socket" ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=8 -T github.com 2>&1) || true
   if [[ "$output" == *"Hi giacomoguidotto! You've successfully authenticated"* ]]; then
     printf '%s\n' 'PASS GitHub: authenticated as giacomoguidotto'
   else

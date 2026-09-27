@@ -45,7 +45,7 @@ setup() {
   [[ "$output" == *"hostname vm.example.invalid"* ]]
   [[ "$output" == *"user trellis"* ]]
   [[ "$output" == *"port 2222"* ]]
-  run ssh -G -F "$HOME/.ssh/config" life-github
+  run ssh -G -F "$HOME/.ssh/config" github.com
   [ "$status" -eq 0 ]
   [[ "$output" == *"hostname github.com"* ]]
   [[ "$output" == *"user git"* ]]

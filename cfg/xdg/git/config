@@ -51,9 +51,3 @@
 
 [include]
 	path = ./catppuccin.gitconfig
-
-[url "git@life-github:"]
-	insteadOf = "https://github.com/"
-
-[url "git@life-github:"]
-	insteadOf = "git@github.com:"

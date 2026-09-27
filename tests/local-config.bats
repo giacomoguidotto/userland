@@ -51,3 +51,14 @@ setup() {
   [[ "$output" == *"user git"* ]]
   [[ "$output" != *"port 2222"* ]]
 }
+
+@test "GitHub HTTPS remotes use the canonical SSH host" {
+  command -v git >/dev/null || skip "git is required"
+  repo="$BATS_TEST_TMPDIR/repo"
+  git -C "$BATS_TEST_TMPDIR" init repo >/dev/null
+  git -C "$repo" remote add origin https://github.com/trellis-tech/trellis.git
+  run env GIT_CONFIG_GLOBAL="$ROOT/cfg/xdg/git/config" GIT_CONFIG_SYSTEM=/dev/null \
+    git -C "$repo" remote get-url origin
+  [ "$status" -eq 0 ]
+  [ "$output" = git@github.com:trellis-tech/trellis.git ]
+}

@@ -51,3 +51,6 @@
 
 [include]
 	path = ./catppuccin.gitconfig
+
+[url "git@github.com:"]
+	insteadOf = "https://github.com/"

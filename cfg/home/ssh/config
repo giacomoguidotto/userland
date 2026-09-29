@@ -1,9 +1,16 @@
-# 1Password supplies the agent socket on macOS and Linux. Keep the socket in
-# SSH_AUTH_SOCK rather than embedding a machine-specific path in this file.
+# Desktop apps may not inherit SSH_AUTH_SOCK from Userland's shell setup.
+# Prefer an available local 1Password socket, as zshenv does; otherwise keep
+# the inherited agent so remote sessions can use SSH agent forwarding.
+Match host github.com exec "test -S '%d/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock'"
+  IdentityAgent "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+Match host github.com exec "test -S '%d/.1password/agent.sock'"
+  IdentityAgent ~/.1password/agent.sock
+
 Host github.com
   HostName github.com
   User git
   UserKnownHostsFile ~/.ssh/userland-known_hosts
+  IdentityAgent SSH_AUTH_SOCK
 
 Host nicagi-store01
   HostName nicagi-store01

@@ -3,7 +3,8 @@ name: t3-code-threads
 description: >-
   Manage T3 Code conversations on the Mac and remote VM: create and brief threads,
   inspect history, send follow-ups, select models and effort, and control thread
-  lifecycle. Use for requests about other T3 Code threads or delegating work in this app.
+  lifecycle, including recovery from active-writer failures. Use for requests about
+  other T3 Code threads or delegating work in this app.
 ---
 
 Use `~/.local/bin/t3-thread`. This controls the actual T3 Code app through its server API. It is installed for Codex and Claude on both machines. Do not open T3 Chat or invent a new API client.
@@ -45,3 +46,44 @@ Sending preserves model/account, effort, permission mode and interaction mode. B
 The controller refuses account changes on existing threads because T3 0.0.40 can lose native context during those switches. Model/effort changes within the same account are supported while idle. Use an explicitly briefed new thread for a different account; do not reset the old session or mutate T3's database.
 
 Credentials are issued locally for five minutes and revoked after each command. Configuration and code are versioned in Userland; credentials and conversation-bearing operation records stay in private runtime storage. A version-compatibility error requires testing the new server version before changing the allowed version list.
+
+## Recover an active-writer failure
+
+Recover the existing conversation when the user reports `already has an active
+writer`. Preserve its native provider thread, account, model, worktree, and
+history. The recovery request authorizes resuming that conversation. If a message
+is needed, send only `Continue.`; keep diagnostic instructions in the controlling
+thread so recovery does not redirect the original task.
+
+Resolve the T3 thread ID and the native provider thread ID from the error. Inspect
+recent provider events and the writer's owning process on the server machine.
+An error status or null active-turn field is not proof of a stale writer: a
+competing T3 server can write that status while the original turn keeps working.
+Preserve a turn that is producing fresh assistant output or command completions.
+
+Check running T3 processes and their base directories, ports, runtime receipt,
+and client routing. Multiple versions can share one data directory after an
+upgrade. An authenticated controller may still target the obsolete port. When
+this legacy controller is absent or incompatible, use the repository's
+`t3-control` skill and official `t3cli` on the server machine. Capture native
+authentication output privately; it may contain a token.
+
+For a stale writer, prefer a supported stop/unload of the affected provider
+session and resume its existing native thread. An interrupt may cancel the turn
+without unloading its writer. Before stopping a provider process, verify every
+conversation it owns; one process may serve several threads. For duplicate T3
+servers, route clients to the current owner and gracefully retire an obsolete
+server only after verifying all its work is idle. Verify it stops listening and
+consuming events. Recheck the current runtime receipt afterward: an older server's
+shutdown can remove the shared receipt. Restore it only from the verified live
+process and endpoint. Preserve active work on the current server.
+
+Keep writer-lock files and resume IDs intact. Removing a held lock can create two
+writers. Avoid database edits, account switches, thread replacement, or shared
+server restarts as recovery shortcuts.
+
+Send `Continue.` only after the original turn is idle and the conflict is cleared,
+and only if work still needs to resume. Reuse the operation key for legacy
+controller retries; for an ambiguous official CLI send, read back before retrying.
+Verify a non-error session and fresh progress on the same native thread. Distinguish
+recovering this occurrence from preventing recurrence in the final report.

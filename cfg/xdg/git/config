@@ -54,3 +54,9 @@
 
 [url "git@github.com:"]
 	insteadOf = "https://github.com/"
+[credential "https://github.com"]
+	helper = 
+	helper = !/Users/giacomo/.local/share/mise/installs/gh/2.101.0/gh_2.101.0_macOS_arm64/bin/gh auth git-credential
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/Users/giacomo/.local/share/mise/installs/gh/2.101.0/gh_2.101.0_macOS_arm64/bin/gh auth git-credential
